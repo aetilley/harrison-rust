@@ -1,9 +1,6 @@
 // ### PROPOSITIONAL LOGIC ###
 // AST specific parsing/printing functions for propositional (aka sentential) logic.
 
-// TODO(arthur) Maybe encapsulate printing/parsing each into their own (inner) modules
-// so that testing can import just them?
-//
 use std::cmp;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt::Debug;
@@ -11,7 +8,7 @@ use std::io::Write;
 
 use crate::parse::{generic_parser, PartialParseResult};
 
-pub use crate::formula::{write, ErrInner, Formula};
+pub use crate::formula::{parse_formula, write, ErrInner, Formula};
 
 use regex::Regex;
 
@@ -21,30 +18,69 @@ pub struct Prop {
     name: String,
 }
 
-pub fn prop(name: &str) -> Prop {
-    // Convenience constructor for `Prop`s.
-    Prop {
-        name: String::from(name),
+impl Prop {
+    pub fn prop(name: &str) -> Prop {
+        // Convenience constructor for `Prop`s.
+        Prop {
+            name: String::from(name),
+        }
+    }
+
+    fn print_propvar<W: Write>(dest: &mut W, _prec: u32, atom: &Prop) -> () {
+        // Our atom printer for propositional logic.  Note that the precedence argument is
+        // simply ignored.
+        write(dest, &atom.name);
     }
 }
 
+#[cfg(test)]
+mod prop_basic_tests {
+    use super::*;
+
+    fn init() {
+        let _ = env_logger::builder().is_test(true).try_init();
+    }
+
+    #[test]
+    fn test_print_propvar() {
+        let mut output = Vec::new();
+        let prop = Prop::prop("SomeProp");
+        Prop::print_propvar(&mut output, 0, &prop);
+        let output = String::from_utf8(output).expect("Not UTF-8");
+        assert_eq!(output, "SomeProp");
+
+        let mut output2 = Vec::new();
+        Prop::print_propvar(&mut output2, 42, &prop);
+        let output2 = String::from_utf8(output2).expect("Not UTF-8");
+        assert_eq!(output2, "SomeProp");
+    }
+}
+
+// ### PARSING ###
 impl Formula<Prop> {
-    fn _parse_propvar<'a>(
+    fn _atom_parser<'a>(
         _variables: &Vec<String>,
         input: &'a [String],
     ) -> PartialParseResult<'a, Formula<Prop>> {
         match input {
             // The conditional here seems unnecessary given how this is used in parse_formula.
-            [p, rest @ ..] if p != "(" => (Formula::atom(prop(p)), rest),
+            [p, rest @ ..] if p != "(" => (Formula::atom(Prop::prop(p)), rest),
             _ => panic!("Failed to parse propvar."),
         }
     }
 
+    fn _infix_parser<'a>(
+        _: &Vec<String>,
+        _: &'a [String],
+    ) -> Result<PartialParseResult<'a, Formula<Prop>>, ErrInner> {
+        Err("Infix operations not supported.")
+    }
+
     fn _parse_prop_formula_inner<'a>(input: &'a [String]) -> PartialParseResult<'a, Formula<Prop>> {
-        Formula::parse_general(
-            |_, _| Err("Infix operations not supported."),
-            Formula::_parse_propvar,
-            &vec![],
+        parse_formula(
+            Formula::_infix_parser,
+            Formula::_atom_parser,
+            &vec![], // Bound Variables
             input,
         )
     }
@@ -69,11 +105,14 @@ mod prop_parse_tests {
     #[test]
     fn test_parse() {
         let input = "a <=> (b /\\ c)";
-        let result = Formula::parse(input);
+        let result = Formula::<Prop>::parse(input);
 
         let desired = Formula::iff(
-            Formula::atom(prop("a")),
-            Formula::and(Formula::atom(prop("b")), Formula::atom(prop("c"))),
+            Formula::atom(Prop::prop("a")),
+            Formula::and(
+                Formula::atom(Prop::prop("b")),
+                Formula::atom(Prop::prop("c")),
+            ),
         );
         assert_eq!(result, desired);
     }
@@ -82,21 +121,15 @@ mod prop_parse_tests {
 // ### PRINTING ###
 
 impl Formula<Prop> {
-    fn _print_propvar<W: Write>(dest: &mut W, _prec: u32, atom: &Prop) -> () {
-        // Our atom printer for propositional logic.  Note that the precedence argument is
-        // simply ignored.
-        write(dest, &atom.name);
-    }
-
     pub fn pprint<W: Write>(&self, dest: &mut W) -> () {
-        let pfn: fn(&mut W, u32, &Prop) -> () = Formula::_print_propvar;
+        let pfn: fn(&mut W, u32, &Prop) -> () = Prop::print_propvar;
         self.pprint_general(dest, &pfn);
         write(dest, "\n");
     }
 }
 
 #[cfg(test)]
-mod prop_print_tests {
+mod prop_formula_print_tests {
     use super::*;
 
     fn init() {
@@ -104,28 +137,17 @@ mod prop_print_tests {
     }
 
     #[test]
-    fn test_print_propvar() {
-        let mut output = Vec::new();
-        let prop = prop("SomeProp");
-        Formula::_print_propvar(&mut output, 0, &prop);
-        let output = String::from_utf8(output).expect("Not UTF-8");
-        assert_eq!(output, "SomeProp");
-
-        let mut output2 = Vec::new();
-        Formula::_print_propvar(&mut output2, 42, &prop);
-        let output2 = String::from_utf8(output2).expect("Not UTF-8");
-        assert_eq!(output2, "SomeProp");
-    }
-
-    #[test]
     fn test_pprint() {
         let formula = Formula::and(
-            Formula::atom(prop("Prop5")),
+            Formula::atom(Prop::prop("Prop5")),
             Formula::iff(
-                Formula::atom(prop("Prop2")),
+                Formula::atom(Prop::prop("Prop2")),
                 Formula::imp(
-                    Formula::or(Formula::atom(prop("Prop3")), Formula::atom(prop("Prop4"))),
-                    Formula::atom(prop("Prop1")),
+                    Formula::or(
+                        Formula::atom(Prop::prop("Prop3")),
+                        Formula::atom(Prop::prop("Prop4")),
+                    ),
+                    Formula::atom(Prop::prop("Prop1")),
                 ),
             ),
         );
@@ -144,7 +166,7 @@ mod prop_print_tests {
 // We use a BTreeMap here so that we can order the items by Prop.name.
 type Valuation = BTreeMap<Prop, bool>;
 
-// Set representations of Formulas in disjunctive or conjunctive normal form 
+// Set representations of Formulas in disjunctive or conjunctive normal form
 // (we need to specify in order to have a unique meaning)..
 // Note we could replace the inner `Formula<Prop>` by an indicator
 // function on `Prop`. Which would prevent non-literals from going in there.
@@ -588,7 +610,7 @@ impl Formula<Prop> {
 
     const DEF_CNF_PREFIX: &'static str = "p_";
     fn _mkprop(idx: usize) -> Prop {
-        prop(&format!("{}{}", Formula::DEF_CNF_PREFIX, idx))
+        Prop::prop(&format!("{}{}", Formula::DEF_CNF_PREFIX, idx))
     }
 
     fn _defstep(bin_op: BinOp, operands: (Formula<Prop>, Formula<Prop>), params: Triple) -> Triple {
@@ -756,8 +778,10 @@ impl Formula<Prop> {
             .into_iter()
             .map(|neg| Formula::negate(&neg))
             .collect();
-        let positive_only: BTreeSet<Formula<Prop>> = positive.difference(&unnegated).cloned().collect();
-        let negative_only: BTreeSet<Formula<Prop>> = unnegated.difference(&positive).cloned().collect();
+        let positive_only: BTreeSet<Formula<Prop>> =
+            positive.difference(&unnegated).cloned().collect();
+        let negative_only: BTreeSet<Formula<Prop>> =
+            unnegated.difference(&positive).cloned().collect();
         let renegated: BTreeSet<Formula<Prop>> = negative_only
             .into_iter()
             .map(|neg| Formula::negate(&neg))
@@ -920,7 +944,6 @@ impl Formula<Prop> {
     }
 
     pub fn dpll(clauses: &FormulaSet) -> bool {
-        
         // The Davis-Putnam-Logemann-Loveland (1962) procedure.
         if clauses.len() == 0 {
             return true;
@@ -962,11 +985,14 @@ impl Formula<Prop> {
     }
 }
 
-// END
-
 #[cfg(test)]
 mod eval_tests {
     use super::*;
+
+    // Convenience to save us some typing.
+    fn prop(name: &str) -> Prop {
+        Prop::prop(name)
+    }
 
     #[test]
     fn test_eval() {
@@ -1844,9 +1870,8 @@ false false false | true
 
     #[test]
     fn test_affirmative_negative_rule_3() {
-        let formula_set = BTreeSet::from([
-            BTreeSet::from([Formula::not(Formula::atom(prop("A")))]),
-        ]);
+        let formula_set =
+            BTreeSet::from([BTreeSet::from([Formula::not(Formula::atom(prop("A")))])]);
         let result = Formula::_affirmative_negative_rule(&formula_set);
 
         assert_eq!(result, Ok(BTreeSet::new()))
@@ -1968,32 +1993,32 @@ false false false | true
         assert_eq!(result, desired)
     }
 
-    // #[test]
-    // fn test_dp() {
-    //     let formula_set = BTreeSet::from([
-    //         BTreeSet::from([
-    //             Formula::atom(prop("A")),
-    //             Formula::not(Formula::atom(prop("C"))),
-    //         ]),
-    //         BTreeSet::from([
-    //             Formula::not(Formula::atom(prop("D"))),
-    //             Formula::atom(prop("C")),
-    //         ]),
-    //         BTreeSet::from([
-    //             Formula::not(Formula::atom(prop("A"))),
-    //             Formula::atom(prop("D")),
-    //         ]),
-    //         BTreeSet::from([Formula::atom(prop("A")), Formula::atom(prop("C"))]),
-    //         BTreeSet::from([
-    //             Formula::not(Formula::atom(prop("A"))),
-    //             Formula::not(Formula::atom(prop("C"))),
-    //         ]),
-    //     ]);
+    #[test]
+    fn test_dp() {
+        let formula_set = BTreeSet::from([
+            BTreeSet::from([
+                Formula::atom(prop("A")),
+                Formula::not(Formula::atom(prop("C"))),
+            ]),
+            BTreeSet::from([
+                Formula::not(Formula::atom(prop("D"))),
+                Formula::atom(prop("C")),
+            ]),
+            BTreeSet::from([
+                Formula::not(Formula::atom(prop("A"))),
+                Formula::atom(prop("D")),
+            ]),
+            BTreeSet::from([Formula::atom(prop("A")), Formula::atom(prop("C"))]),
+            BTreeSet::from([
+                Formula::not(Formula::atom(prop("A"))),
+                Formula::not(Formula::atom(prop("C"))),
+            ]),
+        ]);
 
-    //     let result = Formula::dp(&formula_set);
-    //     let desired = false;
-    //     assert_eq!(result, desired);
-    // }
+        let result = Formula::dp(&formula_set);
+        let desired = false;
+        assert_eq!(result, desired);
+    }
 
     #[test]
     fn test_dp_simple() {
@@ -2046,264 +2071,5 @@ false false false | true
         assert!(!Formula::dpll_taut(&Formula::False));
         assert!(Formula::dpll_sat(&Formula::atom(prop("A"))));
         assert!(!Formula::dpll_taut(&Formula::atom(prop("A"))));
-    }
-}
-
-// END TESTS
-//
-// Applications
-
-// Ramsey Theory
-// Given x, y, Compute a predicate for n > R(x, y).
-// (That is, for any graph of size n,
-// there exists either a subgraph of size x that is fully connected or
-// a subgraph of size y that is fully disconnected (the antigraph is fully connected).
-// "Any graph of size n" here is will be n^2 propositional atoms ranging over logical space.
-// contrained by formulas representing the contraint about subsets.
-//
-// fn ramsey(x: u32, y: u32, n: u32) -> Formula<Prop> {
-//     // A function outputing proposition names for propositions representing
-//     // that two nodes a and b are connected by an edge.
-//     fn label(a: u32, b: u32) -> String {
-//         format!("CON_{a}_{b}", a, b);
-//     }
-//
-//     //Subsets of size x:
-//
-//     //some subgraph of size x is fully connected);
-//     let con = Formula::list_dist();
-//
-//     //Subsets of size y:
-//     // ...
-//     //some subgraph of size y is fully connected);
-//     let dis = Formula::list_dist();
-//
-//     Formula::or(con, dis)
-//
-// Adder
-//
-
-fn adder(
-    x: &Formula<Prop>,
-    y: &Formula<Prop>,
-    z: &Formula<Prop>,
-    s: &Formula<Prop>,
-    c: &Formula<Prop>,
-) -> Formula<Prop> {
-    // Exactly one or exactly three.
-    let sum = Formula::iff(
-        Formula::iff(x.clone(), Formula::not(y.clone())),
-        Formula::not(z.clone()),
-    );
-    // Equiv to at least two
-    let carry = Formula::list_disj(&vec![
-        Formula::and(x.clone(), y.clone()),
-        Formula::and(x.clone(), z.clone()),
-        Formula::and(y.clone(), z.clone()),
-    ]);
-    let result = Formula::and(Formula::iff(s.clone(), sum), Formula::iff(c.clone(), carry));
-    result.psimplify()
-}
-
-pub fn ripplecarry(
-    x: &Vec<Formula<Prop>>,
-    y: &Vec<Formula<Prop>>,
-    carry: &Vec<Formula<Prop>>,
-    out: &Vec<Formula<Prop>>,
-    n: usize,
-) -> Formula<Prop> {
-    /* Assumes that bits with greater indices in  x, y, etc correspond to
-     * more significant digits
-     */
-
-    assert_eq!(x.len(), n);
-    assert_eq!(y.len(), n);
-    assert_eq!(carry.len(), n);
-    assert_eq!(out.len(), n + 1);
-
-    // Set initial carry bit to zero.
-    let mut carry = carry.clone();
-    carry.insert(0, Formula::False);
-
-    // conjoin that out[n] <==> carry[n]
-    let adders = Formula::list_conj(
-        &(0..n)
-            .map(|idx| adder(&x[idx], &y[idx], &carry[idx], &out[idx], &carry[idx + 1]))
-            .collect(),
-    );
-    let final_carry_is_final_out = Formula::iff(out[n].clone(), carry[n].clone());
-    let result = Formula::and(adders, final_carry_is_final_out);
-    result.psimplify()
-}
-
-#[cfg(test)]
-mod adder_tests {
-    use super::*;
-
-    #[test]
-    fn test_adder_standard_tautologies() {
-        assert_eq!(
-            adder(
-                &Formula::True,
-                &Formula::True,
-                &Formula::True,
-                &Formula::True,
-                &Formula::True,
-            ),
-            Formula::True
-        );
-
-        assert_eq!(
-            adder(
-                &Formula::True,
-                &Formula::True,
-                &Formula::False,
-                &Formula::False,
-                &Formula::True,
-            ),
-            Formula::True
-        );
-
-        assert_eq!(
-            adder(
-                &Formula::True,
-                &Formula::False,
-                &Formula::True,
-                &Formula::False,
-                &Formula::True,
-            ),
-            Formula::True
-        );
-
-        assert_eq!(
-            adder(
-                &Formula::True,
-                &Formula::False,
-                &Formula::False,
-                &Formula::True,
-                &Formula::False,
-            ),
-            Formula::True
-        );
-
-        assert_eq!(
-            adder(
-                &Formula::False,
-                &Formula::True,
-                &Formula::True,
-                &Formula::False,
-                &Formula::True,
-            ),
-            Formula::True
-        );
-
-        assert_eq!(
-            adder(
-                &Formula::False,
-                &Formula::True,
-                &Formula::False,
-                &Formula::True,
-                &Formula::False,
-            ),
-            Formula::True
-        );
-
-        assert_eq!(
-            adder(
-                &Formula::False,
-                &Formula::False,
-                &Formula::True,
-                &Formula::True,
-                &Formula::False,
-            ),
-            Formula::True
-        );
-
-        assert_eq!(
-            adder(
-                &Formula::False,
-                &Formula::False,
-                &Formula::False,
-                &Formula::False,
-                &Formula::False,
-            ),
-            Formula::True
-        );
-    }
-
-    #[test]
-    fn test_adder_some_more() {
-        assert_eq!(
-            adder(
-                &Formula::True,
-                &Formula::True,
-                &Formula::False,
-                &Formula::True,
-                &Formula::True,
-            ),
-            Formula::False
-        );
-
-        assert_eq!(
-            adder(
-                &Formula::True,
-                &Formula::True,
-                &Formula::False,
-                &Formula::False,
-                &Formula::True,
-            ),
-            Formula::True
-        );
-    }
-
-    #[test]
-    fn test_adder_prop_variables() {
-        let formula = adder(
-            &Formula::True,
-            &Formula::atom(prop("Y")),
-            &Formula::True,
-            &Formula::atom(prop("Sum")),
-            &Formula::atom(prop("Carry")),
-        );
-        assert!(!formula.tautology());
-        assert!(formula.satisfiable());
-    }
-
-    #[test]
-    fn test_ripplecarry() {
-        let n = 3;
-        //
-        // Greater indices should correspond to more significant digits so e.g.
-        // 3 = (bin) [1 1 0] =
-        let x = vec![Formula::True, Formula::True, Formula::False];
-        // 5 = (bin) [1 0 1] =
-        let y = vec![Formula::True, Formula::False, Formula::True];
-        let symbolic_carry = vec![
-            Formula::atom(prop("C1")),
-            Formula::atom(prop("C2")),
-            Formula::atom(prop("C3")),
-        ];
-        let out_correct = vec![
-            Formula::False,
-            Formula::False,
-            Formula::False,
-            Formula::True,
-        ]; // 0 0 0 1 (8)
-        let formula = ripplecarry(&x, &y, &symbolic_carry, &out_correct, n);
-        // It is possible to find carries that satisfy the Formula.
-        assert!(formula.dpll_sat());
-        assert!(!formula.dpll_taut());
-
-        let out_false = vec![
-            Formula::False,
-            Formula::False,
-            Formula::True,
-            Formula::False,
-        ]; // 0 0 1 0 (4)
-        let formula = ripplecarry(&x, &y, &symbolic_carry, &out_false, n);
-        let mut output = std::io::stdout();
-        formula.pprint(&mut output);
-        // It is *not* possible to find carries that satisfy the Formula.
-        assert!(!formula.dpll_sat());
     }
 }

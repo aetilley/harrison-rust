@@ -1,43 +1,44 @@
 #![feature(box_patterns)]
 
 use harrison_rust::formula::Formula;
-use harrison_rust::propositional_logic::{prop, ripplecarry};
+use harrison_rust::propositional_applications::ripplecarry;
+use harrison_rust::propositional_logic::Prop;
 
 use std::io::stdout;
 
 fn main() {
     let mut stdout = stdout();
-	
-	// Example 1:  Simple formula.
+
+    // Example 1:  Simple formula.
     println!("\nExample 1: Simple formula");
-    let formula = Formula::parse("C \\/ D <=> (~A /\\ B)"); 
+    let formula = Formula::<Prop>::parse("C \\/ D <=> (~A /\\ B)");
     formula.pprint(&mut stdout);
     formula.print_truthtable(&mut stdout);
-	let cnf = Formula::cnf(&formula);
+    let cnf = Formula::cnf(&formula);
     cnf.pprint(&mut stdout);
     // Satisfiable
     assert!(formula.dpll_sat());
     // Not a tautology
     assert!(!formula.dpll_taut());
     //
-	// Example 2:  A tautology 
+    // Example 2:  A tautology
     println!("\nExample 2: Simple formula");
-    let formula = Formula::parse("A \\/ ~A"); 
+    let formula = Formula::<Prop>::parse("A \\/ ~A");
     formula.pprint(&mut stdout);
     formula.print_truthtable(&mut stdout);
-	let cnf = Formula::cnf(&formula);
+    let cnf = Formula::cnf(&formula);
     cnf.pprint(&mut stdout);
     // A tautology
     assert!(formula.dpll_taut());
 
-	// Example 3:  A contradiction 
+    // Example 3:  A contradiction
     println!("\nExample 3: Simple formula");
-    let formula = Formula::parse("~A /\\ A"); 
+    let formula = Formula::<Prop>::parse("~A /\\ A");
     formula.pprint(&mut stdout);
     formula.print_truthtable(&mut stdout);
-	let dnf = Formula::dnf(&formula);
+    let dnf = Formula::dnf(&formula);
     dnf.pprint(&mut stdout);
-    // A contradiction. 
+    // A contradiction.
     assert!(!formula.dpll_sat());
     // ...this means, it's negation is a tautology.
     let negation = Formula::not(formula);
@@ -45,13 +46,11 @@ fn main() {
 
     // Example 4: Simplification
     println!("\nExample 4: Formula simplification");
-    let formula = Formula::parse("((true ==> (x <=> false)) ==> ~(y \\/ (false /\\ z)))"); 
+    let formula = Formula::<Prop>::parse("((true ==> (x <=> false)) ==> ~(y \\/ (false /\\ z)))");
     let simplified = formula.psimplify();
     simplified.pprint(&mut stdout);
 
-
-
-    // Example 0:  
+    // Example 0:
     println!("\nRipple Carry");
     // The function `ripplecarry` below defines an array of `num_bits`-many full-adders
     // interconnected as usual.
@@ -62,9 +61,9 @@ fn main() {
     // 5 = (bin) [1 0 1] =
     let y = vec![Formula::True, Formula::False, Formula::True];
     let symbolic_carry = vec![
-        Formula::atom(prop("C1")),
-        Formula::atom(prop("C2")),
-        Formula::atom(prop("C3")),
+        Formula::atom(Prop::prop("C1")),
+        Formula::atom(Prop::prop("C2")),
+        Formula::atom(Prop::prop("C3")),
     ];
     let out = vec![
         Formula::False,
@@ -75,7 +74,7 @@ fn main() {
     let formula = ripplecarry(&x, &y, &symbolic_carry, &out, num_bits);
     formula.pprint(&mut stdout);
 
-	// (DPLL method for computing Sat).
+    // (DPLL method for computing Sat).
     assert!(formula.dpll_sat());
     assert!(!formula.dpll_taut());
 }

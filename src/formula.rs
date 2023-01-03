@@ -1,9 +1,6 @@
 // Formula<T> class and Formula<T>-pecific parsing/printing functions
-// that do *not* depend on T.  See propositional_logic and predicate_logic
+// that do *not* depend on T.  See propositional_logic and first_order_logic
 // files for specific parsing/printing functions that specify T.
-//
-// TODO(arthur) write test macro so that we do not need to initialize env_logger at the beginning
-// of every test.
 use std::collections::{BTreeSet, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;
@@ -14,7 +11,6 @@ use crate::parse::{
 };
 
 //### Formula AST ###
-//
 #[derive(Debug, PartialEq, Clone, PartialOrd, Eq, Ord, Hash)]
 pub enum Formula<T: Clone + Debug + Hash + Eq + Ord> {
     False,
@@ -29,8 +25,6 @@ pub enum Formula<T: Clone + Debug + Hash + Eq + Ord> {
     Exists(String, Box<Formula<T>>),
 }
 
-
-// Can't imagine we'll need anything more general than this:
 pub type ErrInner = &'static str;
 
 impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
@@ -59,12 +53,12 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
         Formula::Iff(Box::new(formula1), Box::new(formula2))
     }
 
-    pub fn forall(var: &String, formula: Formula<T>) -> Formula<T> {
-        Formula::Forall(var.clone(), Box::new(formula))
+    pub fn forall(var: &str, formula: Formula<T>) -> Formula<T> {
+        Formula::Forall(String::from(var), Box::new(formula))
     }
 
-    pub fn exists(var: &String, formula: Formula<T>) -> Formula<T> {
-        Formula::Exists(var.clone(), Box::new(formula))
+    pub fn exists(var: &str, formula: Formula<T>) -> Formula<T> {
+        Formula::Exists(String::from(var), Box::new(formula))
     }
 
     // NOTE:  The following might be better off as methods.
@@ -143,11 +137,7 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
         }
     }
 
-    pub fn over_atoms<Agg>(
-        &self,
-        combine: &dyn Fn(&T, Agg) -> Agg,
-        aggregate: Agg,
-    ) -> Agg {
+    pub fn over_atoms<Agg>(&self, combine: &dyn Fn(&T, Agg) -> Agg, aggregate: Agg) -> Agg {
         // Apply an aggregator `combine` across all atoms of `self`, keeping the result
         // in `aggregate`.
         match self {
@@ -249,14 +239,12 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
         }
     }
 
-
     pub fn negative(&self) -> bool {
         match self {
             Formula::Not(_) => true,
             _ => false,
         }
     }
-
 
     pub fn negate(&self) -> Formula<T> {
         match self {
@@ -297,7 +285,7 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
 #[cfg(test)]
 mod formula_tests {
     use super::*;
-    use crate::parse::to_vec_of_owned;
+    use crate::utils::to_vec_of_owned;
 
     // As usual we test with T = String.
     #[test]
@@ -654,9 +642,6 @@ mod formula_tests {
 
 fn parse_atomic_formula<'a, T: Clone + Debug + Hash + Eq + Ord>(
     // A better name may be "parse_unary" or "parse_all_but_binary_connectives".
-    //
-    // FIX(arthur) infix_parser will actually return a Term result, but this will require some
-    // work.
     infix_parser: for<'b> fn(
         &Vec<String>,
         &'b [String],
@@ -671,25 +656,21 @@ fn parse_atomic_formula<'a, T: Clone + Debug + Hash + Eq + Ord>(
         }
         [head, rest @ ..] if head == "false" => (Formula::False, rest),
         [head, rest @ ..] if head == "true" => (Formula::True, rest),
-        [head, rest @ ..] if head == "(" => {
-            match infix_parser(variables, input) {
-                // This is the one place a PartialParseResult<Term> may be returned
-                Ok(result) => result,
-                Err(_) => parse_bracketed(
-                    Subparser {
-                        fun: &|input| parse_formula(infix_parser, atom_parser, variables, input),
-                    },
-                    rest,
-                ),
-            }
-        }
+        [head, rest @ ..] if head == "(" => match infix_parser(variables, input) {
+            Ok(result) => result,
+            Err(_) => parse_bracketed(
+                Subparser {
+                    fun: &|input| parse_formula(infix_parser, atom_parser, variables, input),
+                },
+                rest,
+            ),
+        },
         [head, rest @ ..] if head == "~" => {
             let (ast, rest1) = parse_atomic_formula(infix_parser, atom_parser, variables, rest);
             (Formula::not(ast), rest1)
         }
         [head, var, rest @ ..] if head == "forall" => {
             let mut variables = variables.clone();
-            // NOTE: Does order here matter?  Opposite from Harrison...
             variables.push(String::from(var));
             parse_quantified(
                 infix_parser,
@@ -702,7 +683,6 @@ fn parse_atomic_formula<'a, T: Clone + Debug + Hash + Eq + Ord>(
         }
         [head, var, rest @ ..] if head == "exists" => {
             let mut variables = variables.clone();
-            // NOTE: Does order here matter?  Opposite from Harrison...
             variables.push(String::from(var));
             parse_quantified(
                 infix_parser,
@@ -724,7 +704,7 @@ fn parse_quantified<'a, T: Clone + Debug + Hash + Eq + Ord>(
     ) -> Result<PartialParseResult<'b, Formula<T>>, ErrInner>,
     atom_parser: for<'b> fn(&Vec<String>, &'b [String]) -> PartialParseResult<'b, Formula<T>>,
     variables: &Vec<String>,
-    constructor: fn(&String, Formula<T>) -> Formula<T>,
+    constructor: fn(&str, Formula<T>) -> Formula<T>,
     variable: &String,
     input: &'a [String],
 ) -> PartialParseResult<'a, Formula<T>> {
@@ -762,8 +742,6 @@ pub fn parse_formula<'a, T: Clone + Debug + Hash + Eq + Ord>(
     input: &'a [String],
 ) -> PartialParseResult<'a, Formula<T>> {
     // A better name might be "parse_binary_connectives".
-    //
-
     let atomic_subparser: SubparserFuncType<Formula<T>> =
         &|input| parse_atomic_formula(infix_parser, atom_parser, variables, input);
     let and_subparser: SubparserFuncType<Formula<T>> = &|input| {
@@ -789,29 +767,14 @@ pub fn parse_formula<'a, T: Clone + Debug + Hash + Eq + Ord>(
     parser(input)
 }
 
-impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
-    pub fn parse_general<'a>(
-        infix_parser: for<'b> fn(
-            &Vec<String>,
-            &'b [String],
-        ) -> Result<PartialParseResult<'b, Formula<T>>, ErrInner>,
-        atom_parser: for<'b> fn(&Vec<String>, &'b [String]) -> PartialParseResult<'b, Formula<T>>,
-        variables: &Vec<String>,
-        input: &'a [String],
-    ) -> PartialParseResult<'a, Formula<T>> {
-        parse_formula(infix_parser, atom_parser, variables, input)
-    }
-}
-
 #[cfg(test)]
 mod generic_ast_parse_tests {
     // We let T = String for testing purposes.
 
     // TODO(arthur) MORE TESTS (try to cover all that is generic yet not covered
     // by the tests in parse.rs.
-    //
     use super::*;
-    use crate::parse::to_vec_of_owned;
+    use crate::utils::to_vec_of_owned;
 
     fn init() {
         let _ = env_logger::builder().is_test(true).try_init();
@@ -860,7 +823,8 @@ mod generic_ast_parse_tests {
 
 // ### Formula Printing ###
 
-// Note this is not as nice as Harrison's because it relies on an open_box, close_box, and print_space as
+// Note this is not as nice as Harrison's because it relies on an
+// open_box, close_box, print_space, print_break as
 // in Ocaml's Format module, which may take time to implement in rust.
 // In the meantime, the result will all be on one line.
 
@@ -870,15 +834,20 @@ pub fn write(dest: &mut impl Write, input: &str) -> () {
     write!(dest, "{}", input).expect("Unable to write");
 }
 #[allow(unused_variables)]
-fn open_box(indent: u32) -> () {
+pub fn open_box(indent: u32) -> () {
     // No-op for now
 }
 
-fn close_box() -> () {
+pub fn close_box() -> () {
     // No-op for now
 }
 
-fn print_space(dest: &mut impl Write) -> () {
+pub fn print_space(dest: &mut impl Write) -> () {
+    // Just print a space for now.
+    write(dest, " ");
+}
+
+pub fn print_break(dest: &mut impl Write, _x: u32, _y: u32) -> () {
     // Just print a space for now.
     write(dest, " ");
 }
@@ -904,6 +873,8 @@ fn bracket<W: Write>(
 fn strip_quant<T: Clone + Debug + Hash + Eq + Ord>(
     formula: &Formula<T>,
 ) -> (Vec<String>, Formula<T>) {
+    // Remove all leading quantifiers and return tuple of quantified variables
+    // and the stripped formula.
     let formula: Formula<T> = formula.clone();
     match formula {
         Formula::Forall(x, box yp @ Formula::Forall(_, _))
@@ -965,7 +936,9 @@ fn print_quant<T: Clone + Debug + Hash + Eq + Ord, W: Write>(
     formula: &Formula<T>,
 ) -> () {
     // Note that `formula` is the entire quantified formula (not just the body).
-    let (vars, body) = strip_quant(formula);
+    let (mut vars, body) = strip_quant(formula);
+    // `strip_quant` returns vars in reverse order.
+    vars.reverse();
     write(dest, qname);
     let _ = vars
         .iter()
@@ -1016,6 +989,8 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
     pub fn pprint_general<W: Write>(&self, dest: &mut W, pfn: &fn(&mut W, u32, &T) -> ()) -> () {
         // Takes a generic Write for `dest`, e.g. one can use std::io::stdout()
         // pfn is a sub-parser for atoms (type T)
+        // NOTE:  It appears that both times this is passed a `pfn`, that function
+        // ignores the precidence argument (u32).  Maybe simplify the type accordingly?
         open_box(0);
         write(dest, "<<");
         open_box(0);
@@ -1220,7 +1195,7 @@ mod generic_ast_print_tests {
             &String::from("var1"),
             Formula::forall(&String::from("var2"), Formula::atom(String::from("Hello"))),
         );
-        let desired = "<<forall var2 var1. Hello>>";
+        let desired = "<<forall var1 var2. Hello>>";
         _test_pprint_general(formula, desired);
     }
 

@@ -1,7 +1,6 @@
 // General parsing utilities independent of particular logic.
 
-// Note: Would the following add or detract from readibility?
-// type ParseInput<'a> = &'a[String]
+use crate::token::lex;
 
 use log::debug;
 use std::fmt::Debug;
@@ -34,6 +33,8 @@ impl<'a, AST> Sof<'a, AST> {
 }
 
 pub type SubparserFuncType<'c, T> = &'c dyn for<'b> Fn(&'b [String]) -> PartialParseResult<'b, T>;
+pub type SubparserFuncListType<'c, T> =
+    &'c dyn for<'b> Fn(&'b [String]) -> PartialParseListResult<'b, T>;
 
 pub struct Subparser<'a, AST> {
     pub fun: SubparserFuncType<'a, AST>,
@@ -41,6 +42,16 @@ pub struct Subparser<'a, AST> {
 
 impl<'a, AST> Subparser<'a, AST> {
     fn call<'b>(&self, ast: &'b [String]) -> PartialParseResult<'b, AST> {
+        (self.fun)(ast)
+    }
+}
+
+pub struct ListSubparser<'a, AST> {
+    pub fun: SubparserFuncListType<'a, AST>,
+}
+
+impl<'a, AST> ListSubparser<'a, AST> {
+    fn call<'b>(&self, ast: &'b [String]) -> PartialParseListResult<'b, AST> {
         (self.fun)(ast)
     }
 }
@@ -119,6 +130,7 @@ fn parse_general_list<'a, AST: Clone>(
     input: &'a [String],
 ) -> PartialParseListResult<'a, AST> {
     // TODO(arthur) COMMENT
+    // op_symbol will be the list delimiter, usually a comma.
     let (ast1, rest1) = subparser.call(input);
     match rest1 {
         [head, rest2 @ ..] if head == op_symbol => {
@@ -131,24 +143,23 @@ fn parse_general_list<'a, AST: Clone>(
     }
 }
 
-// NO UNIT TEST. (Write unit test if you uncomment this.)
-// pub fn parse_list<'a, AST: Clone>(
-//     op_symbol: &str,
-//     subparser: Subparser<AST>,
-//     input: &'a [String],
-// ) -> PartialParseListResult<'a, AST> {
-//     let op_update = OpUpdateList {
-//         fun: &|f, ast1, ast2| -> Vec<AST> {
-//             let mut v = f(ast1);
-//             v.push(ast2);
-//             v
-//         },
-//     };
-//     let sof = SofList {
-//         fun: &|ast: AST| -> Vec<AST> { vec![ast] },
-//     };
-//     parse_general_list(op_symbol, op_update, sof, subparser, input)
-// }
+pub fn parse_list<'a, AST: Clone>(
+    op_symbol: &str,
+    subparser: Subparser<AST>,
+    input: &'a [String],
+) -> PartialParseListResult<'a, AST> {
+    let op_update = OpUpdateList {
+        fun: &|f, ast1, ast2| -> Vec<AST> {
+            let mut v = f(ast1);
+            v.push(ast2);
+            v
+        },
+    };
+    let sof = SofList {
+        fun: &|ast: AST| -> Vec<AST> { vec![ast] },
+    };
+    parse_general_list(op_symbol, op_update, sof, subparser, input)
+}
 
 pub fn parse_bracketed<'a, AST: Clone + Debug>(
     subparser: Subparser<AST>,
@@ -156,6 +167,28 @@ pub fn parse_bracketed<'a, AST: Clone + Debug>(
 ) -> PartialParseResult<'a, AST> {
     debug!("parse_bracketed called with input {:?}", input);
     let (ast, rest) = subparser.call(input);
+
+    match rest {
+        [head, tail @ ..] if head == ")" => (ast, tail),
+        _ => {
+            panic!("Closing bracket expected. Found {:?}", rest);
+        }
+    }
+}
+
+pub fn parse_bracketed_list<'a, AST: Clone + Debug>(
+    subparser: ListSubparser<AST>,
+    input: &'a [String],
+) -> PartialParseListResult<'a, AST> {
+    debug!("parse_bracketed_list called with input {:?}", input);
+    if let [head, rest @ ..] = input {
+        if head == ")" {
+            return (vec![], rest);
+        }
+    }
+
+    let (ast, rest) = subparser.call(input);
+
     match rest {
         [head, tail @ ..] if head == ")" => (ast, tail),
         _ => {
@@ -174,116 +207,16 @@ pub fn generic_parser<AST>(inner: fn(&[String]) -> (AST, &[String]), input: &str
     expr
 }
 
-// ### LEXING
-
-fn lexwhile<'a>(charset: &[char], input_chars: &'a [char]) -> usize {
-    let mut bound = 0;
-    for c in input_chars {
-        if charset.contains(&c) {
-            bound += 1
-        } else {
-            break;
-        }
-    }
-    bound
-}
-
-// FIX (needs completion)
-const ALPHA: [char; 52] = [
-    'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's',
-    't', 'u', 'v', 'w', 'x', 'y', 'z', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L',
-    'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
-];
-const NUMERIC: [char; 10] = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
-
-const ALPHANUMERIC: [char; 62] = [
-    'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's',
-    't', 'u', 'v', 'w', 'x', 'y', 'z', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L',
-    'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '0', '1', '2', '3', '4',
-    '5', '6', '7', '8', '9',
-];
-const SYMBOLIC: [char; 22] = [
-    '~', '`', '!', '@', '#', '$', '%', '^', '&', '*', '-', '+', '=', '|', '\\', ':', ';', '<', '>',
-    '.', '?', '/',
-];
-const PUNCTUATION: [char; 2] = ['(', ')'];
-
-fn lex_inner(all_input_chars: &[char]) -> Vec<String> {
-    // Drop leading whitespace.
-    let space = [' '];
-    let space_bound = lexwhile(&space, all_input_chars);
-    let input_chars = &all_input_chars[space_bound..];
-    if input_chars.len() == 0 {
-        return vec![];
-    }
-    let head = &input_chars[0];
-    let charset: &[char];
-    if ALPHANUMERIC.contains(head) {
-        charset = &ALPHANUMERIC
-    } else if SYMBOLIC.contains(head) {
-        charset = &SYMBOLIC
-    } else if PUNCTUATION.contains(head) {
-        charset = &[]
-    } else {
-        panic!("Unrecognized character {}.", head)
-    }
-
-    let bound = lexwhile(charset, &input_chars[1..]) + 1;
-    let first_token = input_chars[..bound].iter().collect();
-    let mut lexed_rest = lex_inner(&input_chars[bound..]);
-    lexed_rest.insert(0, first_token);
-    lexed_rest
-}
-
-fn explode(input: &str) -> Vec<char> {
-    input.chars().collect()
-}
-
-fn lex(input: &str) -> Vec<String> {
-    lex_inner(&explode(input)[..])
-}
-
-// TODO(arthur) move this and other things to a testing utils module
-
-pub fn to_vec_of_owned(input: Vec<&str>) -> Vec<String> {
-    input.iter().map(|x| x.to_string()).collect()
-}
-
 #[cfg(test)]
 mod generic_parsing_tests {
     use super::*;
     // We use Formula for convenience in these tests, but this parent module (`parse`) should
     // not depend on `formula`.
     use crate::formula::Formula;
+    use crate::utils::to_vec_of_owned;
 
     fn init() {
         let _ = env_logger::builder().is_test(true).try_init();
-    }
-
-    // Begin Lexing tests
-    #[test]
-    fn lexwhile_simple() {
-        let charset = vec!['a', '+', '&'];
-        let input = &explode("&aw*+x")[..];
-        let result = lexwhile(&charset, input);
-        let desired = 2;
-        assert_eq!(result, desired);
-    }
-
-    #[test]
-    fn simple_lex() {
-        let input = "a += b";
-        let result = lex(input);
-        let desired = vec!["a", "+=", "b"];
-        assert_eq!(result, desired);
-    }
-
-    #[test]
-    fn less_simple_lex() {
-        let input = "((a += b * 17) + cab)";
-        let result = lex(input);
-        let desired = vec!["(", "(", "a", "+=", "b", "*", "17", ")", "+", "cab", ")"];
-        assert_eq!(result, desired);
     }
 
     // Begin parsing tests
@@ -405,6 +338,59 @@ mod generic_parsing_tests {
             )),
             empty,
         );
+        assert_eq!(result, desired);
+    }
+
+    #[test]
+    fn test_parse_list() {
+        init();
+        let input_vect: Vec<String> = to_vec_of_owned(vec!["A", ",", "B", ",", "C", "REST"]);
+        let input = &input_vect[..];
+        let result = parse_list(",", Subparser { fun: &_parse_unit }, input);
+        let desired_list = vec![
+            Formula::atom(String::from("A")),
+            Formula::atom(String::from("B")),
+            Formula::atom(String::from("C")),
+        ];
+        let desired = (desired_list, &[String::from("REST")][..]);
+        assert_eq!(result, desired);
+    }
+
+    #[test]
+    fn test_parse_bracketed_list() {
+        init();
+        let input_vect: Vec<String> = to_vec_of_owned(vec!["A", ",", "B", ")", "REST"]);
+        let input = &input_vect[..];
+        let list_subparser: SubparserFuncListType<Formula<String>> =
+            &|input| parse_list(",", Subparser { fun: &_parse_unit }, input);
+        let result = parse_bracketed_list(
+            ListSubparser {
+                fun: list_subparser,
+            },
+            input,
+        );
+        let desired_list = vec![
+            Formula::atom(String::from("A")),
+            Formula::atom(String::from("B")),
+        ];
+        let desired = (desired_list, &[String::from("REST")][..]);
+        assert_eq!(result, desired);
+    }
+
+    #[test]
+    fn test_parse_bracketed_empty_list() {
+        init();
+        let input_vect: Vec<String> = to_vec_of_owned(vec![")", "REST"]);
+        let input = &input_vect[..];
+        let list_subparser: SubparserFuncListType<Formula<String>> =
+            &|input| parse_list(",", Subparser { fun: &_parse_unit }, input);
+        let result = parse_bracketed_list(
+            ListSubparser {
+                fun: list_subparser,
+            },
+            input,
+        );
+        let desired = (vec![], &[String::from("REST")][..]);
         assert_eq!(result, desired);
     }
 }
