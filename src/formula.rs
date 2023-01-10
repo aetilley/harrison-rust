@@ -1,13 +1,15 @@
 // Formula<T> class and Formula<T>-pecific parsing/printing functions
 // that do *not* depend on T.  See propositional_logic and first_order_logic
 // files for specific parsing/printing functions that specify T.
+use log::debug;
 use std::collections::{BTreeSet, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::io::Write;
 
 use crate::parse::{
-    parse_bracketed, parse_right_infix, PartialParseResult, Subparser, SubparserFuncType,
+    maybe_parse_bracketed, parse_bracketed, parse_right_infix, ErrInner, MaybeSubparser,
+    PartialParseResult, Subparser, SubparserFuncType,
 };
 
 //### Formula AST ###
@@ -24,8 +26,6 @@ pub enum Formula<T: Clone + Debug + Hash + Eq + Ord> {
     Forall(String, Box<Formula<T>>),
     Exists(String, Box<Formula<T>>),
 }
-
-pub type ErrInner = &'static str;
 
 impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
     // NOTE:  The following builders take ownership.
@@ -278,6 +278,42 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
                 .reduce(|x, y| Formula::or(x.clone(), y.clone()))
                 .unwrap()
                 .clone()
+        }
+    }
+
+    pub fn eval_core<
+        AtomEval: Fn(&T) -> bool,
+        ForallEval: Fn(&String, &Formula<T>) -> bool,
+        ExistsEval: Fn(&String, &Formula<T>) -> bool,
+    >(
+        &self,
+        atom_eval: &AtomEval,
+        forall_eval: &ForallEval,
+        exists_eval: &ExistsEval,
+    ) -> bool {
+        match self {
+            Formula::True => true,
+            Formula::False => false,
+            Formula::Atom(t) => atom_eval(t),
+            Formula::Not(box p) => !p.eval_core(atom_eval, forall_eval, exists_eval),
+            Formula::And(box p, box q) => {
+                p.eval_core(atom_eval, forall_eval, exists_eval)
+                    && q.eval_core(atom_eval, forall_eval, exists_eval)
+            }
+            Formula::Or(box p, box q) => {
+                p.eval_core(atom_eval, forall_eval, exists_eval)
+                    || q.eval_core(atom_eval, forall_eval, exists_eval)
+            }
+            Formula::Imp(box p, box q) => {
+                !p.eval_core(atom_eval, forall_eval, exists_eval)
+                    || q.eval_core(atom_eval, forall_eval, exists_eval)
+            }
+            Formula::Iff(box p, box q) => {
+                p.eval_core(atom_eval, forall_eval, exists_eval)
+                    == q.eval_core(atom_eval, forall_eval, exists_eval)
+            }
+            Formula::Forall(var, box p) => forall_eval(var, p),
+            Formula::Exists(var, box p) => exists_eval(var, p),
         }
     }
 }
@@ -636,6 +672,129 @@ mod formula_tests {
             )
         );
     }
+
+    #[test]
+    fn test_eval_core() {
+        let mut formula;
+
+        fn empty(_: &String) -> bool {
+            panic!("Did not expect to find atoms.");
+        }
+        fn qempty(_: &String, _: &Formula<String>) -> bool {
+            panic!("Did not expect to find quantifiers.");
+        }
+
+        formula = Formula::True;
+        assert_eq!(formula.eval_core(&empty, &qempty, &qempty), true);
+
+        formula = Formula::False;
+        assert_eq!(formula.eval_core(&empty, &qempty, &qempty), false);
+
+        formula = Formula::not(Formula::False);
+        assert_eq!(formula.eval_core(&empty, &qempty, &qempty), true);
+
+        formula = Formula::not(Formula::True);
+        assert_eq!(formula.eval_core(&empty, &qempty, &qempty), false);
+
+        formula = Formula::and(Formula::True, Formula::True);
+        assert_eq!(formula.eval_core(&empty, &qempty, &qempty), true);
+
+        formula = Formula::and(Formula::False, Formula::True);
+        assert_eq!(formula.eval_core(&empty, &qempty, &qempty), false);
+
+        formula = Formula::and(Formula::True, Formula::False);
+        assert_eq!(formula.eval_core(&empty, &qempty, &qempty), false);
+
+        formula = Formula::and(Formula::False, Formula::False);
+        assert_eq!(formula.eval_core(&empty, &qempty, &qempty), false);
+
+        formula = Formula::or(Formula::True, Formula::True);
+        assert_eq!(formula.eval_core(&empty, &qempty, &qempty), true);
+
+        formula = Formula::or(Formula::False, Formula::True);
+        assert_eq!(formula.eval_core(&empty, &qempty, &qempty), true);
+
+        formula = Formula::or(Formula::True, Formula::False);
+        assert_eq!(formula.eval_core(&empty, &qempty, &qempty), true);
+
+        formula = Formula::or(Formula::False, Formula::False);
+        assert_eq!(formula.eval_core(&empty, &qempty, &qempty), false);
+
+        formula = Formula::imp(Formula::True, Formula::True);
+        assert_eq!(formula.eval_core(&empty, &qempty, &qempty), true);
+
+        formula = Formula::imp(Formula::False, Formula::True);
+        assert_eq!(formula.eval_core(&empty, &qempty, &qempty), true);
+
+        formula = Formula::imp(Formula::True, Formula::False);
+        assert_eq!(formula.eval_core(&empty, &qempty, &qempty), false);
+
+        formula = Formula::imp(Formula::False, Formula::False);
+        assert_eq!(formula.eval_core(&empty, &qempty, &qempty), true);
+
+        formula = Formula::iff(Formula::True, Formula::True);
+        assert_eq!(formula.eval_core(&empty, &qempty, &qempty), true);
+
+        formula = Formula::iff(Formula::False, Formula::True);
+        assert_eq!(formula.eval_core(&empty, &qempty, &qempty), false);
+
+        formula = Formula::iff(Formula::True, Formula::False);
+        assert_eq!(formula.eval_core(&empty, &qempty, &qempty), false);
+
+        formula = Formula::iff(Formula::False, Formula::False);
+        assert_eq!(formula.eval_core(&empty, &qempty, &qempty), true);
+
+        fn atom_eval(x: &String) -> bool {
+            match x {
+                x if x == "A" => true,
+                x if x == "B" => false,
+                x if x == "C" => true,
+                _ => false,
+            }
+        }
+
+        fn quantifier_eval(_var: &String, sub: &Formula<String>) -> bool {
+            // Ignore quantifiers, and just eval quantified formula.
+            sub.eval_core(&atom_eval, &quantifier_eval, &quantifier_eval)
+        }
+
+        formula = Formula::atom("A".to_string());
+        assert_eq!(
+            formula.eval_core(&atom_eval, &quantifier_eval, &quantifier_eval),
+            true
+        );
+
+        formula = Formula::atom("B".to_string());
+        assert_eq!(
+            formula.eval_core(&atom_eval, &quantifier_eval, &quantifier_eval),
+            false
+        );
+
+        formula = Formula::iff(
+            Formula::atom("C".to_string()),
+            Formula::and(
+                Formula::atom("A".to_string()),
+                Formula::atom("B".to_string()),
+            ),
+        );
+        assert_eq!(
+            formula.eval_core(&atom_eval, &quantifier_eval, &quantifier_eval),
+            false
+        );
+
+        // Should be equivalent to just And(B, C) since quantifier sub-eval ignores quantifiers.
+        formula = Formula::exists(
+            "X",
+            Formula::and(
+                Formula::atom("B".to_string()),
+                Formula::forall("Y", Formula::atom("C".to_string())),
+            ),
+        );
+        assert_eq!(
+            formula.eval_core(&atom_eval, &quantifier_eval, &quantifier_eval),
+            false
+        )
+    }
 }
 
 // ### Formula Parsing ###
@@ -650,21 +809,36 @@ fn parse_atomic_formula<'a, T: Clone + Debug + Hash + Eq + Ord>(
     variables: &Vec<String>,
     input: &'a [String],
 ) -> PartialParseResult<'a, Formula<T>> {
+    debug!(
+        "parse_atomic_formula called on variables {:?}, input {:?}",
+        variables, input
+    );
     match input {
         [] => {
             panic!("Formula expected.");
         }
         [head, rest @ ..] if head == "false" => (Formula::False, rest),
         [head, rest @ ..] if head == "true" => (Formula::True, rest),
-        [head, rest @ ..] if head == "(" => match infix_parser(variables, input) {
-            Ok(result) => result,
-            Err(_) => parse_bracketed(
-                Subparser {
-                    fun: &|input| parse_formula(infix_parser, atom_parser, variables, input),
+        [head, rest @ ..] if head == "(" => {
+            // First try infix and if fail, fall back to parse_formula.
+            let r = maybe_parse_bracketed(
+                MaybeSubparser {
+                    fun: &|sub_input| infix_parser(variables, sub_input),
                 },
                 rest,
-            ),
-        },
+            );
+            match r {
+                Ok(result) => result,
+                Err(_) => parse_bracketed(
+                    Subparser {
+                        fun: &|sub_input| {
+                            parse_formula(infix_parser, atom_parser, variables, sub_input)
+                        },
+                    },
+                    rest,
+                ),
+            }
+        }
         [head, rest @ ..] if head == "~" => {
             let (ast, rest1) = parse_atomic_formula(infix_parser, atom_parser, variables, rest);
             (Formula::not(ast), rest1)
@@ -708,6 +882,10 @@ fn parse_quantified<'a, T: Clone + Debug + Hash + Eq + Ord>(
     variable: &String,
     input: &'a [String],
 ) -> PartialParseResult<'a, Formula<T>> {
+    debug!(
+        "parse_quantified called on variables {:?}, variable {:?}, input {:?}",
+        variables, variable, input
+    );
     match input {
         [head, rest @ ..] => {
             let (head1, rest1) = if head == "." {
@@ -741,6 +919,10 @@ pub fn parse_formula<'a, T: Clone + Debug + Hash + Eq + Ord>(
     variables: &Vec<String>,
     input: &'a [String],
 ) -> PartialParseResult<'a, Formula<T>> {
+    debug!(
+        "parse_formula called on variables {:?}, input {:?}",
+        variables, input
+    );
     // A better name might be "parse_binary_connectives".
     let atomic_subparser: SubparserFuncType<Formula<T>> =
         &|input| parse_atomic_formula(infix_parser, atom_parser, variables, input);

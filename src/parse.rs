@@ -1,47 +1,41 @@
 // General parsing utilities independent of particular logic.
 
-use crate::token::lex;
-
 use log::debug;
 use std::fmt::Debug;
 
+use crate::token::lex;
+
+pub type ErrInner = &'static str;
+
+// Most parsing functions below take the form of parsing a piece
+// off the front of a [String], returning the parsed piece and the
+// remaining input.
 pub type PartialParseResult<'a, AST> = (AST, &'a [String]);
 pub type PartialParseListResult<'a, AST> = (Vec<AST>, &'a [String]);
 
 // We use these wrappers for closures when passing to a recursive function
 // like parse_general_infix to avoid trying to instantiate an unbounded number
 // of function instances.  See https://github.com/rust-lang/rust/issues/43520
-#[derive(Clone)]
-struct OpUpdate<'a, AST> {
-    fun: &'a dyn Fn(&dyn Fn(AST) -> AST, AST, AST) -> AST,
-}
-
-impl<'a, AST> OpUpdate<'a, AST> {
-    fn call(&self, f: &impl Fn(AST) -> AST, ast1: AST, ast2: AST) -> AST {
-        (self.fun)(f, ast1, ast2)
-    }
-}
-
-struct Sof<'a, AST> {
-    fun: &'a dyn Fn(AST) -> AST,
-}
-
-impl<'a, AST> Sof<'a, AST> {
-    fn call(&self, ast: AST) -> AST {
-        (self.fun)(ast)
-    }
-}
-
 pub type SubparserFuncType<'c, T> = &'c dyn for<'b> Fn(&'b [String]) -> PartialParseResult<'b, T>;
+pub type MaybeSubparserFuncType<'c, T> =
+    &'c dyn for<'b> Fn(&'b [String]) -> Result<PartialParseResult<'b, T>, ErrInner>;
 pub type SubparserFuncListType<'c, T> =
     &'c dyn for<'b> Fn(&'b [String]) -> PartialParseListResult<'b, T>;
 
 pub struct Subparser<'a, AST> {
     pub fun: SubparserFuncType<'a, AST>,
 }
-
 impl<'a, AST> Subparser<'a, AST> {
     fn call<'b>(&self, ast: &'b [String]) -> PartialParseResult<'b, AST> {
+        (self.fun)(ast)
+    }
+}
+
+pub struct MaybeSubparser<'a, AST> {
+    pub fun: MaybeSubparserFuncType<'a, AST>,
+}
+impl<'a, AST> MaybeSubparser<'a, AST> {
+    fn call<'b>(&self, ast: &'b [String]) -> Result<PartialParseResult<'b, AST>, ErrInner> {
         (self.fun)(ast)
     }
 }
@@ -49,10 +43,43 @@ impl<'a, AST> Subparser<'a, AST> {
 pub struct ListSubparser<'a, AST> {
     pub fun: SubparserFuncListType<'a, AST>,
 }
-
 impl<'a, AST> ListSubparser<'a, AST> {
     fn call<'b>(&self, ast: &'b [String]) -> PartialParseListResult<'b, AST> {
         (self.fun)(ast)
+    }
+}
+
+// Agg and AggList functions close over aggregates and combine
+// newly parsed items with that aggregate.
+// (Compare Harrison's "sof" functions.)
+struct Agg<'a, AST> {
+    fun: &'a dyn Fn(AST) -> AST,
+}
+impl<'a, AST> Agg<'a, AST> {
+    fn call(&self, ast: AST) -> AST {
+        (self.fun)(ast)
+    }
+}
+
+struct AggList<'a, AST> {
+    fun: &'a dyn Fn(AST) -> Vec<AST>,
+}
+impl<'a, AST> AggList<'a, AST> {
+    fn call(&self, ast: AST) -> Vec<AST> {
+        (self.fun)(ast)
+    }
+}
+
+// The OpUpdate and OpUpdateList functions evolve the Agg
+// and AggList accumulators by having them store
+// larger ASTs.
+#[derive(Clone)]
+struct OpUpdate<'a, AST> {
+    fun: &'a dyn Fn(&dyn Fn(AST) -> AST, AST, AST) -> AST,
+}
+impl<'a, AST> OpUpdate<'a, AST> {
+    fn call(&self, f: &impl Fn(AST) -> AST, ast1: AST, ast2: AST) -> AST {
+        (self.fun)(f, ast1, ast2)
     }
 }
 
@@ -60,39 +87,36 @@ impl<'a, AST> ListSubparser<'a, AST> {
 struct OpUpdateList<'a, AST> {
     fun: &'a dyn Fn(&dyn Fn(AST) -> Vec<AST>, AST, AST) -> Vec<AST>,
 }
-
 impl<'a, AST> OpUpdateList<'a, AST> {
     fn call(&self, f: &impl Fn(AST) -> Vec<AST>, ast1: AST, ast2: AST) -> Vec<AST> {
         (self.fun)(f, ast1, ast2)
     }
 }
 
-struct SofList<'a, AST> {
-    fun: &'a dyn Fn(AST) -> Vec<AST>,
-}
-
-impl<'a, AST> SofList<'a, AST> {
-    fn call(&self, ast: AST) -> Vec<AST> {
-        (self.fun)(ast)
-    }
-}
+// ### Abstract parser builders
 
 fn parse_general_infix<'a, AST: Clone>(
     op_symbol: &str,
     op_update: OpUpdate<AST>,
-    sof: Sof<AST>,
+    agg: Agg<AST>,
     subparser: Subparser<AST>,
     input: &'a [String],
 ) -> PartialParseResult<'a, AST> {
+    // Parser buider that parses a piece off the front of the `input` and either adds
+    // it to the accumulator in `Agg` or, if a select infix operation `op_symbol` follows, evolves
+    // the aggregator via `op_update`.
+    // `op_update` and `agg` will depend on whether the operation is left or right
+    // associative.
     let (ast1, rest1) = subparser.call(input);
     match rest1 {
         [head, rest2 @ ..] if head == op_symbol => {
             let op_update_clone = op_update.clone();
-            let new_sof_fun = |ast| op_update_clone.call(&|ast1| sof.call(ast1), ast1.clone(), ast);
-            let new_sof: Sof<AST> = Sof { fun: &new_sof_fun };
-            parse_general_infix(op_symbol, op_update, new_sof, subparser, rest2)
+            let new_agg: Agg<AST> = Agg {
+                fun: &|ast| op_update_clone.call(&|ast1| agg.call(ast1), ast1.clone(), ast),
+            };
+            parse_general_infix(op_symbol, op_update, new_agg, subparser, rest2)
         }
-        _ => (sof.call(ast1), rest1),
+        _ => (agg.call(ast1), rest1),
     }
 }
 
@@ -102,11 +126,14 @@ pub fn parse_right_infix<'a, AST: Clone>(
     subparser: Subparser<AST>,
     input: &'a [String],
 ) -> PartialParseResult<'a, AST> {
+    // Parser builder for handling right-associative infix operations.
+    // op_constructor should be a constructor for ASTs of type corresponding
+    // to `op_symbol`.
     let op_update = OpUpdate {
         fun: &|f, ast1, ast2| f(op_constructor(ast1, ast2)),
     };
-    let sof = Sof { fun: &|x| x };
-    parse_general_infix(op_symbol, op_update, sof, subparser, input)
+    let agg = Agg { fun: &|ast| ast };
+    parse_general_infix(op_symbol, op_update, agg, subparser, input)
 }
 
 pub fn parse_left_infix<'a, AST: Clone>(
@@ -115,31 +142,36 @@ pub fn parse_left_infix<'a, AST: Clone>(
     subparser: Subparser<AST>,
     input: &'a [String],
 ) -> PartialParseResult<'a, AST> {
+    // Parser builder for handling left-associative infix operations.
+    // op_constructor should be a constructor for ASTs of type corresponding
+    // to `op_symbol`.
     let op_update = OpUpdate {
         fun: &|f, ast1, ast2| op_constructor(f(ast1), ast2),
     };
-    let sof = Sof { fun: &|ast| ast };
-    parse_general_infix(op_symbol, op_update, sof, subparser, input)
+    let agg = Agg { fun: &|ast| ast };
+    parse_general_infix(op_symbol, op_update, agg, subparser, input)
 }
 
 fn parse_general_list<'a, AST: Clone>(
     op_symbol: &str,
     op_update: OpUpdateList<AST>,
-    sof: SofList<AST>,
+    agg: AggList<AST>,
     subparser: Subparser<AST>,
     input: &'a [String],
 ) -> PartialParseListResult<'a, AST> {
-    // TODO(arthur) COMMENT
-    // op_symbol will be the list delimiter, usually a comma.
+    // Parse one element of the list type and check if a
+    // list delimiter follows (usually a comma).  If so continue
+    // parsing with an updated Agg function that stores a copy of the
+    // first value.
     let (ast1, rest1) = subparser.call(input);
     match rest1 {
         [head, rest2 @ ..] if head == op_symbol => {
             let op_update_clone = op_update.clone();
-            let new_sof_fun = |ast| op_update_clone.call(&|ast1| sof.call(ast1), ast1.clone(), ast);
-            let new_sof: SofList<AST> = SofList { fun: &new_sof_fun };
-            parse_general_list(op_symbol, op_update, new_sof, subparser, rest2)
+            let new_agg_fun = |ast| op_update_clone.call(&|ast| agg.call(ast), ast1.clone(), ast);
+            let new_agg: AggList<AST> = AggList { fun: &new_agg_fun };
+            parse_general_list(op_symbol, op_update, new_agg, subparser, rest2)
         }
-        _ => (sof.call(ast1), rest1),
+        _ => (agg.call(ast1), rest1),
     }
 }
 
@@ -148,6 +180,13 @@ pub fn parse_list<'a, AST: Clone>(
     subparser: Subparser<AST>,
     input: &'a [String],
 ) -> PartialParseListResult<'a, AST> {
+    debug!(
+        "parse_list called on op_symbol {:?}, input {:?}",
+        op_symbol, input
+    );
+    // Evolves a Agg function to one that appends an element (`ast2`) onto
+    // a previously existing list (the result of calling the previous
+    // agg on `ast1`).
     let op_update = OpUpdateList {
         fun: &|f, ast1, ast2| -> Vec<AST> {
             let mut v = f(ast1);
@@ -155,17 +194,22 @@ pub fn parse_list<'a, AST: Clone>(
             v
         },
     };
-    let sof = SofList {
+    // First agg just puts a single list item into
+    // a singleton vector.
+    let agg = AggList {
         fun: &|ast: AST| -> Vec<AST> { vec![ast] },
     };
-    parse_general_list(op_symbol, op_update, sof, subparser, input)
+    parse_general_list(op_symbol, op_update, agg, subparser, input)
 }
 
 pub fn parse_bracketed<'a, AST: Clone + Debug>(
     subparser: Subparser<AST>,
     input: &'a [String],
 ) -> PartialParseResult<'a, AST> {
-    debug!("parse_bracketed called with input {:?}", input);
+    // To be called after an opening bracket has been read.
+    // The `subparser` should be able to parse all the way
+    // to the closing bracket and otherwise we panic.
+    debug!("parse_bracketed called on input {:?}", input);
     let (ast, rest) = subparser.call(input);
 
     match rest {
@@ -176,11 +220,33 @@ pub fn parse_bracketed<'a, AST: Clone + Debug>(
     }
 }
 
+pub fn maybe_parse_bracketed<'a, AST: Clone + Debug>(
+    subparser: MaybeSubparser<AST>,
+    input: &'a [String],
+) -> Result<PartialParseResult<'a, AST>, ErrInner> {
+    // To be called after an opening bracket has been read.
+    // The subparser may fail, but if it succees to parse
+    // any piece then it should parse all the way
+    // to the closing bracket otherwise return Result::Err.
+    debug!("parse_bracketed called on input {:?}", input);
+    let (ast, rest) = subparser.call(input)?;
+
+    match rest {
+        [head, tail @ ..] if head == ")" => Ok((ast, tail)),
+        _ => {
+            panic!("Closing bracket expected. Found {:?}", rest);
+        }
+    }
+}
+
 pub fn parse_bracketed_list<'a, AST: Clone + Debug>(
     subparser: ListSubparser<AST>,
     input: &'a [String],
 ) -> PartialParseListResult<'a, AST> {
-    debug!("parse_bracketed_list called with input {:?}", input);
+    // Same as parse_bracketed but subparser is of
+    // ListSubparser type, and this function can handle empty
+    // lists (first character ")").
+    debug!("parse_bracketed_list called on input {:?}", input);
     if let [head, rest @ ..] = input {
         if head == ")" {
             return (vec![], rest);
@@ -198,7 +264,8 @@ pub fn parse_bracketed_list<'a, AST: Clone + Debug>(
 }
 
 pub fn generic_parser<AST>(inner: fn(&[String]) -> (AST, &[String]), input: &str) -> AST {
-    // This is Harrison's `make_parser`.
+    // Tokenize and call parser on result.
+    // (Compare Harrison's `make_parser`.)
     let lexed = lex(input);
     let (expr, rest) = inner(&lexed[..]);
     if rest.len() != 0 {

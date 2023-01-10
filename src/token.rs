@@ -23,6 +23,10 @@ const PUNCTUATION: [char; 2] = ['(', ')'];
 pub const INFIX_RELATION_SYMBOLS: [&str; 5] = ["<", "<=", "=", ">=", ">"];
 
 pub fn is_const_name(name: &str) -> bool {
+    // Note that we can use other constants (0-ary functions).
+    // This function is intended to be used by the printer to
+    // determine when to leave off the parentheses.
+    // (Eg. to print "1" not "1()").
     if name == "nil" {
         return true;
     }
@@ -35,6 +39,7 @@ pub fn is_const_name(name: &str) -> bool {
 }
 
 fn lexwhile<'a>(charset: &[char], input_chars: &'a [char]) -> usize {
+    // Increment an index until the character is no longer in `charset`.
     let mut bound = 0;
     for c in input_chars {
         if charset.contains(&c) {
@@ -47,6 +52,9 @@ fn lexwhile<'a>(charset: &[char], input_chars: &'a [char]) -> usize {
 }
 
 fn lex_inner(all_input_chars: &[char]) -> Vec<String> {
+    // Build up a token list by reading one token off the
+    // fron tand recursively calling itself on the remainder.
+
     // Drop leading whitespace.
     let space = [' '];
     let space_bound = lexwhile(&space, all_input_chars);

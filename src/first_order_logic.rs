@@ -1,15 +1,19 @@
-// ### First Order Logic ###
+// ### First
+// Order Logic ###
 // AST specific parsing/printing functions for first-order (aka predicate) logic.
 //
-use std::io::Write;
-
-use crate::formula::{close_box, open_box, parse_formula, print_break, write, ErrInner, Formula};
+use crate::formula::{close_box, open_box, parse_formula, print_break, write, Formula};
 use crate::parse::{
     generic_parser, parse_bracketed, parse_bracketed_list, parse_left_infix, parse_list,
-    parse_right_infix, ListSubparser, PartialParseResult, Subparser, SubparserFuncListType,
-    SubparserFuncType,
+    parse_right_infix, ErrInner, ListSubparser, PartialParseResult, Subparser,
+    SubparserFuncListType, SubparserFuncType,
 };
 use crate::token::{is_const_name, INFIX_RELATION_SYMBOLS};
+use log::debug;
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::fmt::Debug;
+use std::hash::Hash;
+use std::io::Write;
 
 // ### Term ###
 #[derive(Debug, PartialEq, Clone, Hash, Eq, PartialOrd, Ord)]
@@ -85,6 +89,10 @@ impl Term {
         variables: &Vec<String>,
         input: &'a [String],
     ) -> PartialParseResult<'a, Term> {
+        debug!(
+            "parse_atomic_term called on variables {:?}, input {:?}",
+            variables, input
+        );
         let minus = "-";
         match input {
             [] => panic!("Term expected."),
@@ -132,6 +140,10 @@ impl Term {
         variables: &Vec<String>,
         input: &'a [String],
     ) -> PartialParseResult<'a, Term> {
+        debug!(
+            "parse_term called on variables {:?}, input {:?}",
+            variables, input
+        );
         let atomic_subparser: SubparserFuncType<Term> =
             &|input| Term::parse_atomic_term(variables, input);
         let exp_subparser: SubparserFuncType<Term> = &|input| {
@@ -162,7 +174,7 @@ impl Term {
         Term::parse_term(&vec![], input)
     }
 
-    fn parset(input: &str) -> Term {
+    pub fn parset(input: &str) -> Term {
         generic_parser(Term::parse_term_inner, input)
     }
 }
@@ -491,6 +503,10 @@ impl Formula<Pred> {
         variables: &Vec<String>,
         input: &'a [String],
     ) -> Result<PartialParseResult<'a, Formula<Pred>>, ErrInner> {
+        debug!(
+            "(pred) _infix_parser called on variables {:?}, input {:?}",
+            variables, input
+        );
         let (term1, rest) = Term::parse_term(variables, input);
         if rest.len() == 0 || !INFIX_RELATION_SYMBOLS.contains(&rest[0].as_str()) {
             return Err("Not infix.");
@@ -506,6 +522,10 @@ impl Formula<Pred> {
         variables: &Vec<String>,
         input: &'a [String],
     ) -> PartialParseResult<'a, Formula<Pred>> {
+        debug!(
+            "(pred) _atom_parser called on variables {:?}, input {:?}",
+            variables, input
+        );
         if let Ok(parse_result) = Formula::_infix_parser(variables, input) {
             return parse_result;
         };
@@ -597,6 +617,46 @@ mod parse_pred_formula_tests {
 
         assert_eq!(result, desired);
     }
+
+    #[test]
+    fn test_simple_infix() {
+        env_logger::init();
+        let input = "~(x = y)";
+        let desired = Formula::not(Formula::atom(Pred::pred(
+            "=",
+            &[Term::var("x"), Term::var("y")],
+        )));
+        let result = Formula::<Pred>::parse(input);
+        assert_eq!(result, desired);
+    }
+
+    #[test]
+    fn test_more_quantifiers() {
+        let input = "forall x. ~(x = 0) ==> exists y. x * y = 1";
+
+        let desired = Formula::forall(
+            "x",
+            Formula::imp(
+                Formula::not(Formula::atom(Pred::pred(
+                    "=",
+                    &[Term::var("x"), Term::fun("0", &vec![])],
+                ))),
+                Formula::exists(
+                    "y",
+                    Formula::atom(Pred::pred(
+                        "=",
+                        &[
+                            Term::fun("*", &[Term::var("x"), Term::var("y")]),
+                            Term::fun("1", &[]),
+                        ],
+                    )),
+                ),
+            ),
+        );
+
+        let result = Formula::<Pred>::parse(input);
+        assert_eq!(result, desired);
+    }
 }
 
 // ### Printing ###
@@ -652,5 +712,552 @@ mod test_print_pred_formula {
         let output = String::from_utf8(output).expect("Not UTF-8");
         let desired = "<<forall y w. F(RED) /\\ (exists RED BLUE. G(d(y)))>>\n";
         assert_eq!(output, desired);
+    }
+}
+
+#[derive(Clone)]
+// ### Eval / Manipulation ###
+pub struct Language {
+    pub func: HashMap<String, usize>,
+    pub rel: HashMap<String, usize>,
+}
+
+type FuncType<DomainType> = dyn Fn(&Vec<DomainType>) -> DomainType;
+type RelType<DomainType> = dyn Fn(&Vec<DomainType>) -> bool;
+
+pub struct Interpretation<DomainType: Hash + Clone + Eq + Debug + 'static> {
+    // Need a lifetime parameter due to the trait bounds in func/rel.
+    lang: Language,
+    domain: HashSet<DomainType>,
+    func: HashMap<String, Box<FuncType<DomainType>>>,
+    rel: HashMap<String, Box<RelType<DomainType>>>,
+}
+
+impl<DomainType: Hash + Clone + Eq + Debug> Interpretation<DomainType> {
+    pub fn new(
+        lang: &Language,
+        domain: HashSet<DomainType>,
+        funcs: HashMap<String, Box<FuncType<DomainType>>>,
+        rels: HashMap<String, Box<RelType<DomainType>>>,
+    ) -> Interpretation<DomainType> {
+        // Notice:  Takes ownership of some parameters.
+        // Wrap each function in a check for the correct arity.
+        // Note that this does not check, e.g. that the domain is closed under
+        // operations in funcs.
+        let mut safe_funcs = HashMap::<String, Box<FuncType<DomainType>>>::new();
+        for (name, f) in funcs {
+            let name_clone = name.clone();
+            let domain_clone = domain.clone();
+            let arity = lang.func[&name].clone();
+            let safe_f = move |input: &Vec<DomainType>| -> DomainType {
+                assert_eq!(
+                    input.len(),
+                    arity,
+                    "Function {} has arity {} but was passed {} arguments",
+                    name_clone,
+                    arity,
+                    input.len()
+                );
+                for arg in input {
+                    assert!(
+                        domain_clone.contains(&arg),
+                        "In evaluating function {}, Value {:?} is not in domain",
+                        name_clone,
+                        &arg
+                    );
+                }
+                f(input)
+            };
+            safe_funcs.insert(name.clone(), Box::new(safe_f));
+        }
+        let mut safe_rels = HashMap::<String, Box<RelType<DomainType>>>::new();
+        for (name, r) in rels {
+            let name_clone = name.clone();
+            let domain_clone = domain.clone();
+            let arity = lang.rel[&name].clone();
+            let safe_r = move |input: &Vec<DomainType>| -> bool {
+                assert_eq!(
+                    input.len(),
+                    arity,
+                    "Relation {} has arity {} but was passed {} arguments",
+                    name_clone,
+                    arity,
+                    input.len()
+                );
+                for arg in input {
+                    assert!(
+                        domain_clone.contains(&arg),
+                        "In evaluating relation {}
+                        Value {:?} is not in domain",
+                        name_clone,
+                        &arg
+                    );
+                }
+                r(input)
+            };
+            safe_rels.insert(name.clone(), Box::new(safe_r));
+        }
+
+        Interpretation {
+            lang: lang.clone(),
+            domain: domain.clone(),
+            func: safe_funcs,
+            rel: safe_rels,
+        }
+    }
+}
+
+mod test_utils {
+
+    use super::*;
+
+    pub type DomainType = u32;
+
+    pub fn get_test_interpretation() -> Interpretation<DomainType> {
+        fn _foo(input: &Vec<DomainType>) -> DomainType {
+            std::cmp::min(input[0] + input[1] + input[2], 60)
+        }
+
+        fn _bar(input: &Vec<DomainType>) -> bool {
+            (input[0] + input[1]) % 2 == 0
+        }
+
+        fn _equals(input: &Vec<DomainType>) -> bool {
+            input[0] == input[1]
+        }
+
+        fn _the_meaning(_input: &Vec<DomainType>) -> DomainType {
+            42
+        }
+
+        let lang: Language = Language {
+            func: HashMap::from([(String::from("foo"), 3), (String::from("the_meaning"), 0)]),
+            rel: HashMap::from([(String::from("bar"), 2), (String::from("=="), 2)]),
+        };
+
+        let domain: HashSet<DomainType> = (1..=60).collect();
+        let funcs: HashMap<String, Box<FuncType<DomainType>>> = HashMap::from([
+            (
+                String::from("foo"),
+                Box::new(_foo) as Box<FuncType<DomainType>>,
+            ),
+            (
+                String::from("the_meaning"),
+                Box::new(_the_meaning) as Box<FuncType<DomainType>>,
+            ),
+        ]);
+        let rels: HashMap<String, Box<RelType<DomainType>>> = HashMap::from([
+            (
+                String::from("bar"),
+                Box::new(_bar) as Box<RelType<DomainType>>,
+            ),
+            (
+                String::from("=="),
+                Box::new(_equals) as Box<RelType<DomainType>>,
+            ),
+        ]);
+
+        Interpretation::new(&lang, domain, funcs, rels)
+    }
+}
+
+#[cfg(test)]
+mod interpretation_tests {
+
+    use super::*;
+
+    #[test]
+    fn test_new_basic() {
+        let m = test_utils::get_test_interpretation();
+        assert_eq!(m.func["foo"](&vec![1, 3, 3]), 7);
+        assert!(m.rel["bar"](&vec![3, 21]));
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_new_panic_1() {
+        let m = test_utils::get_test_interpretation();
+        m.func["foo"](&vec![1, 3]);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_new_panic_2() {
+        let m = test_utils::get_test_interpretation();
+        m.func["foo"](&vec![1, 3, 3, 21]);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_new_panic_3() {
+        let m = test_utils::get_test_interpretation();
+        m.func["foo"](&vec![1, 61, 4]);
+    }
+}
+
+// TODO make hashmaps from &str
+
+// Partial Map from variable names to domain elements.
+type Valuation<DomainType> = BTreeMap<String, DomainType>;
+
+// ### Term Evaluation ###
+impl Term {
+    pub fn eval<DomainType: Hash + Clone + Eq + Debug>(
+        &self,
+        m: &Interpretation<DomainType>,
+        v: &Valuation<DomainType>,
+    ) -> DomainType {
+        match self {
+            Term::Var(name) => match v.get(&name.to_string()) {
+                Some(val) => val.to_owned(),
+                None => panic!("Valuation not defined on variable {:?}.", name),
+            },
+            Term::Fun(name, args) => {
+                let func_box: &Box<FuncType<DomainType>> = &m.func[&name.to_string()];
+                let vals: Vec<DomainType> = args.iter().map(|term| term.eval(m, v)).collect();
+                (*func_box)(&vals)
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod test_term_eval {
+    use super::*;
+
+    #[test]
+    fn test_term_eval_simple() {
+        let m = test_utils::get_test_interpretation();
+
+        let v = BTreeMap::from([
+            ("X".to_string(), 14),
+            ("Y".to_string(), 1),
+            ("Z".to_string(), 2),
+        ]);
+
+        let var_x = Term::var("X");
+        let var_z = Term::var("Z");
+
+        assert_eq!(var_x.eval(&m, &v), 14);
+        assert_eq!(var_z.eval(&m, &v), 2);
+
+        let t = Term::fun(
+            "foo",
+            &vec![
+                Term::var("X"),
+                Term::fun("the_meaning", &[]),
+                Term::var("Z"),
+            ],
+        );
+        assert_eq!(t.eval(&m, &v), 58);
+    }
+}
+
+impl Pred {
+    pub fn eval<DomainType: Hash + Clone + Eq + Debug>(
+        &self,
+        m: &Interpretation<DomainType>,
+        v: &Valuation<DomainType>,
+    ) -> bool {
+        let rel_box: &Box<RelType<DomainType>> = &m.rel[&self.name];
+        let vals: Vec<DomainType> = self.terms.iter().map(|term| term.eval(m, v)).collect();
+        (*rel_box)(&vals)
+    }
+}
+
+#[cfg(test)]
+mod test_pred_eval {
+
+    use super::*;
+
+    #[test]
+    fn test_pred_eval_simple() {
+        let m = test_utils::get_test_interpretation();
+
+        let v = BTreeMap::from([
+            ("X".to_string(), 14),
+            ("Y".to_string(), 1),
+            ("Z".to_string(), 2),
+            ("W".to_string(), 14),
+        ]);
+
+        let t = Term::fun(
+            "foo",
+            &vec![
+                Term::var("X"),
+                Term::fun("the_meaning", &[]),
+                Term::var("Z"),
+            ],
+        );
+
+        let pred_1 = Pred::pred("bar", &vec![t.clone(), Term::var("Y")]);
+        assert!(!pred_1.eval(&m, &v)); // 58 + 1 % 2 = 0 is false
+        let pred_2 = Pred::pred("bar", &vec![t, Term::var("X")]);
+        assert!(pred_2.eval(&m, &v)); // 58 + 14 % 2 == 0 is true
+        let pred_3 = Pred::pred("==", &vec![Term::var("Y"), Term::var("X")]);
+        assert!(!pred_3.eval(&m, &v)); // 1 == 14 is false
+        let pred_4 = Pred::pred("==", &vec![Term::var("W"), Term::var("X")]);
+        assert!(pred_4.eval(&m, &v)); // 14 == 14 is true
+    }
+}
+
+// ### Formula Evaluation ###
+impl Formula<Pred> {
+    pub fn eval<DomainType: Hash + Clone + Eq + Debug>(
+        &self,
+        m: &Interpretation<DomainType>,
+        v: &Valuation<DomainType>,
+    ) -> bool {
+        let pred_atom_eval = |pred: &Pred| -> bool { pred.eval(m, v) };
+
+        // TODO the clone inside of the for loops of the quantifiers could get expensive.
+        // Find a better way. Partial functions like Z3 arrays?
+
+        let forall_eval = |var: &String, subformula: &Formula<Pred>| -> bool {
+            for val in &m.domain {
+                // (var |-> val)v
+                let mut new_v = v.clone();
+                new_v.insert(var.clone(), val.clone());
+                if !subformula.eval(m, &new_v) {
+                    return false;
+                }
+            }
+            true
+        };
+
+        let exists_eval = |var: &String, subformula: &Formula<Pred>| -> bool {
+            for val in &m.domain {
+                // (var |-> val)v
+                let mut new_v = v.clone();
+                new_v.insert(var.clone(), val.clone());
+                if subformula.eval(m, &new_v) {
+                    return true;
+                }
+            }
+            false
+        };
+
+        self.eval_core(&pred_atom_eval, &forall_eval, &exists_eval)
+    }
+}
+
+#[cfg(test)]
+mod test_formula_eval {
+
+    use super::*;
+
+    #[test]
+    fn test_formula_eval_simple() {
+        let m = test_utils::get_test_interpretation();
+
+        let v = BTreeMap::from([
+            ("X".to_string(), 14),
+            ("Y".to_string(), 1),
+            ("Z".to_string(), 2),
+        ]);
+
+        let pred = Pred::pred("bar", &vec![Term::var("X"), Term::var("Z")]); // 14 + 2 % 2 = 0
+        let formula_1 = Formula::atom(pred);
+        assert!(formula_1.eval(&m, &v));
+    }
+
+    #[test]
+    fn test_formula_eval_quantified_1() {
+        let m = test_utils::get_test_interpretation();
+
+        let v = BTreeMap::from([("Z".to_string(), 2)]);
+
+        // exists X. X + 2 % 2 == 0
+        let formula_1 = Formula::exists(
+            "X",
+            Formula::atom(Pred::pred("bar", &vec![Term::var("X"), Term::var("Z")])),
+        );
+
+        assert!(formula_1.eval(&m, &v));
+    }
+
+    #[test]
+    fn test_formula_eval_quantified_2() {
+        let m = test_utils::get_test_interpretation();
+
+        let v = BTreeMap::from([
+            ("U".to_string(), 43),
+            ("Z".to_string(), 42),
+            ("W".to_string(), 58),
+        ]);
+
+        // exists X Y. X + Y + 42 == 58
+        let formula_1 = Formula::exists(
+            "X",
+            Formula::exists(
+                "Y",
+                Formula::atom(Pred::pred(
+                    "==",
+                    &vec![
+                        Term::fun("foo", &vec![Term::var("X"), Term::var("Y"), Term::var("Z")]),
+                        Term::var("W"),
+                    ],
+                )),
+            ),
+        );
+        // A Solution exists.
+        assert!(formula_1.eval(&m, &v));
+
+        // exists X Y. X + Y + 42 == 43
+        let formula_2 = Formula::exists(
+            "X",
+            Formula::exists(
+                "Y",
+                Formula::atom(Pred::pred(
+                    "==",
+                    &vec![
+                        Term::fun("foo", &vec![Term::var("X"), Term::var("Y"), Term::var("Z")]),
+                        Term::var("U"),
+                    ],
+                )),
+            ),
+        );
+        // No Solution exists in (1..=60)
+        assert!(!formula_2.eval(&m, &v));
+    }
+
+    #[test]
+    fn test_formula_eval_quantified_3() {
+        let m = test_utils::get_test_interpretation();
+        let v = BTreeMap::new();
+
+        let formula_ae = Formula::forall(
+            "X",
+            Formula::exists(
+                "Y",
+                Formula::atom(Pred::pred("bar", &vec![Term::var("X"), Term::var("Y")])),
+            ),
+        );
+        let formula_ea = Formula::exists(
+            "X",
+            Formula::forall(
+                "Y",
+                Formula::atom(Pred::pred("bar", &vec![Term::var("X"), Term::var("Y")])),
+            ),
+        );
+
+        assert!(formula_ae.eval(&m, &v));
+        assert!(!formula_ea.eval(&m, &v));
+    }
+}
+
+impl Term {
+    fn get_variables_for_termlist(terms: &Vec<Term>) -> HashSet<String> {
+        terms
+            .iter()
+            .fold(HashSet::new(), |acc, term| &acc | &term.variables())
+    }
+
+    fn variables(&self) -> HashSet<String> {
+        match self {
+            Term::Var(name) => HashSet::from([name.clone()]),
+            Term::Fun(_name, terms) => Term::get_variables_for_termlist(terms),
+        }
+    }
+}
+
+#[cfg(test)]
+mod test_term_variables {
+
+    use super::*;
+
+    #[test]
+    fn tet_get_variables_for_termlist() {
+        let term1 = Term::fun("foo", &[Term::var("A")]);
+        let term2 = Term::var("B");
+        let term3 = Term::fun(
+            "bar",
+            &[Term::var("B"), Term::fun("baz", &[Term::var("C")])],
+        );
+        let input = vec![term1, term2, term3];
+
+        let result = Term::get_variables_for_termlist(&input);
+        assert_eq!(
+            result,
+            HashSet::from(["A".to_string(), "B".to_string(), "C".to_string()])
+        );
+    }
+}
+
+impl Pred {
+    fn variables(&self) -> HashSet<String> {
+        Term::get_variables_for_termlist(&self.terms)
+    }
+}
+
+// ### Variables ###
+impl Formula<Pred> {
+    fn variables(&self) -> HashSet<String> {
+        match self {
+            Formula::True | Formula::False => HashSet::new(),
+            Formula::Atom(pred) => pred.variables(),
+            Formula::Not(box p) => p.variables(),
+            Formula::And(box p, box q)
+            | Formula::Or(box p, box q)
+            | Formula::Imp(box p, box q)
+            | Formula::Iff(box p, box q) => &p.variables() | &q.variables(),
+            Formula::Forall(var, box p) | Formula::Exists(var, box p) => {
+                let mut vars = p.variables();
+                vars.insert(var.clone());
+                vars
+            }
+        }
+    }
+
+    fn free_variables(&self) -> HashSet<String> {
+        match self {
+            Formula::True | Formula::False => HashSet::new(),
+            Formula::Atom(pred) => pred.variables(),
+            Formula::Not(box p) => p.free_variables(),
+            Formula::And(box p, box q)
+            | Formula::Or(box p, box q)
+            | Formula::Imp(box p, box q)
+            | Formula::Iff(box p, box q) => &p.free_variables() | &q.free_variables(),
+            Formula::Forall(var, box p) | Formula::Exists(var, box p) => {
+                let mut vars = p.free_variables();
+                vars.remove(var);
+                vars
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod test_formula_variables {
+
+    use super::*;
+    use crate::utils::to_set_of_owned;
+
+    #[test]
+    fn test_formula_variables() {
+        // forall X. ((X == W) => exists W. (foo(X, W, Z) == U))
+        let formula = Formula::forall(
+            "X",
+            Formula::imp(
+                Formula::atom(Pred::pred("==", &vec![Term::var("X"), Term::var("W")])),
+                Formula::exists(
+                    "W",
+                    Formula::atom(Pred::pred(
+                        "==",
+                        &vec![
+                            Term::fun("foo", &vec![Term::var("X"), Term::var("W"), Term::var("Z")]),
+                            Term::var("U"),
+                        ],
+                    )),
+                ),
+            ),
+        );
+
+        let result_all = formula.variables();
+        let desired_all = to_set_of_owned(vec!["U", "W", "X", "Z"]);
+        assert_eq!(result_all, desired_all);
+        let result_free = formula.free_variables();
+        let desired_free = to_set_of_owned(vec!["U", "W", "Z"]);
+        assert_eq!(result_free, desired_free);
     }
 }
