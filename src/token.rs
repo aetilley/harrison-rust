@@ -8,17 +8,20 @@ const ALPHA: [char; 52] = [
 
 const NUMERIC: [char; 10] = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
 
-const ALPHANUMERIC: [char; 62] = [
+// ALPHA U NUMERIC U {'_'}
+const ALPHANUMERIC: [char; 63] = [
     'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's',
     't', 'u', 'v', 'w', 'x', 'y', 'z', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L',
     'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '0', '1', '2', '3', '4',
-    '5', '6', '7', '8', '9',
+    '5', '6', '7', '8', '9', '_',
 ];
 const SYMBOLIC: [char; 23] = [
     '~', '`', '!', '@', '#', '$', '%', '^', '&', '*', '-', '+', '=', '|', '\\', ':', ';', '<', '>',
     '.', '?', '/', ',',
 ];
 const PUNCTUATION: [char; 2] = ['(', ')'];
+
+const WHITESPACE: [char; 4] = [' ', '\t', '\n', '\r'];
 
 pub const INFIX_RELATION_SYMBOLS: [&str; 5] = ["<", "<=", "=", ">=", ">"];
 
@@ -56,8 +59,7 @@ fn lex_inner(all_input_chars: &[char]) -> Vec<String> {
     // fron tand recursively calling itself on the remainder.
 
     // Drop leading whitespace.
-    let space = [' '];
-    let space_bound = lexwhile(&space, all_input_chars);
+    let space_bound = lexwhile(&WHITESPACE, all_input_chars);
     let input_chars = &all_input_chars[space_bound..];
     if input_chars.len() == 0 {
         return vec![];
@@ -116,6 +118,15 @@ mod lex_tests {
         let desired = vec!["a", "+=", "b"];
         assert_eq!(result, desired);
     }
+
+    // FIX
+    // #[test]
+    // fn simple_lex() {
+    //     let input = "~~A";
+    //     let result = lex(input);
+    //     let desired = vec!["~", "~", "A"];
+    //     assert_eq!(result, desired);
+    // }
 
     #[test]
     fn less_simple_lex() {

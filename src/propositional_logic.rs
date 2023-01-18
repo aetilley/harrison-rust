@@ -1,19 +1,20 @@
-// ### PROPOSITIONAL LOGIC ###
-// AST specific parsing/printing functions for propositional (aka sentential) logic.
+// PROPOSITIONAL LOGIC
+//
+// parsing, printing, eval, and sat functions for
+// propositional (aka sentential) logic.
 
 use std::cmp;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt::Debug;
 use std::io::Write;
 
+use crate::formula::{parse_formula, write, Formula};
 use crate::parse::{generic_parser, ErrInner, PartialParseResult};
+
 use log::debug;
-
-pub use crate::formula::{parse_formula, write, Formula};
-
 use regex::Regex;
 
-// A propositional variable.  Basically just a wrapper around a name.
+// A propositional variable.
 #[derive(Debug, PartialEq, Clone, Hash, Eq, PartialOrd, Ord)]
 pub struct Prop {
     name: String,
@@ -57,7 +58,8 @@ mod prop_basic_tests {
     }
 }
 
-// ### PARSING ###
+// PARSING
+
 impl Formula<Prop> {
     fn _atom_parser<'a>(
         variables: &Vec<String>,
@@ -99,10 +101,6 @@ impl Formula<Prop> {
     }
 }
 
-type Triple = (Formula<Prop>, Defs, usize);
-type BinOp = fn(Formula<Prop>, Formula<Prop>) -> Formula<Prop>;
-type Defs = HashMap<Formula<Prop>, (Formula<Prop>, Formula<Prop>)>;
-
 #[cfg(test)]
 mod prop_parse_tests {
     use super::*;
@@ -111,11 +109,50 @@ mod prop_parse_tests {
         let _ = env_logger::builder().is_test(true).try_init();
     }
 
+    // Convenience to save us some typing.
+    fn prop(name: &str) -> Prop {
+        Prop::prop(name)
+    }
+
     #[test]
     fn test_parse() {
-        let input = "a <=> (b /\\ c)";
-        let result = Formula::<Prop>::parse(input);
+        let result = Formula::<Prop>::parse("true");
+        let desired = Formula::True;
+        assert_eq!(result, desired);
 
+        let result = Formula::<Prop>::parse("false");
+        let desired = Formula::False;
+        assert_eq!(result, desired);
+
+        let result = Formula::<Prop>::parse("A \\/ B");
+        let desired = Formula::or(Formula::atom(prop("A")), Formula::atom(prop("B")));
+        assert_eq!(result, desired);
+
+        let result = Formula::<Prop>::parse("A \\/ ~A");
+        let desired = Formula::or(
+            Formula::atom(prop("A")),
+            Formula::not(Formula::atom(prop("A"))),
+        );
+        assert_eq!(result, desired);
+
+        let result = Formula::<Prop>::parse("(A /\\ ~A)");
+        let desired = Formula::and(
+            Formula::atom(prop("A")),
+            Formula::not(Formula::atom(prop("A"))),
+        );
+        assert_eq!(result, desired);
+
+        let result = Formula::<Prop>::parse("p /\\ q /\\ p /\\ q");
+        let desired = Formula::and(
+            Formula::atom(prop("p")),
+            Formula::and(
+                Formula::atom(prop("q")),
+                Formula::and(Formula::atom(prop("p")), Formula::atom(prop("q"))),
+            ),
+        );
+        assert_eq!(result, desired);
+
+        let result = Formula::<Prop>::parse("a <=> (b /\\ c)");
         let desired = Formula::iff(
             Formula::atom(Prop::prop("a")),
             Formula::and(
@@ -124,10 +161,64 @@ mod prop_parse_tests {
             ),
         );
         assert_eq!(result, desired);
+
+        let result = Formula::<Prop>::parse("(p /\\ q) /\\ q ==> (p /\\ q) /\\ q");
+        let desired = Formula::imp(
+            Formula::and(
+                Formula::and(Formula::atom(prop("p")), Formula::atom(prop("q"))),
+                Formula::atom(prop("q")),
+            ),
+            Formula::and(
+                Formula::and(Formula::atom(prop("p")), Formula::atom(prop("q"))),
+                Formula::atom(prop("q")),
+            ),
+        );
+        assert_eq!(result, desired);
+
+        let result = Formula::<Prop>::parse("a /\\ ~b \\/ (~c \\/ d)");
+        let desired = Formula::or(
+            Formula::and(
+                Formula::atom(prop("a")),
+                Formula::not(Formula::atom(prop("b"))),
+            ),
+            Formula::or(
+                Formula::not(Formula::atom(prop("c"))),
+                Formula::atom(prop("d")),
+            ),
+        );
+        assert_eq!(result, desired);
+
+        let result = Formula::<Prop>::parse("~(~A)");
+        let desired = Formula::not(Formula::not(Formula::atom(prop("A"))));
+        assert_eq!(result, desired);
+
+        let result = Formula::<Prop>::parse("A /\\ (false \\/ B)");
+        let desired = Formula::and(
+            Formula::atom(prop("A")),
+            Formula::or(Formula::False, Formula::atom(prop("B"))),
+        );
+        assert_eq!(result, desired);
+
+        let result = Formula::<Prop>::parse("~(A ==> (B <=> C))");
+        let desired = Formula::not(Formula::imp(
+            Formula::atom(prop("A")),
+            Formula::iff(Formula::atom(prop("B")), Formula::atom(prop("C"))),
+        ));
+        assert_eq!(result, desired);
     }
+
+    // TODO Currently can't handle double (consecutive w/o parens) negation
+    // since tokenizer groups "~~" as one token.
+    // #[test]
+    // fn double_neg() {
+    //     env_logger::init();
+    //     let result = Formula::<Prop>::parse("~~A");
+    //     let desired = Formula::not(Formula::not(Formula::atom(prop("A"))));
+    //     assert_eq!(result, desired);
+    // }
 }
 
-// ### PRINTING ###
+// PRINTING
 
 impl Formula<Prop> {
     pub fn pprint<W: Write>(&self, dest: &mut W) -> () {
@@ -170,9 +261,10 @@ mod prop_formula_print_tests {
     }
 }
 
-// ### Eval / Manipulation ###
+// Propositional Eval
 
-// We use a BTreeMap here so that we can order the items by Prop.name.
+// We use a BTreeMap here so that we can order the items by Prop.name
+// (mostly for being able to test truthtable output).
 type Valuation = BTreeMap<Prop, bool>;
 
 impl Prop {
@@ -184,13 +276,7 @@ impl Prop {
     }
 }
 
-// Set representations of Formulas in disjunctive or conjunctive normal form
-// (we need to specify in order to have a unique meaning)..
-// Note we could replace the inner `Formula<Prop>` by an indicator
-// function on `Prop`. Which would prevent non-literals from going in there.
-// We use a BTreeSet here so that we can order the items by Prop.name.
-type FormulaSet = BTreeSet<BTreeSet<Formula<Prop>>>;
-
+// Propositional Formula Eval
 impl Formula<Prop> {
     fn eval(&self, val: &Valuation) -> bool {
         // NOTE:  We could just as well give trivial definitions for when a propositional
@@ -203,10 +289,39 @@ impl Formula<Prop> {
 
         self.eval_core(&prop_atom_eval, &qempty, &qempty)
     }
+}
 
+#[cfg(test)]
+mod eval_tests {
+    use super::*;
+
+    // Convenience to save us some typing.
+    fn prop(name: &str) -> Prop {
+        Prop::prop(name)
+    }
+
+    #[test]
+    fn test_eval() {
+        let mut formula;
+        let val = Valuation::from([(prop("A"), true), (prop("B"), false), (prop("C"), true)]);
+
+        formula = Formula::<Prop>::parse("A");
+        assert_eq!(formula.eval(&val), true);
+
+        formula = Formula::<Prop>::parse("B");
+        assert_eq!(formula.eval(&val), false);
+
+        formula = Formula::<Prop>::parse("C <=> A /\\ B");
+        assert_eq!(formula.eval(&val), false);
+    }
+}
+
+// ### Core SAT definitions (ie. brute-force algorithms).
+
+impl Formula<Prop> {
     fn get_all_valuations(atoms: &BTreeSet<Prop>) -> Vec<Valuation> {
         // Initialize result to the singleton with the empty valuation.
-        // WARNING, running time/space is Theta(exp(|atoms|))
+        // WARNING, running time/space is Exp(|atoms|))
 
         let mut result = vec![BTreeMap::new()];
         for atom in atoms {
@@ -265,6 +380,8 @@ impl Formula<Prop> {
         write(dest, &result);
     }
 
+    // FIX prefix the below with, e.g., "naive_" or "brute_force_" in order to
+    // discourage use.
     pub fn tautology(&self) -> bool {
         // NOTE:  SLOW, USE OTHER VERSIONS.
         // Note that the set of valuations should never be empty
@@ -290,8 +407,95 @@ impl Formula<Prop> {
         // NOTE:  SLOW, USE OTHER VERSIONS.
         !self.unsatisfiable()
     }
+}
 
+#[cfg(test)]
+mod core_sat_definitions_tests {
+    use super::*;
+
+    // Convenience to save us some typing.
+    fn prop(name: &str) -> Prop {
+        Prop::prop(name)
+    }
+
+    #[test]
+    fn test_get_all_valuations() {
+        let atoms = BTreeSet::from([prop("A"), prop("B"), prop("C")]);
+        let result = Formula::get_all_valuations(&atoms);
+        let desired_result = vec![
+            BTreeMap::from([(prop("A"), true), (prop("B"), true), (prop("C"), true)]),
+            BTreeMap::from([(prop("A"), true), (prop("B"), true), (prop("C"), false)]),
+            BTreeMap::from([(prop("A"), true), (prop("B"), false), (prop("C"), true)]),
+            BTreeMap::from([(prop("A"), true), (prop("B"), false), (prop("C"), false)]),
+            BTreeMap::from([(prop("A"), false), (prop("B"), true), (prop("C"), true)]),
+            BTreeMap::from([(prop("A"), false), (prop("B"), true), (prop("C"), false)]),
+            BTreeMap::from([(prop("A"), false), (prop("B"), false), (prop("C"), true)]),
+            BTreeMap::from([(prop("A"), false), (prop("B"), false), (prop("C"), false)]),
+        ];
+        assert_eq!(result, desired_result);
+    }
+
+    #[test]
+    fn test_print_truthtable() {
+        let formula = Formula::<Prop>::parse("C <=> A /\\ B");
+        let mut output = Vec::new();
+        formula.print_truthtable(&mut output);
+        let output = String::from_utf8(output).expect("Not UTF-8");
+        let desired_output = "\
+A     B     C     | formula
+---------------------------
+true  true  true  | true
+true  true  false | false
+true  false true  | false
+true  false false | true
+false true  true  | false
+false true  false | true
+false false true  | false
+false false false | true
+---------------------------
+";
+
+        assert_eq!(output, desired_output);
+    }
+
+    #[test]
+    fn test_tautology_and_satisfiable() {
+        let form1 = Formula::<Prop>::parse("true");
+        assert!(form1.tautology());
+        assert!(!form1.unsatisfiable());
+        assert!(form1.satisfiable());
+
+        let form2 = Formula::<Prop>::parse("A \\/ B");
+        assert!(!form2.tautology());
+        assert!(!form2.unsatisfiable());
+        assert!(form2.satisfiable());
+
+        let form3 = Formula::<Prop>::parse("A \\/ ~A");
+        assert!(form3.tautology());
+        assert!(!form3.unsatisfiable());
+        assert!(form3.satisfiable());
+
+        let form4 = Formula::<Prop>::parse("A /\\ ~A");
+        assert!(!form4.tautology());
+        assert!(form4.unsatisfiable());
+        assert!(!form4.satisfiable());
+    }
+}
+
+// ### Normal Forms
+
+// Set representations of Formulas in disjunctive or conjunctive normal form
+// (we need to specify in order to have a unique meaning)..
+// Note we could replace the inner `Formula<Prop>` by an indicator
+// function on `Prop` (or just a set of type Valuation), which would prevent
+// non-literals from going in there.
+// In the meantime, we use a BTreeSet here so that we can order the items
+// by Prop.name.
+type FormulaSet = BTreeSet<BTreeSet<Formula<Prop>>>;
+
+impl Formula<Prop> {
     fn psubst(&self, subfn: &HashMap<Prop, Formula<Prop>>) -> Formula<Prop> {
+        // Replace each Atom(prop) with a subformula given by `subfn(prop)`.
         let map = |p: &Prop| subfn.get(p).unwrap_or(&Formula::atom(p.clone())).clone();
         self.on_atoms(&map)
     }
@@ -362,74 +566,6 @@ impl Formula<Prop> {
         }
     }
 
-    // fn make_lits(items: &Vec<Formula<Prop>>, valuation: &Valuation) -> Formula<Prop> {
-    //     // Despite the name `items` can be any formulas and we compute the conjunction of
-    //     // the formulas in `items` xor their negations according to which is satisfied by
-    //     // `valuation`.
-    //     let items = items.clone();
-    //     let map = |item: Formula<Prop>| {
-    //         if item.eval(valuation) {
-    //             item
-    //         } else {
-    //             Formula::not(item)
-    //         }
-    //     };
-    //     Formula::list_conj(&items.into_iter().map(&map).collect())
-    // }
-
-    // fn all_sat_valuations(&self) -> Vec<Valuation> {
-    //     // All valuations satisfying `self`.
-    //     Formula::get_all_valuations(&self.atoms())
-    //         .into_iter()
-    //         .filter(|val| self.eval(val))
-    //         .collect()
-    // }
-
-    // fn naive_dnf(&self) -> Formula<Prop> {
-    //     // Disjunction Normal Form via gathering all satisfying valuations.
-
-    //     let mut atom_vec = Vec::from_iter(self.atoms());
-    //     atom_vec.sort();
-
-    //     let atom_formulas: Vec<Formula<Prop>> = atom_vec
-    //         .into_iter()
-    //         .map(|inner| Formula::atom(inner))
-    //         .collect();
-
-    //     Formula::list_disj(
-    //         &self
-    //             .all_sat_valuations()
-    //             .iter()
-    //             .map(|val| Formula::make_lits(&atom_formulas, &val))
-    //             .collect(),
-    //     )
-    // }
-
-    // fn _distrib_and_over_or(formula: &Formula<Prop>) -> Formula<Prop> {
-    //     match formula {
-    //         Formula::And(box p, box Formula::Or(box q, box r)) => Formula::or(
-    //             Formula::_distrib_and_over_or(&Formula::and(p.clone(), q.clone())),
-    //             Formula::_distrib_and_over_or(&Formula::and(p.clone(), r.clone())),
-    //         ),
-    //         Formula::And(box Formula::Or(box p, box q), box r) => Formula::or(
-    //             Formula::_distrib_and_over_or(&Formula::and(p.clone(), r.clone())),
-    //             Formula::_distrib_and_over_or(&Formula::and(q.clone(), r.clone())),
-    //         ),
-    //         _ => formula.clone(),
-    //     }
-    // }
-
-    // fn raw_dnf(&self) -> Formula<Prop> {
-    //     // Disjunctive Normal Form via repeated distributions of And over Or.
-    //     match self.nnf() {
-    //         Formula::And(box p, box q) => {
-    //             Formula::_distrib_and_over_or(&Formula::and(p.raw_dnf(), q.raw_dnf()))
-    //         }
-    //         Formula::Or(box p, box q) => Formula::or(p.raw_dnf(), q.raw_dnf()),
-    //         x => x,
-    //     }
-    // }
-
     fn _set_distrib_and_over_or(formula1: &FormulaSet, formula2: &FormulaSet) -> FormulaSet {
         // FIX do this w/ maps?
         let mut result = FormulaSet::new();
@@ -479,6 +615,8 @@ impl Formula<Prop> {
     }
 
     fn _positive(formula: &Formula<Prop>) -> bool {
+        // NOTE: that the way _negative and _positive are defined,
+        // every non-literal will count as `_positive`.
         !Formula::_negative(formula)
     }
 
@@ -595,7 +733,269 @@ impl Formula<Prop> {
         let formula_set = self._dnf_formulaset();
         Formula::_formulaset_to_dnf(formula_set)
     }
+}
 
+#[cfg(test)]
+mod normal_form_tests {
+    use super::*;
+
+    // Convenience to save us some typing.
+    fn prop(name: &str) -> Prop {
+        Prop::prop(name)
+    }
+
+    #[test]
+    fn test_psubst() {
+        let map = HashMap::from([(prop("p"), Formula::<Prop>::parse("p /\\ q"))]);
+        let formula = Formula::<Prop>::parse("p /\\ q ==> p /\\ q");
+        let result = formula.psubst(&map);
+        let desired = Formula::<Prop>::parse("(p /\\ q) /\\ q ==> (p /\\ q) /\\ q");
+        assert_eq!(result, desired)
+    }
+
+    #[test]
+    fn test_dual() {
+        let formula = Formula::<Prop>::parse("(a /\\ ~b) \\/ (~c \\/ d)");
+        let desired = Formula::<Prop>::parse("(a \\/ ~b ) /\\ (~c /\\ d)");
+        assert_eq!(formula.dual(), desired);
+    }
+    #[test]
+    fn test_nnf() {
+        let formula = Formula::<Prop>::parse("~(~A) /\\ (false \\/ B)");
+        let desired = Formula::<Prop>::parse("A /\\ B");
+        assert_eq!(formula.nnf(), desired);
+
+        let formula = Formula::<Prop>::parse("~(A /\\ (B \\/ C))");
+        let desired = Formula::<Prop>::parse("~A \\/ (~B /\\ ~C)");
+
+        assert_eq!(formula.nnf(), desired);
+
+        let formula = Formula::<Prop>::parse("~(A ==> (B <=> C))");
+        let desired = Formula::<Prop>::parse("A /\\ (B /\\ ~C \\/ ~B /\\ C)");
+        assert_eq!(formula.nnf(), desired);
+    }
+
+    #[test]
+    fn test_nenf() {
+        let formula = Formula::<Prop>::parse("~(A /\\ (B \\/ C))");
+        let desired = Formula::<Prop>::parse("~A \\/ (~B /\\ ~C)");
+        assert_eq!(formula.nenf(), desired);
+
+        let formula = Formula::<Prop>::parse("~(A ==> (B <=> C))");
+        let desired = Formula::<Prop>::parse("A /\\ (B <=> ~C)");
+        assert_eq!(formula.nenf(), desired);
+    }
+
+    #[test]
+    fn test_set_distrib_and_over_or() {
+        let formula1 = BTreeSet::from([
+            BTreeSet::from([Formula::atom(prop("A")), Formula::atom(prop("B"))]),
+            BTreeSet::from([Formula::atom(prop("B")), Formula::atom(prop("C"))]),
+        ]);
+        let formula2 = BTreeSet::from([
+            BTreeSet::from([Formula::atom(prop("A"))]),
+            BTreeSet::from([Formula::atom(prop("D")), Formula::atom(prop("C"))]),
+        ]);
+
+        let desired = BTreeSet::from([
+            BTreeSet::from([Formula::atom(prop("A")), Formula::atom(prop("B"))]),
+            BTreeSet::from([
+                Formula::atom(prop("A")),
+                Formula::atom(prop("B")),
+                Formula::atom(prop("D")),
+                Formula::atom(prop("C")),
+            ]),
+            BTreeSet::from([
+                Formula::atom(prop("B")),
+                Formula::atom(prop("C")),
+                Formula::atom(prop("A")),
+            ]),
+            BTreeSet::from([
+                Formula::atom(prop("B")),
+                Formula::atom(prop("C")),
+                Formula::atom(prop("D")),
+            ]),
+        ]);
+        let result = Formula::_set_distrib_and_over_or(&formula1, &formula2);
+        assert_eq!(result, desired);
+    }
+
+    #[test]
+    fn test_purednf() {
+        let formula = Formula::<Prop>::parse(
+            "false \\/ (((A /\\ true) \\/ (B /\\ C)) /\\ (A \\/ (D /\\ C)))",
+        );
+        let result = formula._purednf();
+        let desired = BTreeSet::from([
+            BTreeSet::from([Formula::atom(prop("A"))]),
+            BTreeSet::from([
+                Formula::atom(prop("A")),
+                Formula::atom(prop("D")),
+                Formula::atom(prop("C")),
+            ]),
+            BTreeSet::from([
+                Formula::atom(prop("B")),
+                Formula::atom(prop("C")),
+                Formula::atom(prop("A")),
+            ]),
+            BTreeSet::from([
+                Formula::atom(prop("B")),
+                Formula::atom(prop("C")),
+                Formula::atom(prop("D")),
+            ]),
+        ]);
+        assert_eq!(result, desired);
+
+        // Trivial:
+        let result_true = (Formula::True)._purednf();
+        let result_false = (Formula::False)._purednf();
+        assert_eq!(result_true, BTreeSet::from([BTreeSet::from([])]));
+        assert_eq!(result_false, BTreeSet::from([]));
+    }
+
+    #[test]
+    fn test_purecnf() {
+        let sentence = "
+            ((A /\\ (true \\/ E)) \\/ (B /\\ C)) /\\
+            ((~A \\/ (false /\\ F)) \\/ (D /\\ C))
+            ";
+        let formula = Formula::<Prop>::parse(sentence);
+        let desired = BTreeSet::from([
+            BTreeSet::from([Formula::atom(prop("A")), Formula::atom(prop("B"))]),
+            BTreeSet::from([Formula::atom(prop("A")), Formula::atom(prop("C"))]),
+            BTreeSet::from([
+                Formula::not(Formula::atom(prop("A"))),
+                Formula::atom(prop("D")),
+            ]),
+            BTreeSet::from([
+                Formula::not(Formula::atom(prop("A"))),
+                Formula::atom(prop("C")),
+            ]),
+        ]);
+        assert_eq!(formula._purecnf(), desired);
+
+        let result_true = (Formula::True)._purecnf();
+        let result_false = (Formula::False)._purecnf();
+        assert_eq!(result_false, BTreeSet::from([BTreeSet::from([])]));
+        assert_eq!(result_true, BTreeSet::from([]));
+    }
+    #[test]
+    fn test_contradictory_lits() {
+        let lits1 = BTreeSet::from([Formula::atom(prop("A")), Formula::atom(prop("B"))]);
+        let lits2 = BTreeSet::from([
+            Formula::atom(prop("A")),
+            Formula::atom(prop("B")),
+            Formula::not(Formula::atom(prop("A"))),
+        ]);
+
+        assert!(!Formula::_contradictory_lits(&lits1));
+        assert!(Formula::_contradictory_lits(&lits2));
+    }
+
+    #[test]
+    fn test_strip_supersets() {
+        let formula = BTreeSet::from([
+            BTreeSet::from([
+                Formula::atom(prop("A")),
+                Formula::atom(prop("B")),
+                Formula::atom(prop("D")),
+                Formula::atom(prop("C")),
+            ]),
+            BTreeSet::from([
+                Formula::atom(prop("B")),
+                Formula::atom(prop("C")),
+                Formula::atom(prop("A")),
+            ]),
+            BTreeSet::from([
+                Formula::atom(prop("A")),
+                Formula::atom(prop("B")),
+                Formula::atom(prop("D")),
+                Formula::atom(prop("C")),
+                Formula::atom(prop("E")),
+            ]),
+            BTreeSet::from([
+                Formula::atom(prop("B")),
+                Formula::atom(prop("C")),
+                Formula::atom(prop("E")),
+            ]),
+        ]);
+
+        let desired = BTreeSet::from([
+            BTreeSet::from([
+                Formula::atom(prop("B")),
+                Formula::atom(prop("C")),
+                Formula::atom(prop("A")),
+            ]),
+            BTreeSet::from([
+                Formula::atom(prop("B")),
+                Formula::atom(prop("C")),
+                Formula::atom(prop("E")),
+            ]),
+        ]);
+        let result = Formula::_strip_supersets(&formula);
+        assert_eq!(result, desired);
+    }
+
+    #[test]
+    fn test_dnf() {
+        let formula = Formula::<Prop>::parse("((A /\\ true) \\/ (B /\\ ~B)) /\\ (B \\/ (D /\\ C))");
+        let result = formula.dnf();
+        let desired = Formula::<Prop>::parse("(A /\\ B) \\/ ((A /\\ C) /\\ D)");
+
+        assert_eq!(result, desired);
+    }
+
+    #[test]
+    fn test_dnf_unsatisfiable() {
+        // Should be False on contradictions.
+        let formula = Formula::<Prop>::parse("P /\\ ~P");
+        assert_eq!(formula.dnf(), Formula::False);
+    }
+
+    #[test]
+    fn test_cnf_tautology() {
+        // Should be True on tautologies.
+        let formula = Formula::<Prop>::parse("P \\/ ~P");
+        assert_eq!(formula.cnf(), Formula::True);
+    }
+
+    #[test]
+    fn test_cnf() {
+        let sentence = "
+            ((A /\\ (true \\/ E)) \\/ (B /\\ C)) /\\
+            ((~A \\/ (false /\\ F)) \\/ (D /\\ C))
+            ";
+        let formula = Formula::<Prop>::parse(sentence);
+
+        let desired_sentence = "(((A \\/ B) /\\ (A \\/C)) /\\ (C \\/ ~A)) /\\ (D \\/ ~A)";
+        let desired = Formula::<Prop>::parse(desired_sentence);
+        assert_eq!(formula.cnf(), desired);
+    }
+
+    #[test]
+    fn test_is_cnf() {
+        // YES
+        let formula = Formula::<Prop>::parse("~A /\\ B");
+        assert!(formula.is_cnf());
+        // YES
+        let formula = Formula::<Prop>::parse("~A \\/ B");
+        assert!(formula.is_cnf());
+        // No
+        let formula = Formula::<Prop>::parse("(A /\\ C) \\/ B");
+        assert!(!formula.is_cnf());
+        // YES
+        let formula = Formula::<Prop>::parse("((D \\/ A) \\/ C) /\\ B");
+        assert!(formula.is_cnf());
+    }
+}
+
+// ### Definitional CNF
+
+type Triple = (Formula<Prop>, Defs, usize);
+type BinOp = fn(Formula<Prop>, Formula<Prop>) -> Formula<Prop>;
+type Defs = HashMap<Formula<Prop>, (Formula<Prop>, Formula<Prop>)>;
+
+impl Formula<Prop> {
     // Note that when _maincnf recieves such a triple, the formula could be anything
     // But when such a triple is returned by defstep (and so by this function),
     // the formula is always an atom and so the value returned here is always
@@ -619,8 +1019,11 @@ impl Formula<Prop> {
     }
 
     const DEF_CNF_PREFIX: &'static str = "p_";
+    fn _mkprop_name(idx: usize) -> String {
+        format!("{}{}", Formula::DEF_CNF_PREFIX, idx)
+    }
     fn _mkprop(idx: usize) -> Prop {
-        Prop::prop(&format!("{}{}", Formula::DEF_CNF_PREFIX, idx))
+        Prop::prop(&Formula::_mkprop_name(idx))
     }
 
     fn _defstep(bin_op: BinOp, operands: (Formula<Prop>, Formula<Prop>), params: Triple) -> Triple {
@@ -745,7 +1148,106 @@ impl Formula<Prop> {
     fn def_cnf_opt(&self) -> Formula<Prop> {
         self.def_cnf(&Formula::_def_cnf_opt_outer_conjunctions)
     }
+}
 
+#[cfg(test)]
+mod def_cnf_tests {
+    use super::*;
+
+    // Convenience to save us some typing.
+    fn prop(name: &str) -> Prop {
+        Prop::prop(name)
+    }
+
+    #[test]
+    fn test_max_taken_index() {
+        // Only valid taken indices are 3 and 5.
+        let sentence = format!(
+            "
+        ((oranges /\\ (true \\/ {})) /\\ (B ==> apples)) /\\
+        ((~A \\/ (false <=> {})) \\/ (D /\\ 11))
+        ",
+            Formula::_mkprop_name(3),
+            Formula::_mkprop_name(5)
+        );
+
+        let formula = Formula::<Prop>::parse(&sentence);
+        let result = Formula::_max_taken_index(&formula);
+        assert_eq!(result, 5);
+    }
+
+    #[test]
+    fn test_def_cnf_full_trivial() {
+        let formula = Formula::<Prop>::parse("A");
+        let result = formula.def_cnf_full();
+        assert_eq!(result, formula);
+    }
+
+    #[test]
+    fn test_def_cnf_opt_trivial() {
+        let formula = Formula::<Prop>::parse("A");
+        let result = formula.def_cnf_opt();
+        assert_eq!(result, formula);
+    }
+
+    #[test]
+    fn test_def_cnf_full_nontrivial() {
+        let formula = Formula::<Prop>::parse("A /\\ B");
+        let result = formula.def_cnf_full();
+        let p = Formula::_mkprop_name(0);
+        let desired_equiv_str = format!("{} /\\ ({} <=> A /\\ B)", p, p);
+        let desired_equiv = Formula::<Prop>::parse(&desired_equiv_str);
+        // Since we know that `desired_equiv` is equisatisfiable with the input `formula`
+        // the following shows that the result is equisatisfiable with the input `formula`.
+        assert!(result.equivalent(&desired_equiv));
+        assert!(result.is_cnf());
+    }
+
+    #[test]
+    fn test_def_cnf_opt_nontrivial() {
+        let formula = Formula::<Prop>::parse("A /\\ B");
+        let result = formula.def_cnf_opt();
+        assert_eq!(result, formula);
+    }
+
+    #[test]
+    fn test_def_cnf_full_lesstrivial() {
+        let formula = Formula::<Prop>::parse("(A ==> B) \\/ (C /\\ D)");
+        let result = formula.def_cnf_full();
+        let mp0 = Formula::_mkprop_name(0);
+        let mp1 = Formula::_mkprop_name(1);
+        let mp2 = Formula::_mkprop_name(2);
+
+        let desired_equiv_sentence = format!(
+            "
+        ((({} <=> (~A \\/ B)) /\\
+        ({} <=> (C /\\ D))) /\\
+        ({} <=> ({} \\/ {}))) /\\
+        {}",
+            mp0, mp1, mp2, mp0, mp1, mp2
+        );
+
+        let desired_equiv = Formula::<Prop>::parse(&desired_equiv_sentence);
+
+        // Since we know that `desired_equiv` is equisatisfiable with the input `formula`
+        // the following shows that the result is equisatisfiable with the input `formula`.
+        assert!(result.equivalent(&desired_equiv));
+        // Check already in cnf form
+        assert!(result.is_cnf());
+    }
+
+    #[test]
+    fn test_def_cnf_opt_lesstrivial() {
+        let formula = Formula::<Prop>::parse("A \\/ B /\\ C");
+        let result = formula.def_cnf_opt();
+        // Note the top nodes of the tree are preserved.
+        let desired = Formula::<Prop>::parse("(A \\/ B) /\\ (A \\/ C)");
+        assert_eq!(result, desired);
+    }
+}
+
+// ### Davis-Putnam (DP)
+impl Formula<Prop> {
     fn _one_literal_rule(clauses: &FormulaSet) -> Result<FormulaSet, ErrInner> {
         for clause in clauses {
             if clause.len() == 1 {
@@ -875,7 +1377,7 @@ impl Formula<Prop> {
     where
         F: Fn(&Formula<Prop>) -> isize,
     {
-        // Returns the T that minimizes F */
+        // Returns the input that minimizes `obj` */
         if domain.len() == 0 {
             return None;
         }
@@ -930,800 +1432,16 @@ impl Formula<Prop> {
     pub fn dp_taut(&self) -> bool {
         !Formula::dp_sat(&Formula::not(self.clone()))
     }
-
-    fn _posneg_count(clauses: &FormulaSet, literal: &Formula<Prop>) -> isize {
-        // splitting creates *two* formulae for DPLL of sizes
-        // N + 1 each, but the next call to DPLL will call the unit clause rule
-        // which will reduce each by
-        // 1) removing the whole *clauses* where `literal` appears positively, and
-        // 2) removing all occurences of the negation of literal.
-        // NOTE that Harrison seesm to count both of (1) and (2) equally, but
-        // it doesn't seem that much harder to count up the sizes of the
-        // clauses removed in 1).
-        let (num_containing_lit, num_containing_neg) =
-            Formula::_counts_containing_literal_and_negation(&clauses, &literal);
-        num_containing_lit + num_containing_neg
-    }
-
-    pub fn dpll(clauses: &FormulaSet) -> bool {
-        // The Davis-Putnam-Logemann-Loveland (1962) procedure.
-        if clauses.len() == 0 {
-            return true;
-        }
-        if clauses.contains(&BTreeSet::new()) {
-            return false;
-        }
-        if let Ok(formula) = Formula::_one_literal_rule(&clauses) {
-            return Formula::dpll(&formula);
-        }
-        if let Ok(formula) = Formula::_affirmative_negative_rule(&clauses) {
-            return Formula::dpll(&formula);
-        }
-        // Split.
-        let positive_literals: BTreeSet<Formula<Prop>> = clauses
-            .iter()
-            .fold(BTreeSet::new(), |x, y| &x | &y)
-            .into_iter()
-            .filter(|literal| !Formula::negative(literal))
-            .collect();
-        let atom = Formula::_find_min(
-            &|atom| -Formula::_posneg_count(&clauses, atom),
-            &positive_literals,
-        )
-        .expect("Positive literals should not be empty");
-        let negated = Formula::negate(&atom);
-        let mut with_atom = clauses.clone();
-        with_atom.insert(BTreeSet::from([atom]));
-        let mut with_negated = clauses.clone();
-        with_negated.insert(BTreeSet::from([negated]));
-        Formula::dpll(&with_atom) || Formula::dpll(&with_negated)
-    }
-
-    pub fn dpll_sat(&self) -> bool {
-        Formula::dpll(&Formula::_cnf_formulaset(&self))
-    }
-    pub fn dpll_taut(&self) -> bool {
-        !Formula::dpll_sat(&Formula::not(self.clone()))
-    }
 }
 
 #[cfg(test)]
-mod eval_tests {
+mod dp_tests {
     use super::*;
 
     // Convenience to save us some typing.
     fn prop(name: &str) -> Prop {
         Prop::prop(name)
     }
-
-    #[test]
-    fn test_eval() {
-        let mut formula;
-        let val = Valuation::from([(prop("A"), true), (prop("B"), false), (prop("C"), true)]);
-
-        formula = Formula::atom(prop("A"));
-        assert_eq!(formula.eval(&val), true);
-
-        formula = Formula::atom(prop("B"));
-        assert_eq!(formula.eval(&val), false);
-
-        formula = Formula::iff(
-            Formula::atom(prop("C")),
-            Formula::and(Formula::atom(prop("A")), Formula::atom(prop("B"))),
-        );
-        assert_eq!(formula.eval(&val), false);
-    }
-
-    #[test]
-    fn test_get_all_valuations() {
-        let atoms = BTreeSet::from([prop("A"), prop("B"), prop("C")]);
-        let result = Formula::get_all_valuations(&atoms);
-        let desired_result = vec![
-            BTreeMap::from([(prop("A"), true), (prop("B"), true), (prop("C"), true)]),
-            BTreeMap::from([(prop("A"), true), (prop("B"), true), (prop("C"), false)]),
-            BTreeMap::from([(prop("A"), true), (prop("B"), false), (prop("C"), true)]),
-            BTreeMap::from([(prop("A"), true), (prop("B"), false), (prop("C"), false)]),
-            BTreeMap::from([(prop("A"), false), (prop("B"), true), (prop("C"), true)]),
-            BTreeMap::from([(prop("A"), false), (prop("B"), true), (prop("C"), false)]),
-            BTreeMap::from([(prop("A"), false), (prop("B"), false), (prop("C"), true)]),
-            BTreeMap::from([(prop("A"), false), (prop("B"), false), (prop("C"), false)]),
-        ];
-        assert_eq!(result, desired_result);
-    }
-
-    #[test]
-    fn test_print_truthtable() {
-        let formula = Formula::iff(
-            Formula::atom(prop("C")),
-            Formula::and(Formula::atom(prop("A")), Formula::atom(prop("B"))),
-        );
-        let mut output = Vec::new();
-        formula.print_truthtable(&mut output);
-        let output = String::from_utf8(output).expect("Not UTF-8");
-        let desired_output = "\
-A     B     C     | formula
----------------------------
-true  true  true  | true
-true  true  false | false
-true  false true  | false
-true  false false | true
-false true  true  | false
-false true  false | true
-false false true  | false
-false false false | true
----------------------------
-";
-
-        assert_eq!(output, desired_output);
-    }
-
-    #[test]
-    fn test_tautology_and_satisfiable() {
-        let form1 = Formula::True;
-        assert!(form1.tautology());
-        assert!(!form1.unsatisfiable());
-        assert!(form1.satisfiable());
-
-        let form2 = Formula::or(Formula::atom(prop("A")), Formula::atom(prop("B")));
-        assert!(!form2.tautology());
-        assert!(!form2.unsatisfiable());
-        assert!(form2.satisfiable());
-
-        let form3 = Formula::or(
-            Formula::atom(prop("A")),
-            Formula::not(Formula::atom(prop("A"))),
-        );
-        assert!(form3.tautology());
-        assert!(!form3.unsatisfiable());
-        assert!(form3.satisfiable());
-
-        let form4 = Formula::and(
-            Formula::atom(prop("A")),
-            Formula::not(Formula::atom(prop("A"))),
-        );
-        assert!(!form4.tautology());
-        assert!(form4.unsatisfiable());
-        assert!(!form4.satisfiable());
-    }
-
-    #[test]
-    fn test_psubst() {
-        let map = HashMap::from([(
-            prop("p"),
-            Formula::and(Formula::atom(prop("p")), Formula::atom(prop("q"))),
-        )]);
-        let formula = Formula::and(
-            Formula::atom(prop("p")),
-            Formula::and(
-                Formula::atom(prop("q")),
-                Formula::and(Formula::atom(prop("p")), Formula::atom(prop("q"))),
-            ),
-        );
-        let desired = Formula::and(
-            Formula::and(Formula::atom(prop("p")), Formula::atom(prop("q"))),
-            Formula::and(
-                Formula::atom(prop("q")),
-                Formula::and(
-                    Formula::and(Formula::atom(prop("p")), Formula::atom(prop("q"))),
-                    Formula::atom(prop("q")),
-                ),
-            ),
-        );
-        let result = formula.psubst(&map);
-        assert_eq!(result, desired)
-    }
-
-    #[test]
-    fn test_dual() {
-        let formula = Formula::or(
-            Formula::and(
-                Formula::atom(prop("a")),
-                Formula::not(Formula::atom(prop("b"))),
-            ),
-            Formula::or(
-                Formula::not(Formula::atom(prop("c"))),
-                Formula::atom(prop("d")),
-            ),
-        );
-        let desired = Formula::and(
-            Formula::or(
-                Formula::atom(prop("a")),
-                Formula::not(Formula::atom(prop("b"))),
-            ),
-            Formula::and(
-                Formula::not(Formula::atom(prop("c"))),
-                Formula::atom(prop("d")),
-            ),
-        );
-        assert_eq!(formula.dual(), desired);
-    }
-    #[test]
-    fn test_nnf() {
-        let formula = Formula::and(
-            Formula::not(Formula::not(Formula::atom(prop("A")))),
-            Formula::or(Formula::False, Formula::atom(prop("B"))),
-        );
-
-        let desired = Formula::and(Formula::atom(prop("A")), Formula::atom(prop("B")));
-        assert_eq!(formula.nnf(), desired);
-
-        let formula = Formula::not(Formula::and(
-            Formula::atom(prop("A")),
-            Formula::or(Formula::atom(prop("B")), Formula::atom(prop("C"))),
-        ));
-        let desired = Formula::or(
-            Formula::not(Formula::atom(prop("A"))),
-            Formula::and(
-                Formula::not(Formula::atom(prop("B"))),
-                Formula::not(Formula::atom(prop("C"))),
-            ),
-        );
-        assert_eq!(formula.nnf(), desired);
-
-        let formula = Formula::not(Formula::imp(
-            Formula::atom(prop("A")),
-            Formula::iff(Formula::atom(prop("B")), Formula::atom(prop("C"))),
-        ));
-        let desired = Formula::and(
-            Formula::atom(prop("A")),
-            Formula::or(
-                Formula::and(
-                    Formula::atom(prop("B")),
-                    Formula::not(Formula::atom(prop("C"))),
-                ),
-                Formula::and(
-                    Formula::not(Formula::atom(prop("B"))),
-                    Formula::atom(prop("C")),
-                ),
-            ),
-        );
-        assert_eq!(formula.nnf(), desired);
-    }
-
-    #[test]
-    fn test_nenf() {
-        let formula = Formula::not(Formula::and(
-            Formula::atom(prop("A")),
-            Formula::or(Formula::atom(prop("B")), Formula::atom(prop("C"))),
-        ));
-        let desired = Formula::or(
-            Formula::not(Formula::atom(prop("A"))),
-            Formula::and(
-                Formula::not(Formula::atom(prop("B"))),
-                Formula::not(Formula::atom(prop("C"))),
-            ),
-        );
-        assert_eq!(formula.nenf(), desired);
-
-        let formula = Formula::not(Formula::imp(
-            Formula::atom(prop("A")),
-            Formula::iff(Formula::atom(prop("B")), Formula::atom(prop("C"))),
-        ));
-        let desired = Formula::and(
-            Formula::atom(prop("A")),
-            Formula::iff(
-                Formula::atom(prop("B")),
-                Formula::not(Formula::atom(prop("C"))),
-            ),
-        );
-        assert_eq!(formula.nenf(), desired);
-    }
-
-    // #[test]
-    // fn test_make_lits() {
-    //     let valuation = BTreeMap::from([(prop("A"), false), (prop("B"), false), (prop("C"), true)]);
-    //     let items = vec![
-    //         Formula::atom(prop("A")),
-    //         Formula::and(Formula::atom(prop("B")), Formula::atom(prop("C"))),
-    //         Formula::atom(prop("C")),
-    //     ];
-    //     let result = Formula::make_lits(&items, &valuation);
-    //     let desired = Formula::and(
-    //         Formula::and(
-    //             Formula::not(Formula::atom(prop("A"))),
-    //             Formula::not(Formula::and(
-    //                 Formula::atom(prop("B")),
-    //                 Formula::atom(prop("C")),
-    //             )),
-    //         ),
-    //         Formula::atom(prop("C")),
-    //     );
-    //     assert_eq!(result, desired);
-    // }
-
-    // #[test]
-    // fn test_all_sat_valuations() {
-    //     let formula = Formula::or(
-    //         Formula::and(Formula::atom(prop("A")), Formula::atom(prop("B"))),
-    //         Formula::atom(prop("C")),
-    //     );
-
-    //     let result = formula.all_sat_valuations();
-    //     let desired = vec![
-    //         BTreeMap::from([(prop("A"), true), (prop("B"), true), (prop("C"), true)]),
-    //         BTreeMap::from([(prop("A"), true), (prop("B"), true), (prop("C"), false)]),
-    //         BTreeMap::from([(prop("A"), true), (prop("B"), false), (prop("C"), true)]),
-    //         BTreeMap::from([(prop("A"), false), (prop("B"), true), (prop("C"), true)]),
-    //         BTreeMap::from([(prop("A"), false), (prop("B"), false), (prop("C"), true)]),
-    //     ];
-
-    //     assert_eq!(result, desired);
-    // }
-
-    // #[test]
-    // fn test_naive_dnf() {
-    //     let formula = Formula::or(
-    //         Formula::and(Formula::atom(prop("A")), Formula::atom(prop("B"))),
-    //         Formula::atom(prop("C")),
-    //     );
-    //     let desired = Formula::list_disj(&vec![
-    //         Formula::and(
-    //             Formula::and(Formula::atom(prop("A")), Formula::atom(prop("B"))),
-    //             Formula::atom(prop("C")),
-    //         ),
-    //         Formula::and(
-    //             Formula::and(Formula::atom(prop("A")), Formula::atom(prop("B"))),
-    //             Formula::not(Formula::atom(prop("C"))),
-    //         ),
-    //         Formula::and(
-    //             Formula::and(
-    //                 Formula::atom(prop("A")),
-    //                 Formula::not(Formula::atom(prop("B"))),
-    //             ),
-    //             Formula::atom(prop("C")),
-    //         ),
-    //         Formula::and(
-    //             Formula::and(
-    //                 Formula::not(Formula::atom(prop("A"))),
-    //                 Formula::atom(prop("B")),
-    //             ),
-    //             Formula::atom(prop("C")),
-    //         ),
-    //         Formula::and(
-    //             Formula::and(
-    //                 Formula::not(Formula::atom(prop("A"))),
-    //                 Formula::not(Formula::atom(prop("B"))),
-    //             ),
-    //             Formula::atom(prop("C")),
-    //         ),
-    //     ]);
-    //     assert_eq!(formula.naive_dnf(), desired);
-    // }
-
-    // #[test]
-    // fn test_raw_dnf() {
-    //     let formula = Formula::and(
-    //         Formula::or(
-    //             Formula::not(Formula::atom(prop("A"))),
-    //             Formula::and(
-    //                 Formula::atom(prop("B")),
-    //                 Formula::or(Formula::atom(prop("C")), Formula::atom(prop("D"))),
-    //             ),
-    //         ),
-    //         Formula::atom(prop("E")),
-    //     );
-
-    //     let desired = Formula::or(
-    //         Formula::and(
-    //             Formula::not(Formula::atom(prop("A"))),
-    //             Formula::atom(prop("E")),
-    //         ),
-    //         Formula::or(
-    //             Formula::and(
-    //                 Formula::and(Formula::atom(prop("B")), Formula::atom(prop("C"))),
-    //                 Formula::atom(prop("E")),
-    //             ),
-    //             Formula::and(
-    //                 Formula::and(Formula::atom(prop("B")), Formula::atom(prop("D"))),
-    //                 Formula::atom(prop("E")),
-    //             ),
-    //         ),
-    //     );
-
-    //     assert_eq!(formula.raw_dnf(), desired);
-    // }
-
-    #[test]
-    fn test_set_distrib_and_over_or() {
-        let formula1 = BTreeSet::from([
-            BTreeSet::from([Formula::atom(prop("A")), Formula::atom(prop("B"))]),
-            BTreeSet::from([Formula::atom(prop("B")), Formula::atom(prop("C"))]),
-        ]);
-        let formula2 = BTreeSet::from([
-            BTreeSet::from([Formula::atom(prop("A"))]),
-            BTreeSet::from([Formula::atom(prop("D")), Formula::atom(prop("C"))]),
-        ]);
-
-        let desired = BTreeSet::from([
-            BTreeSet::from([Formula::atom(prop("A")), Formula::atom(prop("B"))]),
-            BTreeSet::from([
-                Formula::atom(prop("A")),
-                Formula::atom(prop("B")),
-                Formula::atom(prop("D")),
-                Formula::atom(prop("C")),
-            ]),
-            BTreeSet::from([
-                Formula::atom(prop("B")),
-                Formula::atom(prop("C")),
-                Formula::atom(prop("A")),
-            ]),
-            BTreeSet::from([
-                Formula::atom(prop("B")),
-                Formula::atom(prop("C")),
-                Formula::atom(prop("D")),
-            ]),
-        ]);
-        let result = Formula::_set_distrib_and_over_or(&formula1, &formula2);
-        assert_eq!(result, desired);
-    }
-
-    #[test]
-    fn test_purednf() {
-        let formula = Formula::or(
-            Formula::False,
-            // After distrib:  [ (A & True & A) V (A & True & D & C) V (B & C & A) V (B & C & D) ]
-            Formula::and(
-                Formula::or(
-                    Formula::and(Formula::atom(prop("A")), Formula::True),
-                    Formula::and(Formula::atom(prop("B")), Formula::atom(prop("C"))),
-                ),
-                Formula::or(
-                    Formula::atom(prop("A")),
-                    Formula::and(Formula::atom(prop("D")), Formula::atom(prop("C"))),
-                ),
-            ),
-        );
-        let result = formula._purednf();
-        let desired = BTreeSet::from([
-            BTreeSet::from([Formula::atom(prop("A"))]),
-            BTreeSet::from([
-                Formula::atom(prop("A")),
-                Formula::atom(prop("D")),
-                Formula::atom(prop("C")),
-            ]),
-            BTreeSet::from([
-                Formula::atom(prop("B")),
-                Formula::atom(prop("C")),
-                Formula::atom(prop("A")),
-            ]),
-            BTreeSet::from([
-                Formula::atom(prop("B")),
-                Formula::atom(prop("C")),
-                Formula::atom(prop("D")),
-            ]),
-        ]);
-        assert_eq!(result, desired);
-
-        // Trivial:
-        let result_true = (Formula::True)._purednf();
-        let result_false = (Formula::False)._purednf();
-        assert_eq!(result_true, BTreeSet::from([BTreeSet::from([])]));
-        assert_eq!(result_false, BTreeSet::from([]));
-    }
-
-    #[test]
-    fn test_purecnf() {
-        let formula = Formula::and(
-            Formula::or(
-                Formula::and(
-                    Formula::atom(prop("A")),
-                    Formula::or(Formula::True, Formula::atom(prop("E"))),
-                ),
-                Formula::and(Formula::atom(prop("B")), Formula::atom(prop("C"))),
-            ),
-            Formula::or(
-                Formula::or(
-                    Formula::not(Formula::atom(prop("A"))),
-                    Formula::and(Formula::False, Formula::atom(prop("F"))),
-                ),
-                Formula::and(Formula::atom(prop("D")), Formula::atom(prop("C"))),
-            ),
-        );
-        let desired = BTreeSet::from([
-            BTreeSet::from([Formula::atom(prop("A")), Formula::atom(prop("B"))]),
-            BTreeSet::from([Formula::atom(prop("A")), Formula::atom(prop("C"))]),
-            BTreeSet::from([
-                Formula::not(Formula::atom(prop("A"))),
-                Formula::atom(prop("D")),
-            ]),
-            BTreeSet::from([
-                Formula::not(Formula::atom(prop("A"))),
-                Formula::atom(prop("C")),
-            ]),
-        ]);
-        assert_eq!(formula._purecnf(), desired);
-
-        let result_true = (Formula::True)._purecnf();
-        let result_false = (Formula::False)._purecnf();
-        assert_eq!(result_false, BTreeSet::from([BTreeSet::from([])]));
-        assert_eq!(result_true, BTreeSet::from([]));
-    }
-
-    #[test]
-    fn test_contradictory_lits() {
-        let lits1 = BTreeSet::from([Formula::atom(prop("A")), Formula::atom(prop("B"))]);
-        let lits2 = BTreeSet::from([
-            Formula::atom(prop("A")),
-            Formula::atom(prop("B")),
-            Formula::not(Formula::atom(prop("A"))),
-        ]);
-
-        assert!(!Formula::_contradictory_lits(&lits1));
-        assert!(Formula::_contradictory_lits(&lits2));
-    }
-
-    #[test]
-    fn test_strip_supersets() {
-        let formula = BTreeSet::from([
-            BTreeSet::from([
-                Formula::atom(prop("A")),
-                Formula::atom(prop("B")),
-                Formula::atom(prop("D")),
-                Formula::atom(prop("C")),
-            ]),
-            BTreeSet::from([
-                Formula::atom(prop("B")),
-                Formula::atom(prop("C")),
-                Formula::atom(prop("A")),
-            ]),
-            BTreeSet::from([
-                Formula::atom(prop("A")),
-                Formula::atom(prop("B")),
-                Formula::atom(prop("D")),
-                Formula::atom(prop("C")),
-                Formula::atom(prop("E")),
-            ]),
-            BTreeSet::from([
-                Formula::atom(prop("B")),
-                Formula::atom(prop("C")),
-                Formula::atom(prop("E")),
-            ]),
-        ]);
-
-        let desired = BTreeSet::from([
-            BTreeSet::from([
-                Formula::atom(prop("B")),
-                Formula::atom(prop("C")),
-                Formula::atom(prop("A")),
-            ]),
-            BTreeSet::from([
-                Formula::atom(prop("B")),
-                Formula::atom(prop("C")),
-                Formula::atom(prop("E")),
-            ]),
-        ]);
-        let result = Formula::_strip_supersets(&formula);
-        assert_eq!(result, desired);
-    }
-
-    #[test]
-    fn test_dnf() {
-        let formula = Formula::and(
-            Formula::or(
-                Formula::and(Formula::atom(prop("A")), Formula::True),
-                Formula::and(
-                    Formula::atom(prop("B")),
-                    Formula::not(Formula::atom(prop("B"))),
-                ),
-            ),
-            Formula::or(
-                Formula::atom(prop("B")),
-                Formula::and(Formula::atom(prop("D")), Formula::atom(prop("C"))),
-            ),
-        );
-        let result = formula.dnf();
-        let desired = Formula::or(
-            Formula::and(Formula::atom(prop("A")), Formula::atom(prop("B"))),
-            Formula::and(
-                Formula::and(Formula::atom(prop("A")), Formula::atom(prop("C"))),
-                Formula::atom(prop("D")),
-            ),
-        );
-        assert_eq!(result, desired);
-    }
-
-    #[test]
-    fn test_dnf_unsatisfiable() {
-        // Should be False on contradictions.
-        let formula = Formula::and(
-            Formula::atom(prop("P")),
-            Formula::not(Formula::atom(prop("P"))),
-        );
-        assert_eq!(formula.dnf(), Formula::False);
-    }
-
-    #[test]
-    fn test_cnf_tautology() {
-        // Should be True on tautologies.
-        let formula = Formula::or(
-            Formula::atom(prop("P")),
-            Formula::not(Formula::atom(prop("P"))),
-        );
-        assert_eq!(formula.cnf(), Formula::True);
-    }
-
-    #[test]
-    fn test_cnf() {
-        let formula = Formula::and(
-            Formula::or(
-                Formula::and(
-                    Formula::atom(prop("A")),
-                    Formula::or(Formula::True, Formula::atom(prop("E"))),
-                ),
-                Formula::and(Formula::atom(prop("B")), Formula::atom(prop("C"))),
-            ),
-            Formula::or(
-                Formula::or(
-                    Formula::not(Formula::atom(prop("A"))),
-                    Formula::and(Formula::False, Formula::atom(prop("F"))),
-                ),
-                Formula::and(Formula::atom(prop("D")), Formula::atom(prop("C"))),
-            ),
-        );
-
-        let desired = Formula::list_conj(&vec![
-            Formula::or(Formula::atom(prop("A")), Formula::atom(prop("B"))),
-            Formula::or(Formula::atom(prop("A")), Formula::atom(prop("C"))),
-            Formula::or(
-                Formula::atom(prop("C")),
-                Formula::not(Formula::atom(prop("A"))),
-            ),
-            Formula::or(
-                Formula::atom(prop("D")),
-                Formula::not(Formula::atom(prop("A"))),
-            ),
-        ]);
-        assert_eq!(formula.cnf(), desired);
-    }
-
-    #[test]
-    fn test_max_taken_index() {
-        // Only valid taken indices are 3 and 5.
-        let formula = Formula::and(
-            Formula::and(
-                Formula::and(
-                    Formula::atom(prop("oranges")),
-                    Formula::or(Formula::True, Formula::atom(Formula::_mkprop(3))),
-                ),
-                Formula::imp(Formula::atom(prop("B")), Formula::atom(prop("apples"))),
-            ),
-            Formula::or(
-                Formula::or(
-                    Formula::not(Formula::atom(prop("A"))),
-                    Formula::iff(Formula::False, Formula::atom(Formula::_mkprop(5))),
-                ),
-                Formula::and(Formula::atom(prop("D")), Formula::atom(prop("11"))),
-            ),
-        );
-        let result = Formula::_max_taken_index(&formula);
-        assert_eq!(result, 5);
-    }
-
-    #[test]
-    fn test_is_cnf() {
-        // YES
-        let formula = Formula::and(
-            Formula::not(Formula::atom(prop("A"))),
-            Formula::atom(prop("B")),
-        );
-        assert!(formula.is_cnf());
-        // YES
-        let formula = Formula::or(
-            Formula::not(Formula::atom(prop("A"))),
-            Formula::atom(prop("B")),
-        );
-        assert!(formula.is_cnf());
-        // No
-        let formula = Formula::or(
-            Formula::and(Formula::atom(prop("A")), Formula::atom(prop("C"))),
-            Formula::atom(prop("B")),
-        );
-        assert!(!formula.is_cnf());
-        // YES
-        let formula = Formula::and(
-            Formula::or(
-                Formula::or(Formula::atom(prop("D")), Formula::atom(prop("A"))),
-                Formula::atom(prop("C")),
-            ),
-            Formula::atom(prop("B")),
-        );
-        assert!(formula.is_cnf());
-    }
-
-    #[test]
-    fn test_def_cnf_full_trivial() {
-        let formula = Formula::atom(prop("A"));
-        let result = formula.def_cnf_full();
-        assert_eq!(result, formula);
-    }
-
-    #[test]
-    fn test_def_cnf_opt_trivial() {
-        let formula = Formula::atom(prop("A"));
-        let result = formula.def_cnf_opt();
-        assert_eq!(result, formula);
-    }
-
-    #[test]
-    fn test_def_cnf_full_nontrivial() {
-        let formula = Formula::and(Formula::atom(prop("A")), Formula::atom(prop("B")));
-        let result = formula.def_cnf_full();
-        let p = Formula::_mkprop(0);
-        let desired_equiv = Formula::and(
-            Formula::atom(p.clone()),
-            Formula::iff(
-                Formula::atom(p),
-                Formula::and(Formula::atom(prop("A")), Formula::atom(prop("B"))),
-            ),
-        );
-
-        // Since we know that `desired_equiv` is equisatisfiable with the input `formula`
-        // the following shows that the result is equisatisfiable with the input `formula`.
-        assert!(result.equivalent(&desired_equiv));
-        assert!(result.is_cnf());
-    }
-
-    #[test]
-    fn test_def_cnf_opt_nontrivial() {
-        let formula = Formula::and(Formula::atom(prop("A")), Formula::atom(prop("B")));
-        let result = formula.def_cnf_opt();
-        assert_eq!(result, formula);
-    }
-
-    #[test]
-    fn test_def_cnf_full_lesstrivial() {
-        let formula = Formula::or(
-            Formula::imp(Formula::atom(prop("A")), Formula::atom(prop("B"))),
-            Formula::and(Formula::atom(prop("C")), Formula::atom(prop("D"))),
-        );
-        let result = formula.def_cnf_full();
-        let desired_equiv = Formula::list_conj(&vec![
-            // _mkprop(0)
-            Formula::iff(
-                Formula::atom(Formula::_mkprop(0)),
-                Formula::or(
-                    Formula::not(Formula::atom(prop("A"))),
-                    Formula::atom(prop("B")),
-                ),
-            ),
-            // _mkprop(1)
-            Formula::iff(
-                Formula::atom(Formula::_mkprop(1)),
-                Formula::and(Formula::atom(prop("C")), Formula::atom(prop("D"))),
-            ),
-            // _mkprop(2)
-            Formula::iff(
-                Formula::atom(Formula::_mkprop(2)),
-                Formula::or(
-                    Formula::atom(Formula::_mkprop(0)),
-                    Formula::atom(Formula::_mkprop(1)),
-                ),
-            ),
-            Formula::atom(Formula::_mkprop(2)),
-        ]);
-
-        // Since we know that `desired_equiv` is equisatisfiable with the input `formula`
-        // the following shows that the result is equisatisfiable with the input `formula`.
-        assert!(result.equivalent(&desired_equiv));
-        // Check already in cnf form
-        assert!(result.is_cnf());
-    }
-
-    #[test]
-    fn test_def_cnf_opt_lesstrivial() {
-        let formula = Formula::or(
-            Formula::atom(prop("A")),
-            Formula::and(Formula::atom(prop("B")), Formula::atom(prop("C"))),
-        );
-        let result = formula.def_cnf_opt();
-        // Note the top nodes of the tree are preserved.
-        let desired = Formula::and(
-            Formula::or(Formula::atom(prop("A")), Formula::atom(prop("B"))),
-            Formula::or(Formula::atom(prop("A")), Formula::atom(prop("C"))),
-        );
-        assert_eq!(result, desired);
-    }
-
     #[test]
     fn test_one_literal_rule() {
         let formula_set = BTreeSet::from([
@@ -1974,6 +1692,74 @@ false false false | true
         assert!(!Formula::dp_taut(&Formula::False));
         assert!(Formula::dp_sat(&Formula::atom(prop("A"))));
         assert!(!Formula::dp_taut(&Formula::atom(prop("A"))));
+    }
+}
+
+// DPLL
+impl Formula<Prop> {
+    fn _posneg_count(clauses: &FormulaSet, literal: &Formula<Prop>) -> isize {
+        // splitting creates *two* formulae for DPLL of sizes
+        // N + 1 each, but the next call to DPLL will call the unit clause rule
+        // which will reduce each by
+        // 1) removing the whole *clauses* where `literal` appears positively, and
+        // 2) removing all occurences of the negation of literal.
+        // NOTE that Harrison seems to count both of (1) and (2) equally, but
+        // it doesn't seem that much harder to count up the sizes of the
+        // clauses removed in 1).
+        let (num_containing_lit, num_containing_neg) =
+            Formula::_counts_containing_literal_and_negation(&clauses, &literal);
+        num_containing_lit + num_containing_neg
+    }
+
+    pub fn dpll(clauses: &FormulaSet) -> bool {
+        // The Davis-Putnam-Logemann-Loveland (1962) procedure.
+        if clauses.len() == 0 {
+            return true;
+        }
+        if clauses.contains(&BTreeSet::new()) {
+            return false;
+        }
+        if let Ok(formula) = Formula::_one_literal_rule(&clauses) {
+            return Formula::dpll(&formula);
+        }
+        if let Ok(formula) = Formula::_affirmative_negative_rule(&clauses) {
+            return Formula::dpll(&formula);
+        }
+        // Split.
+        let positive_literals: BTreeSet<Formula<Prop>> = clauses
+            .iter()
+            .fold(BTreeSet::new(), |x, y| &x | &y)
+            .into_iter()
+            .filter(|literal| !Formula::negative(literal))
+            .collect();
+        let atom = Formula::_find_min(
+            &|atom| -Formula::_posneg_count(&clauses, atom),
+            &positive_literals,
+        )
+        .expect("Positive literals should not be empty");
+        let negated = Formula::negate(&atom);
+        let mut with_atom = clauses.clone();
+        with_atom.insert(BTreeSet::from([atom]));
+        let mut with_negated = clauses.clone();
+        with_negated.insert(BTreeSet::from([negated]));
+        Formula::dpll(&with_atom) || Formula::dpll(&with_negated)
+    }
+
+    pub fn dpll_sat(&self) -> bool {
+        Formula::dpll(&Formula::_cnf_formulaset(&self))
+    }
+    pub fn dpll_taut(&self) -> bool {
+        !Formula::dpll_sat(&Formula::not(self.clone()))
+    }
+}
+
+#[cfg(test)]
+mod dpll_tests {
+    use super::*;
+
+    // Convenience to save us some typing.
+    fn prop(name: &str) -> Prop {
+        Prop::prop(name)
     }
 
     #[test]

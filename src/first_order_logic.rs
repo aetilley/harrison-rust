@@ -1,7 +1,12 @@
 // ### First
 // Order Logic ###
 // AST specific parsing/printing functions for first-order (aka predicate) logic.
-//
+
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::fmt::Debug;
+use std::hash::Hash;
+use std::io::Write;
+
 use crate::formula::{close_box, open_box, parse_formula, print_break, write, Formula};
 use crate::parse::{
     generic_parser, parse_bracketed, parse_bracketed_list, parse_left_infix, parse_list,
@@ -9,13 +14,10 @@ use crate::parse::{
     SubparserFuncListType, SubparserFuncType,
 };
 use crate::token::{is_const_name, INFIX_RELATION_SYMBOLS};
-use log::debug;
-use std::collections::{BTreeMap, HashMap, HashSet};
-use std::fmt::Debug;
-use std::hash::Hash;
-use std::io::Write;
 
-// ### Term ###
+use log::debug;
+
+// Term
 #[derive(Debug, PartialEq, Clone, Hash, Eq, PartialOrd, Ord)]
 pub enum Term {
     Var(String),
@@ -83,7 +85,7 @@ mod term_basic_tests {
     }
 }
 
-// ### TERM PARSING ###
+// TERM PARSING
 impl Term {
     fn parse_atomic_term<'a>(
         variables: &Vec<String>,
@@ -254,9 +256,32 @@ mod term_parse_tests {
         );
         assert_eq!(result, desired);
     }
+
+    #[test]
+    fn test_parset_0() {
+        let result = Term::parset("foo(X, the_meaning(), Z)");
+        let desired = Term::fun(
+            "foo",
+            &vec![
+                Term::var("X"),
+                Term::fun("the_meaning", &[]),
+                Term::var("Z"),
+            ],
+        );
+        assert_eq!(result, desired);
+    }
+
+    fn test_parset_1() {
+        let result = Term::parset("bar(B, baz(C))");
+        let desired = Term::fun(
+            "bar",
+            &[Term::var("B"), Term::fun("baz", &[Term::var("C")])],
+        );
+        assert_eq!(result, desired);
+    }
 }
 
-// ### TERM PRINTING ###
+// TERM PRINTING
 impl Term {
     fn print_term<W: Write>(dest: &mut W, prec: u32, term: &Term) {
         match term {
@@ -495,9 +520,8 @@ mod pred_print_tests {
     }
 }
 
-// ### A first-order (predicate) logic formula. ###
-//
-// ### PARSING ###
+// Formula Parsing
+
 impl Formula<Pred> {
     fn _infix_parser<'a>(
         variables: &Vec<String>,
@@ -576,6 +600,14 @@ mod parse_pred_formula_tests {
     use super::*;
 
     #[test]
+    fn test_parse_pred_basics() {
+        let result = Formula::<Pred>::parse("bar(X, Z)");
+        let pred = Pred::pred("bar", &vec![Term::var("X"), Term::var("Z")]);
+        let desired = Formula::atom(pred);
+        assert_eq!(result, desired);
+    }
+
+    #[test]
     fn test_parse_pred_formula_variables() {
         let input = "F(x) /\\ G(d(y)) ==> p(13, w)";
 
@@ -619,6 +651,20 @@ mod parse_pred_formula_tests {
     }
 
     #[test]
+    fn test_parse_ea_quantified() {
+        let desired = Formula::exists(
+            "X",
+            Formula::forall(
+                "Y",
+                Formula::atom(Pred::pred("bar", &vec![Term::var("X"), Term::var("Y")])),
+            ),
+        );
+
+        let result = Formula::<Pred>::parse("exists X. forall Y. bar(X, Y)");
+        assert_eq!(result, desired);
+    }
+
+    #[test]
     fn test_simple_infix() {
         env_logger::init();
         let input = "~(x = y)";
@@ -657,9 +703,28 @@ mod parse_pred_formula_tests {
         let result = Formula::<Pred>::parse(input);
         assert_eq!(result, desired);
     }
+
+    #[test]
+    fn test_more_quantifiers_2() {
+        let result = Formula::<Pred>::parse("exists X. exists Y. foo(X, Y, Z) = W");
+        let desired = Formula::exists(
+            "X",
+            Formula::exists(
+                "Y",
+                Formula::atom(Pred::pred(
+                    "=",
+                    &vec![
+                        Term::fun("foo", &vec![Term::var("X"), Term::var("Y"), Term::var("Z")]),
+                        Term::var("W"),
+                    ],
+                )),
+            ),
+        );
+        assert_eq!(result, desired);
+    }
 }
 
-// ### Printing ###
+// Formula Printing
 impl Formula<Pred> {
     pub fn pprint<W: Write>(&self, dest: &mut W) -> () {
         let pfn: fn(&mut W, u32, &Pred) -> () = Pred::print_pred;
@@ -716,7 +781,7 @@ mod test_print_pred_formula {
 }
 
 #[derive(Clone)]
-// ### Eval / Manipulation ###
+// Eval
 pub struct Language {
     pub func: HashMap<String, usize>,
     pub rel: HashMap<String, usize>,
@@ -832,7 +897,7 @@ mod test_utils {
 
         let lang: Language = Language {
             func: HashMap::from([(String::from("foo"), 3), (String::from("the_meaning"), 0)]),
-            rel: HashMap::from([(String::from("bar"), 2), (String::from("=="), 2)]),
+            rel: HashMap::from([(String::from("bar"), 2), (String::from("="), 2)]),
         };
 
         let domain: HashSet<DomainType> = (1..=60).collect();
@@ -852,7 +917,7 @@ mod test_utils {
                 Box::new(_bar) as Box<RelType<DomainType>>,
             ),
             (
-                String::from("=="),
+                String::from("="),
                 Box::new(_equals) as Box<RelType<DomainType>>,
             ),
         ]);
@@ -876,6 +941,7 @@ mod interpretation_tests {
     #[test]
     #[should_panic]
     fn test_new_panic_1() {
+        // Should panic since foo is ternary.
         let m = test_utils::get_test_interpretation();
         m.func["foo"](&vec![1, 3]);
     }
@@ -883,6 +949,7 @@ mod interpretation_tests {
     #[test]
     #[should_panic]
     fn test_new_panic_2() {
+        // Should panic since foo is ternary.
         let m = test_utils::get_test_interpretation();
         m.func["foo"](&vec![1, 3, 3, 21]);
     }
@@ -890,12 +957,11 @@ mod interpretation_tests {
     #[test]
     #[should_panic]
     fn test_new_panic_3() {
+        // Should panic since 61 is not in the domain.
         let m = test_utils::get_test_interpretation();
         m.func["foo"](&vec![1, 61, 4]);
     }
 }
-
-// TODO make hashmaps from &str
 
 // Partial Map from variable names to domain elements.
 type Valuation<DomainType> = BTreeMap<String, DomainType>;
@@ -941,14 +1007,7 @@ mod test_term_eval {
         assert_eq!(var_x.eval(&m, &v), 14);
         assert_eq!(var_z.eval(&m, &v), 2);
 
-        let t = Term::fun(
-            "foo",
-            &vec![
-                Term::var("X"),
-                Term::fun("the_meaning", &[]),
-                Term::var("Z"),
-            ],
-        );
+        let t = Term::parset("foo(X, the_meaning(), Z)");
         assert_eq!(t.eval(&m, &v), 58);
     }
 }
@@ -981,22 +1040,15 @@ mod test_pred_eval {
             ("W".to_string(), 14),
         ]);
 
-        let t = Term::fun(
-            "foo",
-            &vec![
-                Term::var("X"),
-                Term::fun("the_meaning", &[]),
-                Term::var("Z"),
-            ],
-        );
+        let t = Term::parset("foo(X, the_meaning(), Z)");
 
         let pred_1 = Pred::pred("bar", &vec![t.clone(), Term::var("Y")]);
         assert!(!pred_1.eval(&m, &v)); // 58 + 1 % 2 = 0 is false
         let pred_2 = Pred::pred("bar", &vec![t, Term::var("X")]);
         assert!(pred_2.eval(&m, &v)); // 58 + 14 % 2 == 0 is true
-        let pred_3 = Pred::pred("==", &vec![Term::var("Y"), Term::var("X")]);
+        let pred_3 = Pred::pred("=", &vec![Term::var("Y"), Term::var("X")]);
         assert!(!pred_3.eval(&m, &v)); // 1 == 14 is false
-        let pred_4 = Pred::pred("==", &vec![Term::var("W"), Term::var("X")]);
+        let pred_4 = Pred::pred("=", &vec![Term::var("W"), Term::var("X")]);
         assert!(pred_4.eval(&m, &v)); // 14 == 14 is true
     }
 }
@@ -1056,8 +1108,10 @@ mod test_formula_eval {
             ("Z".to_string(), 2),
         ]);
 
-        let pred = Pred::pred("bar", &vec![Term::var("X"), Term::var("Z")]); // 14 + 2 % 2 = 0
-        let formula_1 = Formula::atom(pred);
+        // let pred = Pred::pred("bar", &vec![Term::var("X"), Term::var("Z")]); // 14 + 2 % 2 = 0
+        // let formula_1 = Formula::atom(pred);
+
+        let formula_1 = Formula::<Pred>::parse("bar(X, Z)");
         assert!(formula_1.eval(&m, &v));
     }
 
@@ -1068,10 +1122,7 @@ mod test_formula_eval {
         let v = BTreeMap::from([("Z".to_string(), 2)]);
 
         // exists X. X + 2 % 2 == 0
-        let formula_1 = Formula::exists(
-            "X",
-            Formula::atom(Pred::pred("bar", &vec![Term::var("X"), Term::var("Z")])),
-        );
+        let formula_1 = Formula::<Pred>::parse("exists X. bar(X, Z)");
 
         assert!(formula_1.eval(&m, &v));
     }
@@ -1087,36 +1138,13 @@ mod test_formula_eval {
         ]);
 
         // exists X Y. X + Y + 42 == 58
-        let formula_1 = Formula::exists(
-            "X",
-            Formula::exists(
-                "Y",
-                Formula::atom(Pred::pred(
-                    "==",
-                    &vec![
-                        Term::fun("foo", &vec![Term::var("X"), Term::var("Y"), Term::var("Z")]),
-                        Term::var("W"),
-                    ],
-                )),
-            ),
-        );
+        let formula_1 = Formula::<Pred>::parse("exists X. exists Y. foo(X, Y, Z) = W");
+
         // A Solution exists.
         assert!(formula_1.eval(&m, &v));
 
         // exists X Y. X + Y + 42 == 43
-        let formula_2 = Formula::exists(
-            "X",
-            Formula::exists(
-                "Y",
-                Formula::atom(Pred::pred(
-                    "==",
-                    &vec![
-                        Term::fun("foo", &vec![Term::var("X"), Term::var("Y"), Term::var("Z")]),
-                        Term::var("U"),
-                    ],
-                )),
-            ),
-        );
+        let formula_2 = Formula::<Pred>::parse("exists X. exists Y. foo(X, Y, Z) = U");
         // No Solution exists in (1..=60)
         assert!(!formula_2.eval(&m, &v));
     }
@@ -1126,22 +1154,9 @@ mod test_formula_eval {
         let m = test_utils::get_test_interpretation();
         let v = BTreeMap::new();
 
-        let formula_ae = Formula::forall(
-            "X",
-            Formula::exists(
-                "Y",
-                Formula::atom(Pred::pred("bar", &vec![Term::var("X"), Term::var("Y")])),
-            ),
-        );
-        let formula_ea = Formula::exists(
-            "X",
-            Formula::forall(
-                "Y",
-                Formula::atom(Pred::pred("bar", &vec![Term::var("X"), Term::var("Y")])),
-            ),
-        );
-
+        let formula_ae = Formula::<Pred>::parse("forall X. exists Y. bar(X, Y)");
         assert!(formula_ae.eval(&m, &v));
+        let formula_ea = Formula::<Pred>::parse("exists X. forall Y. bar(X, Y)");
         assert!(!formula_ea.eval(&m, &v));
     }
 }
@@ -1168,12 +1183,9 @@ mod test_term_variables {
 
     #[test]
     fn tet_get_variables_for_termlist() {
-        let term1 = Term::fun("foo", &[Term::var("A")]);
-        let term2 = Term::var("B");
-        let term3 = Term::fun(
-            "bar",
-            &[Term::var("B"), Term::fun("baz", &[Term::var("C")])],
-        );
+        let term1 = Term::parset("foo(A)");
+        let term2 = Term::parset("B");
+        let term3 = Term::parset("bar(B, baz(C))");
         let input = vec![term1, term2, term3];
 
         let result = Term::get_variables_for_termlist(&input);
@@ -1235,24 +1247,7 @@ mod test_formula_variables {
 
     #[test]
     fn test_formula_variables() {
-        // forall X. ((X == W) => exists W. (foo(X, W, Z) == U))
-        let formula = Formula::forall(
-            "X",
-            Formula::imp(
-                Formula::atom(Pred::pred("==", &vec![Term::var("X"), Term::var("W")])),
-                Formula::exists(
-                    "W",
-                    Formula::atom(Pred::pred(
-                        "==",
-                        &vec![
-                            Term::fun("foo", &vec![Term::var("X"), Term::var("W"), Term::var("Z")]),
-                            Term::var("U"),
-                        ],
-                    )),
-                ),
-            ),
-        );
-
+        let formula = Formula::<Pred>::parse("forall X. X = W ==> exists W. foo(X, W, Z) = U");
         let result_all = formula.variables();
         let desired_all = to_set_of_owned(vec!["U", "W", "X", "Z"]);
         assert_eq!(result_all, desired_all);

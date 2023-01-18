@@ -1,8 +1,8 @@
 #![feature(box_patterns)]
 
+use harrison_rust::applications_propositional::ripplecarry;
 use harrison_rust::first_order_logic::{Interpretation, Language, Pred};
 use harrison_rust::formula::Formula;
-use harrison_rust::propositional_applications::ripplecarry;
 use harrison_rust::propositional_logic::Prop;
 
 use std::collections::{BTreeMap, HashMap, HashSet};

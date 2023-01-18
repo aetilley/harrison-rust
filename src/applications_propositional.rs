@@ -14,22 +14,7 @@ use crate::propositional_logic::Prop;
 // fn ramsey(x: u32, y: u32, n: u32) -> Formula<Prop> {
 //     // A function outputing proposition names for propositions representing
 //     // that two nodes a and b are connected by an edge.
-//     fn label(a: u32, b: u32) -> String {
-//         format!("CON_{a}_{b}", a, b);
-//     }
-//
-//     //Subsets of size x:
-//
-//     //some subgraph of size x is fully connected);
-//     let con = Formula::list_dist();
-//
-//     //Subsets of size y:
-//     // ...
-//     //some subgraph of size y is fully connected);
-//     let dis = Formula::list_dist();
-//
-//     Formula::or(con, dis)
-//
+//     ...FINISH
 // Adder
 //
 

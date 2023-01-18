@@ -1,7 +1,7 @@
 // Formula<T> class and Formula<T>-pecific parsing/printing functions
 // that do *not* depend on T.  See propositional_logic and first_order_logic
 // files for specific parsing/printing functions that specify T.
-use log::debug;
+
 use std::collections::{BTreeSet, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;
@@ -12,9 +12,15 @@ use crate::parse::{
     PartialParseResult, Subparser, SubparserFuncType,
 };
 
+use log::debug;
+
 //### Formula AST ###
 #[derive(Debug, PartialEq, Clone, PartialOrd, Eq, Ord, Hash)]
 pub enum Formula<T: Clone + Debug + Hash + Eq + Ord> {
+    // Note that using Rc would actually be preferable to Box here
+    // since we will not need to mutate the inner formulas.
+    // Unfortunately we currently rely heavily on #![feature(box_patterns)]
+    // and that feature does not have a corresponding "rc" keyword.
     False,
     True,
     Atom(T),
