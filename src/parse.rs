@@ -82,7 +82,7 @@ struct OpUpdate<'a, AST> {
     fun: OpUpdateFuncType<'a, AST>,
 }
 impl<'a, AST> OpUpdate<'a, AST> {
-    fn call(&self, f: &impl Fn(AST) -> AST, ast1: AST, ast2: AST) -> AST {
+    fn call(&self, f: AggFuncType<AST>, ast1: AST, ast2: AST) -> AST {
         (self.fun)(f, ast1, ast2)
     }
 }
@@ -93,7 +93,7 @@ struct OpUpdateList<'a, AST> {
     fun: OpUpdateListFuncType<'a, AST>,
 }
 impl<'a, AST> OpUpdateList<'a, AST> {
-    fn call(&self, f: &impl Fn(AST) -> Vec<AST>, ast1: AST, ast2: AST) -> Vec<AST> {
+    fn call(&self, f: AggListFuncType<AST>, ast1: AST, ast2: AST) -> Vec<AST> {
         (self.fun)(f, ast1, ast2)
     }
 }
@@ -282,7 +282,7 @@ mod generic_parsing_tests {
     // We use Formula for convenience in these tests, but this parent module (`parse`) should
     // not depend on `formula`.
     use crate::formula::Formula;
-    use crate::utils::to_vec_of_owned;
+    use crate::utils::slice_to_vec_of_owned;
 
     fn init() {
         let _ = env_logger::builder().is_test(true).try_init();
@@ -310,9 +310,8 @@ mod generic_parsing_tests {
 
     #[test]
     fn test_parse_right_infix_two_conjuncts() {
-        let input_vect: Vec<String> = to_vec_of_owned(vec!["P", "&", "Q"]);
-        let input = &input_vect[..];
-        let result = parse_right_infix("&", Formula::and, Subparser { fun: &_parse_unit }, input);
+        let input: Vec<String> = slice_to_vec_of_owned(&["P", "&", "Q"]);
+        let result = parse_right_infix("&", Formula::and, Subparser { fun: &_parse_unit }, &input);
         let empty: &[String] = &[];
         let desired = (
             Formula::and(
@@ -326,9 +325,8 @@ mod generic_parsing_tests {
 
     #[test]
     fn test_parse_right_infix_three_conjuncts() {
-        let input_vect: Vec<String> = to_vec_of_owned(vec!["P", "&", "Q", "&", "S"]);
-        let input = &input_vect[..];
-        let result = parse_right_infix("&", Formula::and, Subparser { fun: &_parse_unit }, input);
+        let input: Vec<String> = slice_to_vec_of_owned(&["P", "&", "Q", "&", "S"]);
+        let result = parse_right_infix("&", Formula::and, Subparser { fun: &_parse_unit }, &input);
         let empty: &[String] = &[];
         let desired = (
             Formula::and(
@@ -344,9 +342,8 @@ mod generic_parsing_tests {
     }
     #[test]
     fn test_parse_left_infix_two_conjuncts() {
-        let input_vect: Vec<String> = to_vec_of_owned(vec!["P", "&", "Q"]);
-        let input = &input_vect[..];
-        let result = parse_left_infix("&", Formula::and, Subparser { fun: &_parse_unit }, input);
+        let input: Vec<String> = slice_to_vec_of_owned(&["P", "&", "Q"]);
+        let result = parse_left_infix("&", Formula::and, Subparser { fun: &_parse_unit }, &input);
         let empty: &[String] = &[];
         let desired = (
             Formula::and(
@@ -360,9 +357,8 @@ mod generic_parsing_tests {
 
     #[test]
     fn test_parse_left_infix_three_conjuncts() {
-        let input_vect: Vec<String> = to_vec_of_owned(vec!["P", "&", "Q", "&", "S"]);
-        let input = &input_vect[..];
-        let result = parse_left_infix("&", Formula::and, Subparser { fun: &_parse_unit }, input);
+        let input: Vec<String> = slice_to_vec_of_owned(&["P", "&", "Q", "&", "S"]);
+        let result = parse_left_infix("&", Formula::and, Subparser { fun: &_parse_unit }, &input);
         let empty: &[String] = &[];
         let desired = (
             Formula::and(
@@ -379,16 +375,14 @@ mod generic_parsing_tests {
 
     #[test]
     fn test_parse_bracketed() {
-        init();
-        let input_vect: Vec<String> = to_vec_of_owned(vec![
+        let input: Vec<String> = slice_to_vec_of_owned(&[
             "P", "&", "(", "Q", "&", "(", "S", "&", "T", ")", "&", "U", ")", ")",
         ]);
-        let input = &input_vect[..];
         let result = parse_bracketed(
             Subparser {
                 fun: &_parse_conjunction,
             },
-            input,
+            &input,
         );
         let empty: &[String] = &[];
         let desired = (
@@ -412,10 +406,8 @@ mod generic_parsing_tests {
 
     #[test]
     fn test_parse_list() {
-        init();
-        let input_vect: Vec<String> = to_vec_of_owned(vec!["A", ",", "B", ",", "C", "REST"]);
-        let input = &input_vect[..];
-        let result = parse_list(",", Subparser { fun: &_parse_unit }, input);
+        let input: Vec<String> = slice_to_vec_of_owned(&["A", ",", "B", ",", "C", "REST"]);
+        let result = parse_list(",", Subparser { fun: &_parse_unit }, &input);
         let desired_list = vec![
             Formula::atom(String::from("A")),
             Formula::atom(String::from("B")),
@@ -427,16 +419,14 @@ mod generic_parsing_tests {
 
     #[test]
     fn test_parse_bracketed_list() {
-        init();
-        let input_vect: Vec<String> = to_vec_of_owned(vec!["A", ",", "B", ")", "REST"]);
-        let input = &input_vect[..];
+        let input: Vec<String> = slice_to_vec_of_owned(&["A", ",", "B", ")", "REST"]);
         let list_subparser: SubparserFuncListType<Formula<String>> =
             &|input| parse_list(",", Subparser { fun: &_parse_unit }, input);
         let result = parse_bracketed_list(
             ListSubparser {
                 fun: list_subparser,
             },
-            input,
+            &input,
         );
         let desired_list = vec![
             Formula::atom(String::from("A")),
@@ -448,16 +438,14 @@ mod generic_parsing_tests {
 
     #[test]
     fn test_parse_bracketed_empty_list() {
-        init();
-        let input_vect: Vec<String> = to_vec_of_owned(vec![")", "REST"]);
-        let input = &input_vect[..];
+        let input: Vec<String> = slice_to_vec_of_owned(&[")", "REST"]);
         let list_subparser: SubparserFuncListType<Formula<String>> =
             &|input| parse_list(",", Subparser { fun: &_parse_unit }, input);
         let result = parse_bracketed_list(
             ListSubparser {
                 fun: list_subparser,
             },
-            input,
+            &input,
         );
         let desired = (vec![], &[String::from("REST")][..]);
         assert_eq!(result, desired);

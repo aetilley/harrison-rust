@@ -88,7 +88,7 @@ fn explode(input: &str) -> Vec<char> {
 }
 
 pub fn lex(input: &str) -> Vec<String> {
-    lex_inner(&explode(input)[..])
+    lex_inner(&explode(input))
 }
 
 #[cfg(test)]
@@ -104,8 +104,8 @@ mod lex_tests {
     // Begin Lexing tests
     #[test]
     fn lexwhile_simple() {
-        let charset = vec!['a', '+', '&'];
-        let input = &explode("&aw*+x")[..];
+        let charset = ['a', '+', '&'];
+        let input = &explode("&aw*+x");
         let result = lexwhile(&charset, input);
         let desired = 2;
         assert_eq!(result, desired);
@@ -119,7 +119,7 @@ mod lex_tests {
         assert_eq!(result, desired);
     }
 
-    // FIX
+    // FIX?  Do we need to handle double negation w/o parens?
     // #[test]
     // fn simple_lex() {
     //     let input = "~~A";

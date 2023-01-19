@@ -2,10 +2,11 @@
 // Order Logic ###
 // AST specific parsing/printing functions for first-order (aka predicate) logic.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::io::Write;
+// use std::rc::Rc;
 
 use crate::formula::{close_box, open_box, parse_formula, print_break, write, Formula};
 use crate::parse::{
@@ -191,15 +192,13 @@ impl Term {
 mod term_parse_tests {
 
     use super::*;
-    use crate::utils::to_vec_of_owned;
+    use crate::utils::slice_to_vec_of_owned;
 
     #[test]
     fn test_parse_term_simple_1() {
-        let input_vec: Vec<String> = to_vec_of_owned(vec!["(", "13", "+", "x", ")", "/", "A"]);
+        let input: Vec<String> = slice_to_vec_of_owned(&["(", "13", "+", "x", ")", "/", "A"]);
 
-        let input: &[String] = &input_vec[..];
-
-        let result: PartialParseResult<Term> = Term::parse_term(&[], input);
+        let result: PartialParseResult<Term> = Term::parse_term(&[], &input);
 
         let desired_rest: &[String] = &[];
         let desired = (
@@ -214,12 +213,9 @@ mod term_parse_tests {
 
     #[test]
     fn test_parse_term_simple_2() {
-        let input_vec: Vec<String> =
-            to_vec_of_owned(vec!["apples", "*", "-", "oranges", "-", "42"]);
+        let input: Vec<String> = slice_to_vec_of_owned(&["apples", "*", "-", "oranges", "-", "42"]);
 
-        let input: &[String] = &input_vec[..];
-
-        let result: PartialParseResult<Term> = Term::parse_term(&[], input);
+        let result: PartialParseResult<Term> = Term::parse_term(&[], &input);
 
         let desired_rest: &[String] = &[];
         let desired = (
@@ -234,13 +230,11 @@ mod term_parse_tests {
 
     #[test]
     fn test_parse_term_simple_3() {
-        let input_vec: Vec<String> = to_vec_of_owned(vec![
+        let input: Vec<String> = slice_to_vec_of_owned(&[
             "F", "(", "V", ",", "apples", "::", "oranges", "::", "42", ",", "19", ")",
         ]);
 
-        let input: &[String] = &input_vec[..];
-
-        let result: PartialParseResult<Term> = Term::parse_term(&[], input);
+        let result: PartialParseResult<Term> = Term::parse_term(&[], &input);
 
         let desired_rest: &[String] = &[];
         let desired = (
@@ -965,8 +959,53 @@ mod interpretation_tests {
     }
 }
 
-// Partial Map from variable names to domain elements.
-type Valuation<DomainType> = BTreeMap<String, DomainType>;
+// Partial Map from variable names to domain elements
+// implemented as linked frames to allow for less
+// copying.
+pub struct Valuation<'a, DomainType: Hash + Clone + Eq + Debug> {
+    // Any new assignments for this frame
+    frame: HashMap<String, DomainType>,
+    // Pointer to the next frame
+    next: Option<&'a Valuation<'a, DomainType>>,
+}
+
+impl<'a, DomainType: Hash + Clone + Eq + Debug> Valuation<'a, DomainType> {
+    // Maybe implement this later.
+    #[allow(clippy::new_without_default)]
+    pub fn new() -> Valuation<'a, DomainType> {
+        Valuation {
+            frame: HashMap::new(),
+            next: None,
+        }
+    }
+
+    pub fn from(data: &HashMap<String, DomainType>) -> Valuation<'a, DomainType> {
+        // Todo, implement coming from general iter.
+        Valuation {
+            frame: data.clone(),
+            next: None,
+        }
+    }
+
+    fn set(&self, name: String, val: DomainType) -> Valuation<'_, DomainType> {
+        let frame = HashMap::from([(name, val)]);
+        let next = Some(self);
+        Valuation { frame, next }
+    }
+
+    fn get(&self, name: &str) -> Option<DomainType> {
+        // First try local frame, and failing that, defer
+        // to `next` Valuation (if any).
+        if let Some(value) = self.frame.get(name) {
+            let cloned: DomainType = value.clone();
+            return Some(cloned);
+        }
+        match self.next {
+            Some(valuation) => valuation.get(name),
+            None => None,
+        }
+    }
+}
 
 // ### Term Evaluation ###
 impl Term {
@@ -977,7 +1016,7 @@ impl Term {
     ) -> DomainType {
         match self {
             Term::Var(name) => match v.get(&name.to_string()) {
-                Some(val) => val.to_owned(),
+                Some(val) => val,
                 None => panic!("Valuation not defined on variable {name:?}."),
             },
             Term::Fun(name, args) => {
@@ -997,11 +1036,12 @@ mod test_term_eval {
     fn test_term_eval_simple() {
         let m = test_utils::get_test_interpretation();
 
-        let v = BTreeMap::from([
+        let map = HashMap::from([
             ("X".to_string(), 14),
             ("Y".to_string(), 1),
             ("Z".to_string(), 2),
         ]);
+        let v = Valuation::from(&map);
 
         let var_x = Term::var("X");
         let var_z = Term::var("Z");
@@ -1035,12 +1075,13 @@ mod test_pred_eval {
     fn test_pred_eval_simple() {
         let m = test_utils::get_test_interpretation();
 
-        let v = BTreeMap::from([
+        let map = HashMap::from([
             ("X".to_string(), 14),
             ("Y".to_string(), 1),
             ("Z".to_string(), 2),
             ("W".to_string(), 14),
         ]);
+        let v = Valuation::from(&map);
 
         let t = Term::parset("foo(X, the_meaning(), Z)");
 
@@ -1069,10 +1110,8 @@ impl Formula<Pred> {
 
         let forall_eval = |var: &str, subformula: &Formula<Pred>| -> bool {
             for val in &m.domain {
-                // (var |-> val)v
-                let mut new_v = v.clone();
-                new_v.insert(var.to_string(), val.clone());
-                if !subformula.eval(m, &new_v) {
+                let v_ext = v.set(var.to_string(), val.clone()); // (var |-> val)v
+                if !subformula.eval(m, &v_ext) {
                     return false;
                 }
             }
@@ -1081,10 +1120,8 @@ impl Formula<Pred> {
 
         let exists_eval = |var: &str, subformula: &Formula<Pred>| -> bool {
             for val in &m.domain {
-                // (var |-> val)v
-                let mut new_v = v.clone();
-                new_v.insert(var.to_string(), val.clone());
-                if subformula.eval(m, &new_v) {
+                let v_ext = v.set(var.to_string(), val.clone()); // (var |-> val)v
+                if subformula.eval(m, &v_ext) {
                     return true;
                 }
             }
@@ -1104,11 +1141,12 @@ mod test_formula_eval {
     fn test_formula_eval_simple() {
         let m = test_utils::get_test_interpretation();
 
-        let v = BTreeMap::from([
+        let map = HashMap::from([
             ("X".to_string(), 14),
             ("Y".to_string(), 1),
             ("Z".to_string(), 2),
         ]);
+        let v = Valuation::from(&map);
 
         // let pred = Pred::new("bar", &vec![Term::var("X"), Term::var("Z")]); // 14 + 2 % 2 = 0
         // let formula_1 = Formula::atom(pred);
@@ -1121,7 +1159,8 @@ mod test_formula_eval {
     fn test_formula_eval_quantified_1() {
         let m = test_utils::get_test_interpretation();
 
-        let v = BTreeMap::from([("Z".to_string(), 2)]);
+        let map = HashMap::from([("Z".to_string(), 2)]);
+        let v = Valuation::from(&map);
 
         // exists X. X + 2 % 2 == 0
         let formula_1 = Formula::<Pred>::parse("exists X. bar(X, Z)");
@@ -1133,11 +1172,12 @@ mod test_formula_eval {
     fn test_formula_eval_quantified_2() {
         let m = test_utils::get_test_interpretation();
 
-        let v = BTreeMap::from([
+        let map = HashMap::from([
             ("U".to_string(), 43),
             ("Z".to_string(), 42),
             ("W".to_string(), 58),
         ]);
+        let v = Valuation::from(&map);
 
         // exists X Y. X + Y + 42 == 58
         let formula_1 = Formula::<Pred>::parse("exists X. exists Y. foo(X, Y, Z) = W");
@@ -1154,7 +1194,7 @@ mod test_formula_eval {
     #[test]
     fn test_formula_eval_quantified_3() {
         let m = test_utils::get_test_interpretation();
-        let v = BTreeMap::new();
+        let v = Valuation::new();
 
         let formula_ae = Formula::<Pred>::parse("forall X. exists Y. bar(X, Y)");
         assert!(formula_ae.eval(&m, &v));
@@ -1245,16 +1285,16 @@ impl Formula<Pred> {
 mod test_formula_variables {
 
     use super::*;
-    use crate::utils::to_set_of_owned;
+    use crate::utils::slice_to_set_of_owned;
 
     #[test]
     fn test_formula_variables() {
         let formula = Formula::<Pred>::parse("forall X. X = W ==> exists W. foo(X, W, Z) = U");
         let result_all = formula.variables();
-        let desired_all = to_set_of_owned(vec!["U", "W", "X", "Z"]);
+        let desired_all = slice_to_set_of_owned(&["U", "W", "X", "Z"]);
         assert_eq!(result_all, desired_all);
         let result_free = formula.free_variables();
-        let desired_free = to_set_of_owned(vec!["U", "W", "Z"]);
+        let desired_free = slice_to_set_of_owned(&["U", "W", "Z"]);
         assert_eq!(result_free, desired_free);
     }
 }

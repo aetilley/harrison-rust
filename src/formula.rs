@@ -321,7 +321,7 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
 #[cfg(test)]
 mod formula_tests {
     use super::*;
-    use crate::utils::to_vec_of_owned;
+    use crate::utils::slice_to_vec_of_owned;
 
     // As usual we test with T = String.
     #[test]
@@ -464,13 +464,10 @@ mod formula_tests {
                 Formula::atom(String::from("A")),
                 Formula::atom(String::from("B")),
             ),
-            Formula::forall(&String::from("some_var"), Formula::atom(String::from("C"))),
+            Formula::forall("some_var", Formula::atom(String::from("C"))),
         );
 
-        #[allow(clippy::ptr_arg)]
-        fn foo(s: &String) -> Formula<String> {
-            Formula::atom(s.clone() + "X")
-        }
+        let foo = |s: &String| -> Formula<String> { Formula::atom(s.clone() + "X") };
 
         let result = input.on_atoms(&foo);
         let desired: Formula<String> = Formula::or(
@@ -478,7 +475,7 @@ mod formula_tests {
                 Formula::atom(String::from("AX")),
                 Formula::atom(String::from("BX")),
             ),
-            Formula::forall(&String::from("some_var"), Formula::atom(String::from("CX"))),
+            Formula::forall("some_var", Formula::atom(String::from("CX"))),
         );
         assert_eq!(result, desired);
     }
@@ -491,7 +488,7 @@ mod formula_tests {
                 Formula::atom(String::from("A")),
                 Formula::atom(String::from("B")),
             ),
-            Formula::forall(&String::from("some_var"), Formula::atom(String::from("A"))),
+            Formula::forall("some_var", Formula::atom(String::from("A"))),
         );
 
         // Some starting elements
@@ -504,7 +501,7 @@ mod formula_tests {
         };
 
         let result = input.over_atoms(aggregator, agg_init);
-        let desired = to_vec_of_owned(vec!["A", "B", "A", "C", "B"]);
+        let desired = slice_to_vec_of_owned(&["A", "B", "A", "C", "B"]);
         assert_eq!(result, desired);
     }
 
@@ -522,13 +519,10 @@ mod formula_tests {
             ),
         );
 
-        #[allow(clippy::ptr_arg)]
-        fn foo(s: &String) -> String {
-            s.clone() + "X"
-        }
+        let foo = |s: &String| -> String { s.clone() + "X" };
 
         let result = input.atom_union(foo);
-        let desired = HashSet::from_iter(to_vec_of_owned(vec!["AX", "BX", "CX"]));
+        let desired = HashSet::from_iter(slice_to_vec_of_owned(&["AX", "BX", "CX"]));
         assert_eq!(result, desired);
     }
 
@@ -934,9 +928,9 @@ mod generic_ast_parse_tests {
     // We let T = String for testing purposes.
 
     // TODO(arthur) MORE TESTS (try to cover all that is generic yet not covered
-    // by the tests in parse.rs.
+    // by the tests in parse.rs. (Move some from propositional parsing tests?).
     use super::*;
-    use crate::utils::to_vec_of_owned;
+    use crate::utils::slice_to_vec_of_owned;
 
     fn init() {
         let _ = env_logger::builder().is_test(true).try_init();
@@ -963,7 +957,8 @@ mod generic_ast_parse_tests {
 
         let variables = &vec![];
 
-        let input_vec: Vec<String> = to_vec_of_owned(vec!["(", "b", "\\/", "c", ")", "==>", "a"]);
+        let input_vec: Vec<String> =
+            slice_to_vec_of_owned(&["(", "b", "\\/", "c", ")", "==>", "a"]);
 
         let input: &[String] = &input_vec[..];
 
@@ -1048,7 +1043,7 @@ fn strip_quant<T: Clone + Debug + Hash + Eq + Ord>(
 
 fn print_formula<T: Clone + Debug + Hash + Eq + Ord, W: Write>(
     dest: &mut W,
-    pfn: &fn(&mut W, u32, &T) -> (),
+    pfn: &dyn Fn(&mut W, u32, &T),
     prec: u32,
     formula: &Formula<T>,
 ) {
@@ -1087,7 +1082,7 @@ fn print_formula<T: Clone + Debug + Hash + Eq + Ord, W: Write>(
 
 fn print_quant<T: Clone + Debug + Hash + Eq + Ord, W: Write>(
     dest: &mut W,
-    pfn: &fn(&mut W, u32, &T) -> (),
+    pfn: &dyn Fn(&mut W, u32, &T),
     qname: &str,
     formula: &Formula<T>,
 ) {
@@ -1107,7 +1102,7 @@ fn print_quant<T: Clone + Debug + Hash + Eq + Ord, W: Write>(
 
 fn print_prefix<T: Clone + Debug + Hash + Eq + Ord, W: Write>(
     dest: &mut W,
-    pfn: &fn(&mut W, u32, &T) -> (),
+    pfn: &dyn Fn(&mut W, u32, &T),
     prec: u32,
     symbol: &str,
     inner: &Formula<T>,
@@ -1125,7 +1120,7 @@ fn print_prefix<T: Clone + Debug + Hash + Eq + Ord, W: Write>(
 
 fn print_infix<T: Clone + Debug + Hash + Eq + Ord, W: Write>(
     dest: &mut W,
-    pfn: &fn(&mut W, u32, &T) -> (),
+    pfn: &dyn Fn(&mut W, u32, &T),
     prec: u32,
     symbol: &str,
     left: &Formula<T>,
@@ -1139,7 +1134,7 @@ fn print_infix<T: Clone + Debug + Hash + Eq + Ord, W: Write>(
 }
 
 impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
-    pub fn pprint_general<W: Write>(&self, dest: &mut W, pfn: &fn(&mut W, u32, &T) -> ()) {
+    pub fn pprint_general<W: Write, P: Fn(&mut W, u32, &T)>(&self, dest: &mut W, pfn: &P) {
         // Takes a generic Write for `dest`, e.g. one can use std::io::stdout()
         // pfn is a sub-parser for atoms (type T)
         // NOTE:  It appears that both times this is passed a `pfn`, that function
@@ -1193,15 +1188,12 @@ mod generic_ast_print_tests {
 
         let inner = Formula::atom("Hello");
 
-        let formula2 = Formula::forall(&String::from("var1"), inner.clone());
+        let formula2 = Formula::forall("var1", inner.clone());
         let result2 = strip_quant(&formula2);
         let desired2 = (vec![String::from("var1")], inner.clone());
         assert_eq!(result2, desired2);
 
-        let formula3 = Formula::forall(
-            &String::from("var2"),
-            Formula::forall(&String::from("var1"), inner.clone()),
-        );
+        let formula3 = Formula::forall("var2", Formula::forall("var1", inner.clone()));
         let result3 = strip_quant(&formula3);
         let desired3 = (
             vec![String::from("var1"), String::from("var2")],
@@ -1211,14 +1203,11 @@ mod generic_ast_print_tests {
     }
 
     fn _test_pprint_general(formula: Formula<String>, desired: &str) {
-        #[allow(clippy::ptr_arg)]
-        fn _test_atom_printer<W: Write>(dest: &mut W, _prec: u32, name: &String) {
+        let pfn = |dest: &mut _, _prec: u32, name: &String| {
             // A toy printer for `Atom<String>`s that simply prints the `String`.
             write(dest, name);
-        }
-
+        };
         let mut output = Vec::new();
-        let pfn: fn(&mut _, u32, &String) -> () = _test_atom_printer;
         formula.pprint_general(&mut output, &pfn);
         let output = String::from_utf8(output).expect("Not UTF-8");
         assert_eq!(output, desired);
@@ -1325,7 +1314,7 @@ mod generic_ast_print_tests {
 
     #[test]
     fn test_pprint_general_simple_quantified() {
-        let formula = Formula::forall(&String::from("x"), Formula::atom(String::from("Hello")));
+        let formula = Formula::forall("x", Formula::atom(String::from("Hello")));
         let desired = "<<forall x. Hello>>";
         _test_pprint_general(formula, desired);
     }
@@ -1333,7 +1322,7 @@ mod generic_ast_print_tests {
     #[test]
     fn test_pprint_general_quantified_conjunction() {
         let formula = Formula::forall(
-            &String::from("x"),
+            "x",
             Formula::and(
                 Formula::atom(String::from("Hello")),
                 Formula::atom(String::from("Goodbye")),
@@ -1346,8 +1335,8 @@ mod generic_ast_print_tests {
     #[test]
     fn test_pprint_general_quantified_multivar() {
         let formula = Formula::forall(
-            &String::from("var1"),
-            Formula::forall(&String::from("var2"), Formula::atom(String::from("Hello"))),
+            "var1",
+            Formula::forall("var2", Formula::atom(String::from("Hello"))),
         );
         let desired = "<<forall var1 var2. Hello>>";
         _test_pprint_general(formula, desired);
@@ -1357,7 +1346,7 @@ mod generic_ast_print_tests {
     fn test_pprint_general_quantified_in_binary() {
         let formula = Formula::iff(
             Formula::atom(String::from("Goodbye")),
-            Formula::forall(&String::from("var1"), Formula::atom(String::from("Hello"))),
+            Formula::forall("var1", Formula::atom(String::from("Hello"))),
         );
         let desired = "<<Goodbye <=> (forall var1. Hello)>>";
         _test_pprint_general(formula, desired);
@@ -1379,10 +1368,7 @@ mod generic_ast_print_tests {
 
     #[test]
     fn test_pprint_general_negate_quantified() {
-        let formula = Formula::not(Formula::forall(
-            &String::from("x"),
-            Formula::atom(String::from("Hello")),
-        ));
+        let formula = Formula::not(Formula::forall("x", Formula::atom(String::from("Hello"))));
         let desired = "<<~(forall x. Hello)>>";
         _test_pprint_general(formula, desired);
     }

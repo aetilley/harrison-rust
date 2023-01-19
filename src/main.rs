@@ -1,11 +1,11 @@
 #![feature(box_patterns)]
 
 use harrison_rust::applications_propositional::ripplecarry;
-use harrison_rust::first_order_logic::{Interpretation, Language, Pred};
+use harrison_rust::first_order_logic::{Interpretation, Language, Pred, Valuation};
 use harrison_rust::formula::Formula;
 use harrison_rust::propositional_logic::Prop;
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 
 use std::io::stdout;
 
@@ -134,7 +134,7 @@ fn main() {
     // (have multiplicative inverses) if and only if n is prime.
     let mult_inverse = "forall x. ~(x = 0) ==> exists y. x * y = 1";
     let mult_inverse_formula = Formula::<Pred>::parse(mult_inverse);
-    let empty_valuation = BTreeMap::new();
+    let empty_valuation = Valuation::new();
     println!("Model:         |  Is a field?");
     for n in 2..20 {
         let interpretation = integers_mod_n(n);

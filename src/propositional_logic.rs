@@ -119,94 +119,90 @@ mod prop_parse_tests {
         let result = Formula::<Prop>::parse("true");
         let desired = Formula::True;
         assert_eq!(result, desired);
+
+        let result = Formula::<Prop>::parse("false");
+        let desired = Formula::False;
+        assert_eq!(result, desired);
+
+        let result = Formula::<Prop>::parse("A \\/ B");
+        let desired = Formula::or(Formula::atom(prop("A")), Formula::atom(prop("B")));
+        assert_eq!(result, desired);
+
+        let result = Formula::<Prop>::parse("A \\/ ~A");
+        let desired = Formula::or(
+            Formula::atom(prop("A")),
+            Formula::not(Formula::atom(prop("A"))),
+        );
+        assert_eq!(result, desired);
+
+        let result = Formula::<Prop>::parse("(A /\\ ~A)");
+        let desired = Formula::and(
+            Formula::atom(prop("A")),
+            Formula::not(Formula::atom(prop("A"))),
+        );
+        assert_eq!(result, desired);
+
+        let result = Formula::<Prop>::parse("p /\\ q /\\ p /\\ q");
+        let desired = Formula::and(
+            Formula::atom(prop("p")),
+            Formula::and(
+                Formula::atom(prop("q")),
+                Formula::and(Formula::atom(prop("p")), Formula::atom(prop("q"))),
+            ),
+        );
+        assert_eq!(result, desired);
+
+        let result = Formula::<Prop>::parse("a <=> (b /\\ c)");
+        let desired = Formula::iff(
+            Formula::atom(Prop::new("a")),
+            Formula::and(Formula::atom(Prop::new("b")), Formula::atom(Prop::new("c"))),
+        );
+        assert_eq!(result, desired);
+
+        let result = Formula::<Prop>::parse("(p /\\ q) /\\ q ==> (p /\\ q) /\\ q");
+        let desired = Formula::imp(
+            Formula::and(
+                Formula::and(Formula::atom(prop("p")), Formula::atom(prop("q"))),
+                Formula::atom(prop("q")),
+            ),
+            Formula::and(
+                Formula::and(Formula::atom(prop("p")), Formula::atom(prop("q"))),
+                Formula::atom(prop("q")),
+            ),
+        );
+        assert_eq!(result, desired);
+
+        let result = Formula::<Prop>::parse("a /\\ ~b \\/ (~c \\/ d)");
+        let desired = Formula::or(
+            Formula::and(
+                Formula::atom(prop("a")),
+                Formula::not(Formula::atom(prop("b"))),
+            ),
+            Formula::or(
+                Formula::not(Formula::atom(prop("c"))),
+                Formula::atom(prop("d")),
+            ),
+        );
+        assert_eq!(result, desired);
+
+        let result = Formula::<Prop>::parse("~(~A)");
+        let desired = Formula::not(Formula::not(Formula::atom(prop("A"))));
+        assert_eq!(result, desired);
+
+        let result = Formula::<Prop>::parse("A /\\ (false \\/ B)");
+        let desired = Formula::and(
+            Formula::atom(prop("A")),
+            Formula::or(Formula::False, Formula::atom(prop("B"))),
+        );
+        assert_eq!(result, desired);
+
+        let result = Formula::<Prop>::parse("~(A ==> (B <=> C))");
+        let desired = Formula::not(Formula::imp(
+            Formula::atom(prop("A")),
+            Formula::iff(Formula::atom(prop("B")), Formula::atom(prop("C"))),
+        ));
+        assert_eq!(result, desired);
     }
-
-    //    let result = Formula::<Prop>::parse("false");
-    //    let desired = Formula::False;
-    //    assert_eq!(result, desired);
-
-    //    let result = Formula::<Prop>::parse("A \\/ B");
-    //    let desired = Formula::or(Formula::atom(prop("A")), Formula::atom(prop("B")));
-    //    assert_eq!(result, desired);
-
-    //    let result = Formula::<Prop>::parse("A \\/ ~A");
-    //    let desired = Formula::or(
-    //        Formula::atom(prop("A")),
-    //        Formula::not(Formula::atom(prop("A"))),
-    //    );
-    //    assert_eq!(result, desired);
-
-    //    let result = Formula::<Prop>::parse("(A /\\ ~A)");
-    //    let desired = Formula::and(
-    //        Formula::atom(prop("A")),
-    //        Formula::not(Formula::atom(prop("A"))),
-    //    );
-    //    assert_eq!(result, desired);
-
-    //    let result = Formula::<Prop>::parse("p /\\ q /\\ p /\\ q");
-    //    let desired = Formula::and(
-    //        Formula::atom(prop("p")),
-    //        Formula::and(
-    //            Formula::atom(prop("q")),
-    //            Formula::and(Formula::atom(prop("p")), Formula::atom(prop("q"))),
-    //        ),
-    //    );
-    //    assert_eq!(result, desired);
-
-    //    let result = Formula::<Prop>::parse("a <=> (b /\\ c)");
-    //    let desired = Formula::iff(
-    //        Formula::atom(Prop::new("a")),
-    //        Formula::and(
-    //            Formula::atom(Prop::new("b")),
-    //            Formula::atom(Prop::new("c")),
-    //        ),
-    //    );
-    //    assert_eq!(result, desired);
-
-    //    let result = Formula::<Prop>::parse("(p /\\ q) /\\ q ==> (p /\\ q) /\\ q");
-    //    let desired = Formula::imp(
-    //        Formula::and(
-    //            Formula::and(Formula::atom(prop("p")), Formula::atom(prop("q"))),
-    //            Formula::atom(prop("q")),
-    //        ),
-    //        Formula::and(
-    //            Formula::and(Formula::atom(prop("p")), Formula::atom(prop("q"))),
-    //            Formula::atom(prop("q")),
-    //        ),
-    //    );
-    //    assert_eq!(result, desired);
-
-    //    let result = Formula::<Prop>::parse("a /\\ ~b \\/ (~c \\/ d)");
-    //    let desired = Formula::or(
-    //        Formula::and(
-    //            Formula::atom(prop("a")),
-    //            Formula::not(Formula::atom(prop("b"))),
-    //        ),
-    //        Formula::or(
-    //            Formula::not(Formula::atom(prop("c"))),
-    //            Formula::atom(prop("d")),
-    //        ),
-    //    );
-    //    assert_eq!(result, desired);
-
-    //    let result = Formula::<Prop>::parse("~(~A)");
-    //    let desired = Formula::not(Formula::not(Formula::atom(prop("A"))));
-    //    assert_eq!(result, desired);
-
-    //    let result = Formula::<Prop>::parse("A /\\ (false \\/ B)");
-    //    let desired = Formula::and(
-    //        Formula::atom(prop("A")),
-    //        Formula::or(Formula::False, Formula::atom(prop("B"))),
-    //    );
-    //    assert_eq!(result, desired);
-
-    //    let result = Formula::<Prop>::parse("~(A ==> (B <=> C))");
-    //    let desired = Formula::not(Formula::imp(
-    //        Formula::atom(prop("A")),
-    //        Formula::iff(Formula::atom(prop("B")), Formula::atom(prop("C"))),
-    //    ));
-    //    assert_eq!(result, desired);
-    //}
 
     // TODO Currently can't handle double (consecutive w/o parens) negation
     // since tokenizer groups "~~" as one token.
@@ -381,7 +377,7 @@ impl Formula<Prop> {
         write(dest, &result);
     }
 
-    // FIX prefix the below with, e.g., "naive_" or "brute_force_" in order to
+    // TODO prefix the below with, e.g., "naive_" or "brute_force_" in order to
     // discourage use.
     pub fn tautology(&self) -> bool {
         // NOTE:  SLOW, USE OTHER VERSIONS.
