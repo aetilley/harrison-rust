@@ -38,21 +38,30 @@ impl Term {
         Term::fun(name, &[])
     }
 
+    #[allow(clippy::should_implement_trait)]
     pub fn add(t1: Term, t2: Term) -> Term {
         Term::Fun(String::from("+"), vec![t1, t2])
     }
+
     pub fn unary_minus(t: Term) -> Term {
         Term::Fun(String::from("-"), vec![t])
     }
+
+    #[allow(clippy::should_implement_trait)]
     pub fn sub(t1: Term, t2: Term) -> Term {
         Term::Fun(String::from("-"), vec![t1, t2])
     }
+
+    #[allow(clippy::should_implement_trait)]
     pub fn mul(t1: Term, t2: Term) -> Term {
         Term::Fun(String::from("*"), vec![t1, t2])
     }
+
+    #[allow(clippy::should_implement_trait)]
     pub fn div(t1: Term, t2: Term) -> Term {
         Term::Fun(String::from("/"), vec![t1, t2])
     }
+
     pub fn exp(t1: Term, t2: Term) -> Term {
         Term::Fun(String::from("^"), vec![t1, t2])
     }
@@ -88,7 +97,7 @@ mod term_basic_tests {
 // TERM PARSING
 impl Term {
     fn parse_atomic_term<'a>(
-        variables: &Vec<String>,
+        variables: &[String],
         input: &'a [String],
     ) -> PartialParseResult<'a, Term> {
         debug!(
@@ -138,10 +147,7 @@ impl Term {
         }
     }
 
-    fn parse_term<'a>(
-        variables: &Vec<String>,
-        input: &'a [String],
-    ) -> PartialParseResult<'a, Term> {
+    fn parse_term<'a>(variables: &[String], input: &'a [String]) -> PartialParseResult<'a, Term> {
         debug!(
             "parse_term called on variables {:?}, input {:?}",
             variables, input
@@ -172,8 +178,8 @@ impl Term {
         parser(input)
     }
 
-    fn parse_term_inner<'a>(input: &'a [String]) -> PartialParseResult<'a, Term> {
-        Term::parse_term(&vec![], input)
+    fn parse_term_inner(input: &[String]) -> PartialParseResult<'_, Term> {
+        Term::parse_term(&[], input)
     }
 
     pub fn parset(input: &str) -> Term {
@@ -193,7 +199,7 @@ mod term_parse_tests {
 
         let input: &[String] = &input_vec[..];
 
-        let result: PartialParseResult<Term> = Term::parse_term(&vec![], input);
+        let result: PartialParseResult<Term> = Term::parse_term(&[], input);
 
         let desired_rest: &[String] = &[];
         let desired = (
@@ -213,7 +219,7 @@ mod term_parse_tests {
 
         let input: &[String] = &input_vec[..];
 
-        let result: PartialParseResult<Term> = Term::parse_term(&vec![], input);
+        let result: PartialParseResult<Term> = Term::parse_term(&[], input);
 
         let desired_rest: &[String] = &[];
         let desired = (
@@ -234,7 +240,7 @@ mod term_parse_tests {
 
         let input: &[String] = &input_vec[..];
 
-        let result: PartialParseResult<Term> = Term::parse_term(&vec![], input);
+        let result: PartialParseResult<Term> = Term::parse_term(&[], input);
 
         let desired_rest: &[String] = &[];
         let desired = (
@@ -262,7 +268,7 @@ mod term_parse_tests {
         let result = Term::parset("foo(X, the_meaning(), Z)");
         let desired = Term::fun(
             "foo",
-            &vec![
+            &[
                 Term::var("X"),
                 Term::fun("the_meaning", &[]),
                 Term::var("Z"),
@@ -286,7 +292,7 @@ impl Term {
     fn print_term<W: Write>(dest: &mut W, prec: u32, term: &Term) {
         match term {
             Term::Var(x) => {
-                write(dest, &x);
+                write(dest, x);
             }
             Term::Fun(op, args) if op == "^" && args.len() == 2 => {
                 Term::print_infix_term(dest, true, prec, 24, "^", &args[0], &args[1])
@@ -306,25 +312,24 @@ impl Term {
             Term::Fun(op, args) if op == "::" && args.len() == 2 => {
                 Term::print_infix_term(dest, false, prec, 14, "::", &args[0], &args[1])
             }
-            Term::Fun(f, args) => Term::print_fargs(dest, &f, &args),
+            Term::Fun(f, args) => Term::print_fargs(dest, f, args),
         }
     }
 
-    fn print_fargs<W: Write>(dest: &mut W, f: &str, args: &Vec<Term>) {
+    fn print_fargs<W: Write>(dest: &mut W, f: &str, args: &[Term]) {
         // Print a prefix predicate/function application e.g. R(x, y, ...), or f(u, v, ...)
         write(dest, f);
-        match &args[..] {
-            [] => {
-                return;
-            } // Dont' print parens for constants and propositions
+        match &args {
+            [] => {}
+            // Dont' print parens for constants and propositions
             [head, rest @ ..] => {
                 write(dest, "(");
                 open_box(0);
-                Term::print_term(dest, 0, &head);
+                Term::print_term(dest, 0, head);
                 for term in rest {
                     write(dest, ",");
                     print_break(dest, 0, 0);
-                    Term::print_term(dest, 0, &term);
+                    Term::print_term(dest, 0, term);
                 }
                 close_box();
                 write(dest, ")");
@@ -345,7 +350,7 @@ impl Term {
             write(dest, "(");
             open_box(0);
         }
-        Term::print_term(dest, if is_left { new_prec } else { new_prec + 1 }, &term1);
+        Term::print_term(dest, if is_left { new_prec } else { new_prec + 1 }, term1);
         // print_break(0,0)
         write(dest, symbol);
         // print_break(
@@ -357,14 +362,14 @@ impl Term {
         //     },
         //     0,
         // );
-        Term::print_term(dest, if is_left { new_prec + 1 } else { new_prec }, &term2);
+        Term::print_term(dest, if is_left { new_prec + 1 } else { new_prec }, term2);
         if old_prec > new_prec {
             write(dest, ")");
             open_box(0);
         }
     }
 
-    fn pprint<W: Write>(&self, dest: &mut W) -> () {
+    fn pprint<W: Write>(&self, dest: &mut W) {
         open_box(0);
         write(dest, "<<|");
         open_box(0);
@@ -444,7 +449,7 @@ pub struct Pred {
 }
 
 impl Pred {
-    pub fn pred(name: &str, terms: &[Term]) -> Pred {
+    pub fn new(name: &str, terms: &[Term]) -> Pred {
         // Convenience constructor for `Pred`s.
         Pred {
             name: String::from(name),
@@ -459,12 +464,12 @@ impl Pred {
                 false,
                 12,
                 12,
-                &format!(" {} ", name),
+                &format!(" {name} "),
                 &terms[0],
                 &terms[1],
             );
         } else {
-            Term::print_fargs(dest, &name, terms);
+            Term::print_fargs(dest, name, terms);
         }
     }
 }
@@ -476,7 +481,7 @@ mod pred_print_tests {
 
     #[test]
     fn print_pred_test_prefix() {
-        let pred = Pred::pred(
+        let pred = Pred::new(
             "R",
             &[
                 Term::var("V"),
@@ -499,7 +504,7 @@ mod pred_print_tests {
 
     #[test]
     fn print_pred_test_infix() {
-        let pred = Pred::pred(
+        let pred = Pred::new(
             "<=",
             &[
                 Term::fun(
@@ -524,7 +529,7 @@ mod pred_print_tests {
 
 impl Formula<Pred> {
     fn _infix_parser<'a>(
-        variables: &Vec<String>,
+        variables: &[String],
         input: &'a [String],
     ) -> Result<PartialParseResult<'a, Formula<Pred>>, ErrInner> {
         debug!(
@@ -532,18 +537,15 @@ impl Formula<Pred> {
             variables, input
         );
         let (term1, rest) = Term::parse_term(variables, input);
-        if rest.len() == 0 || !INFIX_RELATION_SYMBOLS.contains(&rest[0].as_str()) {
+        if rest.is_empty() || !INFIX_RELATION_SYMBOLS.contains(&rest[0].as_str()) {
             return Err("Not infix.");
         }
         let (term2, newrest) = Term::parse_term(variables, &rest[1..]);
-        Ok((
-            Formula::atom(Pred::pred(&rest[0], &[term1, term2])),
-            newrest,
-        ))
+        Ok((Formula::atom(Pred::new(&rest[0], &[term1, term2])), newrest))
     }
 
     fn _atom_parser<'a>(
-        variables: &Vec<String>,
+        variables: &[String],
         input: &'a [String],
     ) -> PartialParseResult<'a, Formula<Pred>> {
         debug!(
@@ -573,18 +575,18 @@ impl Formula<Pred> {
                     },
                     rest,
                 );
-                (Formula::atom(Pred::pred(p, &terms)), newrest)
+                (Formula::atom(Pred::new(p, &terms)), newrest)
             }
-            [p, rest @ ..] if p != "(" => (Formula::atom(Pred::pred(p, &[])), rest),
+            [p, rest @ ..] if p != "(" => (Formula::atom(Pred::new(p, &[])), rest),
             _ => panic!("parse_atom"),
         }
     }
 
-    fn _parse_pred_formula_inner<'a>(input: &'a [String]) -> PartialParseResult<'a, Formula<Pred>> {
+    fn _parse_pred_formula_inner(input: &[String]) -> PartialParseResult<'_, Formula<Pred>> {
         parse_formula(
             Formula::_infix_parser,
             Formula::_atom_parser,
-            &vec![], // Bound Variables
+            &[], // Bound Variables
             input,
         )
     }
@@ -602,7 +604,7 @@ mod parse_pred_formula_tests {
     #[test]
     fn test_parse_pred_basics() {
         let result = Formula::<Pred>::parse("bar(X, Z)");
-        let pred = Pred::pred("bar", &vec![Term::var("X"), Term::var("Z")]);
+        let pred = Pred::new("bar", &[Term::var("X"), Term::var("Z")]);
         let desired = Formula::atom(pred);
         assert_eq!(result, desired);
     }
@@ -615,10 +617,10 @@ mod parse_pred_formula_tests {
 
         let desired = Formula::imp(
             Formula::and(
-                Formula::atom(Pred::pred("F", &[Term::var("x")])),
-                Formula::atom(Pred::pred("G", &[Term::fun("d", &[Term::var("y")])])),
+                Formula::atom(Pred::new("F", &[Term::var("x")])),
+                Formula::atom(Pred::new("G", &[Term::fun("d", &[Term::var("y")])])),
             ),
-            Formula::atom(Pred::pred("p", &[Term::constant("13"), Term::var("w")])),
+            Formula::atom(Pred::new("p", &[Term::constant("13"), Term::var("w")])),
         );
         assert_eq!(result, desired);
     }
@@ -635,12 +637,12 @@ mod parse_pred_formula_tests {
             Formula::forall(
                 "w",
                 Formula::and(
-                    Formula::atom(Pred::pred("F", &[Term::var("RED")])),
+                    Formula::atom(Pred::new("F", &[Term::var("RED")])),
                     Formula::exists(
                         "RED",
                         Formula::exists(
                             "BLUE",
-                            Formula::atom(Pred::pred("G", &[Term::fun("d", &[Term::var("y")])])),
+                            Formula::atom(Pred::new("G", &[Term::fun("d", &[Term::var("y")])])),
                         ),
                     ),
                 ),
@@ -656,7 +658,7 @@ mod parse_pred_formula_tests {
             "X",
             Formula::forall(
                 "Y",
-                Formula::atom(Pred::pred("bar", &vec![Term::var("X"), Term::var("Y")])),
+                Formula::atom(Pred::new("bar", &[Term::var("X"), Term::var("Y")])),
             ),
         );
 
@@ -668,7 +670,7 @@ mod parse_pred_formula_tests {
     fn test_simple_infix() {
         env_logger::init();
         let input = "~(x = y)";
-        let desired = Formula::not(Formula::atom(Pred::pred(
+        let desired = Formula::not(Formula::atom(Pred::new(
             "=",
             &[Term::var("x"), Term::var("y")],
         )));
@@ -683,13 +685,13 @@ mod parse_pred_formula_tests {
         let desired = Formula::forall(
             "x",
             Formula::imp(
-                Formula::not(Formula::atom(Pred::pred(
+                Formula::not(Formula::atom(Pred::new(
                     "=",
-                    &[Term::var("x"), Term::fun("0", &vec![])],
+                    &[Term::var("x"), Term::fun("0", &[])],
                 ))),
                 Formula::exists(
                     "y",
-                    Formula::atom(Pred::pred(
+                    Formula::atom(Pred::new(
                         "=",
                         &[
                             Term::fun("*", &[Term::var("x"), Term::var("y")]),
@@ -711,10 +713,10 @@ mod parse_pred_formula_tests {
             "X",
             Formula::exists(
                 "Y",
-                Formula::atom(Pred::pred(
+                Formula::atom(Pred::new(
                     "=",
-                    &vec![
-                        Term::fun("foo", &vec![Term::var("X"), Term::var("Y"), Term::var("Z")]),
+                    &[
+                        Term::fun("foo", &[Term::var("X"), Term::var("Y"), Term::var("Z")]),
                         Term::var("W"),
                     ],
                 )),
@@ -726,7 +728,7 @@ mod parse_pred_formula_tests {
 
 // Formula Printing
 impl Formula<Pred> {
-    pub fn pprint<W: Write>(&self, dest: &mut W) -> () {
+    pub fn pprint<W: Write>(&self, dest: &mut W) {
         let pfn: fn(&mut W, u32, &Pred) -> () = Pred::print_pred;
         self.pprint_general(dest, &pfn);
         write(dest, "\n");
@@ -741,10 +743,10 @@ mod test_print_pred_formula {
     fn test_print_pred_formula_variables() {
         let input = Formula::imp(
             Formula::and(
-                Formula::atom(Pred::pred("F", &[Term::var("x")])),
-                Formula::atom(Pred::pred("G", &[Term::fun("d", &[Term::var("y")])])),
+                Formula::atom(Pred::new("F", &[Term::var("x")])),
+                Formula::atom(Pred::new("G", &[Term::fun("d", &[Term::var("y")])])),
             ),
-            Formula::atom(Pred::pred("p", &[Term::constant("13"), Term::var("w")])),
+            Formula::atom(Pred::new("p", &[Term::constant("13"), Term::var("w")])),
         );
 
         let mut output = Vec::new();
@@ -761,12 +763,12 @@ mod test_print_pred_formula {
             Formula::forall(
                 "w",
                 Formula::and(
-                    Formula::atom(Pred::pred("F", &[Term::var("RED")])),
+                    Formula::atom(Pred::new("F", &[Term::var("RED")])),
                     Formula::exists(
                         "RED",
                         Formula::exists(
                             "BLUE",
-                            Formula::atom(Pred::pred("G", &[Term::fun("d", &[Term::var("y")])])),
+                            Formula::atom(Pred::new("G", &[Term::fun("d", &[Term::var("y")])])),
                         ),
                     ),
                 ),
@@ -787,8 +789,8 @@ pub struct Language {
     pub rel: HashMap<String, usize>,
 }
 
-type FuncType<DomainType> = dyn Fn(&Vec<DomainType>) -> DomainType;
-type RelType<DomainType> = dyn Fn(&Vec<DomainType>) -> bool;
+type FuncType<DomainType> = dyn Fn(&[DomainType]) -> DomainType;
+type RelType<DomainType> = dyn Fn(&[DomainType]) -> bool;
 
 pub struct Interpretation<DomainType: Hash + Clone + Eq + Debug + 'static> {
     // Need a lifetime parameter due to the trait bounds in func/rel.
@@ -813,8 +815,8 @@ impl<DomainType: Hash + Clone + Eq + Debug> Interpretation<DomainType> {
         for (name, f) in funcs {
             let name_clone = name.clone();
             let domain_clone = domain.clone();
-            let arity = lang.func[&name].clone();
-            let safe_f = move |input: &Vec<DomainType>| -> DomainType {
+            let arity = lang.func[&name];
+            let safe_f = move |input: &[DomainType]| -> DomainType {
                 assert_eq!(
                     input.len(),
                     arity,
@@ -825,7 +827,7 @@ impl<DomainType: Hash + Clone + Eq + Debug> Interpretation<DomainType> {
                 );
                 for arg in input {
                     assert!(
-                        domain_clone.contains(&arg),
+                        domain_clone.contains(arg),
                         "In evaluating function {}, Value {:?} is not in domain",
                         name_clone,
                         &arg
@@ -839,8 +841,8 @@ impl<DomainType: Hash + Clone + Eq + Debug> Interpretation<DomainType> {
         for (name, r) in rels {
             let name_clone = name.clone();
             let domain_clone = domain.clone();
-            let arity = lang.rel[&name].clone();
-            let safe_r = move |input: &Vec<DomainType>| -> bool {
+            let arity = lang.rel[&name];
+            let safe_r = move |input: &[DomainType]| -> bool {
                 assert_eq!(
                     input.len(),
                     arity,
@@ -851,7 +853,7 @@ impl<DomainType: Hash + Clone + Eq + Debug> Interpretation<DomainType> {
                 );
                 for arg in input {
                     assert!(
-                        domain_clone.contains(&arg),
+                        domain_clone.contains(arg),
                         "In evaluating relation {}
                         Value {:?} is not in domain",
                         name_clone,
@@ -865,7 +867,7 @@ impl<DomainType: Hash + Clone + Eq + Debug> Interpretation<DomainType> {
 
         Interpretation {
             lang: lang.clone(),
-            domain: domain.clone(),
+            domain,
             func: safe_funcs,
             rel: safe_rels,
         }
@@ -879,19 +881,19 @@ mod test_utils {
     pub type DomainType = u32;
 
     pub fn get_test_interpretation() -> Interpretation<DomainType> {
-        fn _foo(input: &Vec<DomainType>) -> DomainType {
+        fn _foo(input: &[DomainType]) -> DomainType {
             std::cmp::min(input[0] + input[1] + input[2], 60)
         }
 
-        fn _bar(input: &Vec<DomainType>) -> bool {
+        fn _bar(input: &[DomainType]) -> bool {
             (input[0] + input[1]) % 2 == 0
         }
 
-        fn _equals(input: &Vec<DomainType>) -> bool {
+        fn _equals(input: &[DomainType]) -> bool {
             input[0] == input[1]
         }
 
-        fn _the_meaning(_input: &Vec<DomainType>) -> DomainType {
+        fn _the_meaning(_input: &[DomainType]) -> DomainType {
             42
         }
 
@@ -934,8 +936,8 @@ mod interpretation_tests {
     #[test]
     fn test_new_basic() {
         let m = test_utils::get_test_interpretation();
-        assert_eq!(m.func["foo"](&vec![1, 3, 3]), 7);
-        assert!(m.rel["bar"](&vec![3, 21]));
+        assert_eq!(m.func["foo"](&[1, 3, 3]), 7);
+        assert!(m.rel["bar"](&[3, 21]));
     }
 
     #[test]
@@ -943,7 +945,7 @@ mod interpretation_tests {
     fn test_new_panic_1() {
         // Should panic since foo is ternary.
         let m = test_utils::get_test_interpretation();
-        m.func["foo"](&vec![1, 3]);
+        m.func["foo"](&[1, 3]);
     }
 
     #[test]
@@ -951,7 +953,7 @@ mod interpretation_tests {
     fn test_new_panic_2() {
         // Should panic since foo is ternary.
         let m = test_utils::get_test_interpretation();
-        m.func["foo"](&vec![1, 3, 3, 21]);
+        m.func["foo"](&[1, 3, 3, 21]);
     }
 
     #[test]
@@ -959,7 +961,7 @@ mod interpretation_tests {
     fn test_new_panic_3() {
         // Should panic since 61 is not in the domain.
         let m = test_utils::get_test_interpretation();
-        m.func["foo"](&vec![1, 61, 4]);
+        m.func["foo"](&[1, 61, 4]);
     }
 }
 
@@ -976,10 +978,10 @@ impl Term {
         match self {
             Term::Var(name) => match v.get(&name.to_string()) {
                 Some(val) => val.to_owned(),
-                None => panic!("Valuation not defined on variable {:?}.", name),
+                None => panic!("Valuation not defined on variable {name:?}."),
             },
             Term::Fun(name, args) => {
-                let func_box: &Box<FuncType<DomainType>> = &m.func[&name.to_string()];
+                let func_box: &FuncType<DomainType> = &m.func[&name.to_string()];
                 let vals: Vec<DomainType> = args.iter().map(|term| term.eval(m, v)).collect();
                 (*func_box)(&vals)
             }
@@ -1018,7 +1020,7 @@ impl Pred {
         m: &Interpretation<DomainType>,
         v: &Valuation<DomainType>,
     ) -> bool {
-        let rel_box: &Box<RelType<DomainType>> = &m.rel[&self.name];
+        let rel_box: &RelType<DomainType> = &m.rel[&self.name];
         let vals: Vec<DomainType> = self.terms.iter().map(|term| term.eval(m, v)).collect();
         (*rel_box)(&vals)
     }
@@ -1042,13 +1044,13 @@ mod test_pred_eval {
 
         let t = Term::parset("foo(X, the_meaning(), Z)");
 
-        let pred_1 = Pred::pred("bar", &vec![t.clone(), Term::var("Y")]);
+        let pred_1 = Pred::new("bar", &[t.clone(), Term::var("Y")]);
         assert!(!pred_1.eval(&m, &v)); // 58 + 1 % 2 = 0 is false
-        let pred_2 = Pred::pred("bar", &vec![t, Term::var("X")]);
+        let pred_2 = Pred::new("bar", &[t, Term::var("X")]);
         assert!(pred_2.eval(&m, &v)); // 58 + 14 % 2 == 0 is true
-        let pred_3 = Pred::pred("=", &vec![Term::var("Y"), Term::var("X")]);
+        let pred_3 = Pred::new("=", &[Term::var("Y"), Term::var("X")]);
         assert!(!pred_3.eval(&m, &v)); // 1 == 14 is false
-        let pred_4 = Pred::pred("=", &vec![Term::var("W"), Term::var("X")]);
+        let pred_4 = Pred::new("=", &[Term::var("W"), Term::var("X")]);
         assert!(pred_4.eval(&m, &v)); // 14 == 14 is true
     }
 }
@@ -1065,11 +1067,11 @@ impl Formula<Pred> {
         // TODO the clone inside of the for loops of the quantifiers could get expensive.
         // Find a better way. Partial functions like Z3 arrays?
 
-        let forall_eval = |var: &String, subformula: &Formula<Pred>| -> bool {
+        let forall_eval = |var: &str, subformula: &Formula<Pred>| -> bool {
             for val in &m.domain {
                 // (var |-> val)v
                 let mut new_v = v.clone();
-                new_v.insert(var.clone(), val.clone());
+                new_v.insert(var.to_string(), val.clone());
                 if !subformula.eval(m, &new_v) {
                     return false;
                 }
@@ -1077,11 +1079,11 @@ impl Formula<Pred> {
             true
         };
 
-        let exists_eval = |var: &String, subformula: &Formula<Pred>| -> bool {
+        let exists_eval = |var: &str, subformula: &Formula<Pred>| -> bool {
             for val in &m.domain {
                 // (var |-> val)v
                 let mut new_v = v.clone();
-                new_v.insert(var.clone(), val.clone());
+                new_v.insert(var.to_string(), val.clone());
                 if subformula.eval(m, &new_v) {
                     return true;
                 }
@@ -1108,7 +1110,7 @@ mod test_formula_eval {
             ("Z".to_string(), 2),
         ]);
 
-        // let pred = Pred::pred("bar", &vec![Term::var("X"), Term::var("Z")]); // 14 + 2 % 2 = 0
+        // let pred = Pred::new("bar", &vec![Term::var("X"), Term::var("Z")]); // 14 + 2 % 2 = 0
         // let formula_1 = Formula::atom(pred);
 
         let formula_1 = Formula::<Pred>::parse("bar(X, Z)");
@@ -1162,7 +1164,7 @@ mod test_formula_eval {
 }
 
 impl Term {
-    fn get_variables_for_termlist(terms: &Vec<Term>) -> HashSet<String> {
+    fn get_variables_for_termlist(terms: &[Term]) -> HashSet<String> {
         terms
             .iter()
             .fold(HashSet::new(), |acc, term| &acc | &term.variables())

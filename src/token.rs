@@ -41,11 +41,11 @@ pub fn is_const_name(name: &str) -> bool {
     true
 }
 
-fn lexwhile<'a>(charset: &[char], input_chars: &'a [char]) -> usize {
+fn lexwhile(charset: &[char], input_chars: &[char]) -> usize {
     // Increment an index until the character is no longer in `charset`.
     let mut bound = 0;
     for c in input_chars {
-        if charset.contains(&c) {
+        if charset.contains(c) {
             bound += 1
         } else {
             break;
@@ -61,7 +61,7 @@ fn lex_inner(all_input_chars: &[char]) -> Vec<String> {
     // Drop leading whitespace.
     let space_bound = lexwhile(&WHITESPACE, all_input_chars);
     let input_chars = &all_input_chars[space_bound..];
-    if input_chars.len() == 0 {
+    if input_chars.is_empty() {
         return vec![];
     }
     let head = &input_chars[0];
@@ -73,7 +73,7 @@ fn lex_inner(all_input_chars: &[char]) -> Vec<String> {
     } else if PUNCTUATION.contains(head) {
         charset = &[]
     } else {
-        panic!("Unrecognized character {}.", head)
+        panic!("Unrecognized character {head}.")
     }
 
     let bound = lexwhile(charset, &input_chars[1..]) + 1;

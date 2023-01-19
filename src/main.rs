@@ -66,9 +66,9 @@ fn main() {
     // 5 = (bin) [1 0 1] =
     let y = vec![Formula::True, Formula::False, Formula::True];
     let symbolic_carry = vec![
-        Formula::atom(Prop::prop("C1")),
-        Formula::atom(Prop::prop("C2")),
-        Formula::atom(Prop::prop("C3")),
+        Formula::atom(Prop::new("C1")),
+        Formula::atom(Prop::new("C2")),
+        Formula::atom(Prop::new("C3")),
     ];
     let out = vec![
         Formula::False,
@@ -94,8 +94,8 @@ fn main() {
     fn integers_mod_n(n: u32) -> Interpretation<u32> {
         assert!(n > 1);
 
-        type FuncType = dyn Fn(&Vec<u32>) -> u32;
-        type RelType = dyn Fn(&Vec<u32>) -> bool;
+        type FuncType = dyn Fn(&[u32]) -> u32;
+        type RelType = dyn Fn(&[u32]) -> bool;
 
         let lang = Language {
             func: HashMap::from([
@@ -109,12 +109,12 @@ fn main() {
 
         let domain: HashSet<u32> = HashSet::from_iter(0..n);
 
-        let addition = move |inputs: &Vec<u32>| -> u32 { (inputs[0] + inputs[1]) % n };
-        let multiplication = move |inputs: &Vec<u32>| -> u32 { (inputs[0] * inputs[1]) % n };
-        let zero = |_inputs: &Vec<u32>| -> u32 { 0 };
-        let one = |_inputs: &Vec<u32>| -> u32 { 1 };
+        let addition = move |inputs: &[u32]| -> u32 { (inputs[0] + inputs[1]) % n };
+        let multiplication = move |inputs: &[u32]| -> u32 { (inputs[0] * inputs[1]) % n };
+        let zero = |_inputs: &[u32]| -> u32 { 0 };
+        let one = |_inputs: &[u32]| -> u32 { 1 };
 
-        fn equality(inputs: &Vec<u32>) -> bool {
+        fn equality(inputs: &[u32]) -> bool {
             inputs[0] == inputs[1]
         }
 
@@ -133,12 +133,12 @@ fn main() {
     // Let's verify (for n < 20) that the integers mod n form a field
     // (have multiplicative inverses) if and only if n is prime.
     let mult_inverse = "forall x. ~(x = 0) ==> exists y. x * y = 1";
-    let mult_inverse_formula = Formula::<Pred>::parse(&mult_inverse);
+    let mult_inverse_formula = Formula::<Pred>::parse(mult_inverse);
     let empty_valuation = BTreeMap::new();
     println!("Model:         |  Is a field?");
     for n in 2..20 {
         let interpretation = integers_mod_n(n);
         let sat = mult_inverse_formula.eval(&interpretation, &empty_valuation);
-        println!("Integers mod {}:  {}", n, sat);
+        println!("Integers mod {n}:  {sat}");
     }
 }

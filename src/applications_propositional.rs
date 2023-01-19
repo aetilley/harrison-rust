@@ -31,7 +31,7 @@ fn adder(
         Formula::not(z.clone()),
     );
     // Equiv to at least two
-    let carry = Formula::list_disj(&vec![
+    let carry = Formula::list_disj(&[
         Formula::and(x.clone(), y.clone()),
         Formula::and(x.clone(), z.clone()),
         Formula::and(y.clone(), z.clone()),
@@ -64,7 +64,7 @@ pub fn ripplecarry(
     let adders = Formula::list_conj(
         &(0..n)
             .map(|idx| adder(&x[idx], &y[idx], &carry[idx], &out[idx], &carry[idx + 1]))
-            .collect(),
+            .collect::<Vec<Formula<Prop>>>(),
     );
     let final_carry_is_final_out = Formula::iff(out[n].clone(), carry[n].clone());
     let result = Formula::and(adders, final_carry_is_final_out);
@@ -195,10 +195,10 @@ mod adder_tests {
     fn test_adder_prop_variables() {
         let formula = adder(
             &Formula::True,
-            &Formula::atom(Prop::prop("Y")),
+            &Formula::atom(Prop::new("Y")),
             &Formula::True,
-            &Formula::atom(Prop::prop("Sum")),
-            &Formula::atom(Prop::prop("Carry")),
+            &Formula::atom(Prop::new("Sum")),
+            &Formula::atom(Prop::new("Carry")),
         );
         assert!(!formula.tautology());
         assert!(formula.satisfiable());
@@ -214,9 +214,9 @@ mod adder_tests {
         // 5 = (bin) [1 0 1] =
         let y = vec![Formula::True, Formula::False, Formula::True];
         let symbolic_carry = vec![
-            Formula::atom(Prop::prop("C1")),
-            Formula::atom(Prop::prop("C2")),
-            Formula::atom(Prop::prop("C3")),
+            Formula::atom(Prop::new("C1")),
+            Formula::atom(Prop::new("C2")),
+            Formula::atom(Prop::new("C3")),
         ];
         let out_correct = vec![
             Formula::False,

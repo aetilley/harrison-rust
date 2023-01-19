@@ -8,8 +8,8 @@ use std::hash::Hash;
 use std::io::Write;
 
 use crate::parse::{
-    maybe_parse_bracketed, parse_bracketed, parse_right_infix, ErrInner, MaybeSubparser,
-    PartialParseResult, Subparser, SubparserFuncType,
+    maybe_parse_bracketed, parse_bracketed, parse_right_infix, MaybePartialParseResult,
+    MaybeSubparser, PartialParseResult, Subparser, SubparserFuncType,
 };
 
 use log::debug;
@@ -39,6 +39,7 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
         Formula::Atom(t)
     }
 
+    #[allow(clippy::should_implement_trait)]
     pub fn not(formula: Formula<T>) -> Formula<T> {
         Formula::Not(Box::new(formula))
     }
@@ -72,28 +73,28 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
         if let Formula::And(box op1, box op2) = formula {
             (op1.clone(), op2.clone())
         } else {
-            panic!("Expected Formula::And, received {:?}.", formula);
+            panic!("Expected Formula::And, received {formula:?}.");
         }
     }
     pub fn get_or_ops(formula: &Formula<T>) -> (Formula<T>, Formula<T>) {
         if let Formula::Or(box op1, box op2) = formula {
             (op1.clone(), op2.clone())
         } else {
-            panic!("Expected Formula::Or, received {:?}.", formula);
+            panic!("Expected Formula::Or, received {formula:?}.");
         }
     }
     pub fn get_imp_ops(formula: &Formula<T>) -> (Formula<T>, Formula<T>) {
         if let Formula::Imp(box op1, box op2) = formula {
             (op1.clone(), op2.clone())
         } else {
-            panic!("Expected Formula::Imp, received {:?}.", formula);
+            panic!("Expected Formula::Imp, received {formula:?}.");
         }
     }
     pub fn get_iff_ops(formula: &Formula<T>) -> (Formula<T>, Formula<T>) {
         if let Formula::Iff(box op1, box op2) = formula {
             (op1.clone(), op2.clone())
         } else {
-            panic!("Expected Formula::Iff, received {:?}.", formula);
+            panic!("Expected Formula::Iff, received {formula:?}.");
         }
     }
 
@@ -137,8 +138,8 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
             Formula::Or(box p, box q) => Formula::or(p.on_atoms(map), q.on_atoms(map)),
             Formula::Imp(box p, box q) => Formula::imp(p.on_atoms(map), q.on_atoms(map)),
             Formula::Iff(box p, box q) => Formula::iff(p.on_atoms(map), q.on_atoms(map)),
-            Formula::Forall(var, box p) => Formula::forall(&var, p.on_atoms(map)),
-            Formula::Exists(var, box p) => Formula::exists(&var, p.on_atoms(map)),
+            Formula::Forall(var, box p) => Formula::forall(var, p.on_atoms(map)),
+            Formula::Exists(var, box p) => Formula::exists(var, p.on_atoms(map)),
             _ => self.clone(),
         }
     }
@@ -164,11 +165,9 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
         // The set of images (along `map`) of atoms in `self`.
         // Note that Harrison takes a map to an interable of S, but I think
         // this might be more natural?
-        let combine: &dyn Fn(&T, Vec<S>) -> Vec<S> = &|t, agg| {
+        let combine: &dyn Fn(&T, Vec<S>) -> Vec<S> = &|t, mut agg| {
             let mut image: Vec<S> = vec![map(t)];
-            let mut clone = agg.clone();
-            // FIX insert?
-            image.append(&mut clone);
+            image.append(&mut agg);
             image
         };
         let all = self.over_atoms(combine, vec![]);
@@ -246,10 +245,7 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
     }
 
     pub fn negative(&self) -> bool {
-        match self {
-            Formula::Not(_) => true,
-            _ => false,
-        }
+        matches!(self, Formula::Not(_))
     }
 
     pub fn negate(&self) -> Formula<T> {
@@ -259,38 +255,36 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
         }
     }
 
-    pub fn list_conj(items: &Vec<Formula<T>>) -> Formula<T> {
+    pub fn list_conj(items: &[Formula<T>]) -> Formula<T> {
         // The conjunction of all `items`.
-        let items = items.clone();
         if items.is_empty() {
             Formula::True
         } else {
             items
-                .into_iter()
-                .reduce(|x, y| Formula::and(x.clone(), y.clone()))
+                .iter()
+                .cloned()
+                .reduce(|x, y| Formula::and(x, y))
                 .unwrap()
-                .clone()
         }
     }
 
-    pub fn list_disj(items: &Vec<Formula<T>>) -> Formula<T> {
+    pub fn list_disj(items: &[Formula<T>]) -> Formula<T> {
         // The disjunction of all `items`.
-        let items = items.clone();
         if items.is_empty() {
             Formula::False
         } else {
             items
-                .into_iter()
-                .reduce(|x, y| Formula::or(x.clone(), y.clone()))
+                .iter()
+                .cloned()
+                .reduce(|x, y| Formula::or(x, y))
                 .unwrap()
-                .clone()
         }
     }
 
     pub fn eval_core<
         AtomEval: Fn(&T) -> bool,
-        ForallEval: Fn(&String, &Formula<T>) -> bool,
-        ExistsEval: Fn(&String, &Formula<T>) -> bool,
+        ForallEval: Fn(&str, &Formula<T>) -> bool,
+        ExistsEval: Fn(&str, &Formula<T>) -> bool,
     >(
         &self,
         atom_eval: &AtomEval,
@@ -409,8 +403,8 @@ mod formula_tests {
         let ante = Formula::atom(String::from("apples"));
         let cons = Formula::atom(String::from("oranges"));
         let input: Formula<String> = Formula::imp(ante.clone(), cons.clone());
-        let result_ante = Formula::antecedent(&input.clone());
-        let result_cons = Formula::consequent(&input.clone());
+        let result_ante = Formula::antecedent(&input);
+        let result_cons = Formula::consequent(&input);
         assert_eq!(result_ante, ante);
         assert_eq!(result_cons, cons);
     }
@@ -473,6 +467,7 @@ mod formula_tests {
             Formula::forall(&String::from("some_var"), Formula::atom(String::from("C"))),
         );
 
+        #[allow(clippy::ptr_arg)]
         fn foo(s: &String) -> Formula<String> {
             Formula::atom(s.clone() + "X")
         }
@@ -502,10 +497,9 @@ mod formula_tests {
         // Some starting elements
         let agg_init = vec![String::from("C"), String::from("B")];
         // A simple aggregator that just appends
-        let aggregator: &dyn Fn(&String, Vec<String>) -> Vec<String> = &|t, agg| {
+        let aggregator: &dyn Fn(&String, Vec<String>) -> Vec<String> = &|t, mut agg| {
             let mut image: Vec<String> = vec![t.clone()];
-            let mut clone = agg.clone();
-            image.append(&mut clone);
+            image.append(&mut agg);
             image
         };
 
@@ -528,6 +522,7 @@ mod formula_tests {
             ),
         );
 
+        #[allow(clippy::ptr_arg)]
         fn foo(s: &String) -> String {
             s.clone() + "X"
         }
@@ -686,69 +681,69 @@ mod formula_tests {
         fn empty(_: &String) -> bool {
             panic!("Did not expect to find atoms.");
         }
-        fn qempty(_: &String, _: &Formula<String>) -> bool {
+        fn qempty(_: &str, _: &Formula<String>) -> bool {
             panic!("Did not expect to find quantifiers.");
         }
 
         formula = Formula::True;
-        assert_eq!(formula.eval_core(&empty, &qempty, &qempty), true);
+        assert!(formula.eval_core(&empty, &qempty, &qempty));
 
         formula = Formula::False;
-        assert_eq!(formula.eval_core(&empty, &qempty, &qempty), false);
+        assert!(!formula.eval_core(&empty, &qempty, &qempty));
 
         formula = Formula::not(Formula::False);
-        assert_eq!(formula.eval_core(&empty, &qempty, &qempty), true);
+        assert!(formula.eval_core(&empty, &qempty, &qempty));
 
         formula = Formula::not(Formula::True);
-        assert_eq!(formula.eval_core(&empty, &qempty, &qempty), false);
+        assert!(!formula.eval_core(&empty, &qempty, &qempty));
 
         formula = Formula::and(Formula::True, Formula::True);
-        assert_eq!(formula.eval_core(&empty, &qempty, &qempty), true);
+        assert!(formula.eval_core(&empty, &qempty, &qempty));
 
         formula = Formula::and(Formula::False, Formula::True);
-        assert_eq!(formula.eval_core(&empty, &qempty, &qempty), false);
+        assert!(!formula.eval_core(&empty, &qempty, &qempty));
 
         formula = Formula::and(Formula::True, Formula::False);
-        assert_eq!(formula.eval_core(&empty, &qempty, &qempty), false);
+        assert!(!formula.eval_core(&empty, &qempty, &qempty));
 
         formula = Formula::and(Formula::False, Formula::False);
-        assert_eq!(formula.eval_core(&empty, &qempty, &qempty), false);
+        assert!(!formula.eval_core(&empty, &qempty, &qempty));
 
         formula = Formula::or(Formula::True, Formula::True);
-        assert_eq!(formula.eval_core(&empty, &qempty, &qempty), true);
+        assert!(formula.eval_core(&empty, &qempty, &qempty));
 
         formula = Formula::or(Formula::False, Formula::True);
-        assert_eq!(formula.eval_core(&empty, &qempty, &qempty), true);
+        assert!(formula.eval_core(&empty, &qempty, &qempty));
 
         formula = Formula::or(Formula::True, Formula::False);
-        assert_eq!(formula.eval_core(&empty, &qempty, &qempty), true);
+        assert!(formula.eval_core(&empty, &qempty, &qempty));
 
         formula = Formula::or(Formula::False, Formula::False);
-        assert_eq!(formula.eval_core(&empty, &qempty, &qempty), false);
+        assert!(!formula.eval_core(&empty, &qempty, &qempty));
 
         formula = Formula::imp(Formula::True, Formula::True);
-        assert_eq!(formula.eval_core(&empty, &qempty, &qempty), true);
+        assert!(formula.eval_core(&empty, &qempty, &qempty));
 
         formula = Formula::imp(Formula::False, Formula::True);
-        assert_eq!(formula.eval_core(&empty, &qempty, &qempty), true);
+        assert!(formula.eval_core(&empty, &qempty, &qempty));
 
         formula = Formula::imp(Formula::True, Formula::False);
-        assert_eq!(formula.eval_core(&empty, &qempty, &qempty), false);
+        assert!(!formula.eval_core(&empty, &qempty, &qempty));
 
         formula = Formula::imp(Formula::False, Formula::False);
-        assert_eq!(formula.eval_core(&empty, &qempty, &qempty), true);
+        assert!(formula.eval_core(&empty, &qempty, &qempty));
 
         formula = Formula::iff(Formula::True, Formula::True);
-        assert_eq!(formula.eval_core(&empty, &qempty, &qempty), true);
+        assert!(formula.eval_core(&empty, &qempty, &qempty));
 
         formula = Formula::iff(Formula::False, Formula::True);
-        assert_eq!(formula.eval_core(&empty, &qempty, &qempty), false);
+        assert!(!formula.eval_core(&empty, &qempty, &qempty));
 
         formula = Formula::iff(Formula::True, Formula::False);
-        assert_eq!(formula.eval_core(&empty, &qempty, &qempty), false);
+        assert!(!formula.eval_core(&empty, &qempty, &qempty));
 
         formula = Formula::iff(Formula::False, Formula::False);
-        assert_eq!(formula.eval_core(&empty, &qempty, &qempty), true);
+        assert!(formula.eval_core(&empty, &qempty, &qempty));
 
         fn atom_eval(x: &String) -> bool {
             match x {
@@ -759,22 +754,16 @@ mod formula_tests {
             }
         }
 
-        fn quantifier_eval(_var: &String, sub: &Formula<String>) -> bool {
+        fn quantifier_eval(_var: &str, sub: &Formula<String>) -> bool {
             // Ignore quantifiers, and just eval quantified formula.
             sub.eval_core(&atom_eval, &quantifier_eval, &quantifier_eval)
         }
 
         formula = Formula::atom("A".to_string());
-        assert_eq!(
-            formula.eval_core(&atom_eval, &quantifier_eval, &quantifier_eval),
-            true
-        );
+        assert!(formula.eval_core(&atom_eval, &quantifier_eval, &quantifier_eval));
 
         formula = Formula::atom("B".to_string());
-        assert_eq!(
-            formula.eval_core(&atom_eval, &quantifier_eval, &quantifier_eval),
-            false
-        );
+        assert!(!formula.eval_core(&atom_eval, &quantifier_eval, &quantifier_eval));
 
         formula = Formula::iff(
             Formula::atom("C".to_string()),
@@ -783,10 +772,7 @@ mod formula_tests {
                 Formula::atom("B".to_string()),
             ),
         );
-        assert_eq!(
-            formula.eval_core(&atom_eval, &quantifier_eval, &quantifier_eval),
-            false
-        );
+        assert!(!formula.eval_core(&atom_eval, &quantifier_eval, &quantifier_eval));
 
         // Should be equivalent to just And(B, C) since quantifier sub-eval ignores quantifiers.
         formula = Formula::exists(
@@ -796,10 +782,7 @@ mod formula_tests {
                 Formula::forall("Y", Formula::atom("C".to_string())),
             ),
         );
-        assert_eq!(
-            formula.eval_core(&atom_eval, &quantifier_eval, &quantifier_eval),
-            false
-        )
+        assert!(!formula.eval_core(&atom_eval, &quantifier_eval, &quantifier_eval),)
     }
 }
 
@@ -807,12 +790,9 @@ mod formula_tests {
 
 fn parse_atomic_formula<'a, T: Clone + Debug + Hash + Eq + Ord>(
     // A better name may be "parse_unary" or "parse_all_but_binary_connectives".
-    infix_parser: for<'b> fn(
-        &Vec<String>,
-        &'b [String],
-    ) -> Result<PartialParseResult<'b, Formula<T>>, ErrInner>,
-    atom_parser: for<'b> fn(&Vec<String>, &'b [String]) -> PartialParseResult<'b, Formula<T>>,
-    variables: &Vec<String>,
+    infix_parser: for<'b> fn(&[String], &'b [String]) -> MaybePartialParseResult<'b, Formula<T>>,
+    atom_parser: for<'b> fn(&[String], &'b [String]) -> PartialParseResult<'b, Formula<T>>,
+    variables: &[String],
     input: &'a [String],
 ) -> PartialParseResult<'a, Formula<T>> {
     debug!(
@@ -850,7 +830,7 @@ fn parse_atomic_formula<'a, T: Clone + Debug + Hash + Eq + Ord>(
             (Formula::not(ast), rest1)
         }
         [head, var, rest @ ..] if head == "forall" => {
-            let mut variables = variables.clone();
+            let mut variables = variables.to_owned();
             variables.push(String::from(var));
             parse_quantified(
                 infix_parser,
@@ -862,7 +842,7 @@ fn parse_atomic_formula<'a, T: Clone + Debug + Hash + Eq + Ord>(
             )
         }
         [head, var, rest @ ..] if head == "exists" => {
-            let mut variables = variables.clone();
+            let mut variables = variables.to_owned();
             variables.push(String::from(var));
             parse_quantified(
                 infix_parser,
@@ -878,12 +858,9 @@ fn parse_atomic_formula<'a, T: Clone + Debug + Hash + Eq + Ord>(
 }
 
 fn parse_quantified<'a, T: Clone + Debug + Hash + Eq + Ord>(
-    infix_parser: for<'b> fn(
-        &Vec<String>,
-        &'b [String],
-    ) -> Result<PartialParseResult<'b, Formula<T>>, ErrInner>,
-    atom_parser: for<'b> fn(&Vec<String>, &'b [String]) -> PartialParseResult<'b, Formula<T>>,
-    variables: &Vec<String>,
+    infix_parser: for<'b> fn(&[String], &'b [String]) -> MaybePartialParseResult<'b, Formula<T>>,
+    atom_parser: for<'b> fn(&[String], &'b [String]) -> PartialParseResult<'b, Formula<T>>,
+    variables: &[String],
     constructor: fn(&str, Formula<T>) -> Formula<T>,
     variable: &String,
     input: &'a [String],
@@ -897,7 +874,7 @@ fn parse_quantified<'a, T: Clone + Debug + Hash + Eq + Ord>(
             let (head1, rest1) = if head == "." {
                 parse_formula(infix_parser, atom_parser, variables, rest)
             } else {
-                let mut variables = variables.clone();
+                let mut variables = variables.to_owned();
                 variables.push(String::from(head));
                 parse_quantified(
                     infix_parser,
@@ -917,12 +894,9 @@ fn parse_quantified<'a, T: Clone + Debug + Hash + Eq + Ord>(
 }
 
 pub fn parse_formula<'a, T: Clone + Debug + Hash + Eq + Ord>(
-    infix_parser: for<'b> fn(
-        &Vec<String>,
-        &'b [String],
-    ) -> Result<PartialParseResult<'b, Formula<T>>, ErrInner>,
-    atom_parser: for<'b> fn(&Vec<String>, &'b [String]) -> PartialParseResult<'b, Formula<T>>,
-    variables: &Vec<String>,
+    infix_parser: for<'b> fn(&[String], &'b [String]) -> MaybePartialParseResult<'b, Formula<T>>,
+    atom_parser: for<'b> fn(&[String], &'b [String]) -> PartialParseResult<'b, Formula<T>>,
+    variables: &[String],
     input: &'a [String],
 ) -> PartialParseResult<'a, Formula<T>> {
     debug!(
@@ -971,14 +945,14 @@ mod generic_ast_parse_tests {
     #[test]
     fn test_parse_formula_basic() {
         fn _tester_infix_parser<'a>(
-            _variables: &Vec<String>,
+            _variables: &[String],
             _input: &'a [String],
         ) -> Result<PartialParseResult<'a, Formula<String>>, &'static str> {
             Err("Infix operations not supported.")
         }
 
         fn _tester_atom_parser<'a>(
-            _variables: &Vec<String>,
+            _variables: &[String],
             input: &'a [String],
         ) -> PartialParseResult<'a, Formula<String>> {
             match input {
@@ -1018,34 +992,29 @@ mod generic_ast_parse_tests {
 
 // Our base write function for strings.
 // Can change the `dest` during testing.
-pub fn write(dest: &mut impl Write, input: &str) -> () {
-    write!(dest, "{}", input).expect("Unable to write");
+pub fn write(dest: &mut impl Write, input: &str) {
+    write!(dest, "{input}").expect("Unable to write");
 }
 #[allow(unused_variables)]
-pub fn open_box(indent: u32) -> () {
+pub fn open_box(indent: u32) {
     // No-op for now
 }
 
-pub fn close_box() -> () {
+pub fn close_box() {
     // No-op for now
 }
 
-pub fn print_space(dest: &mut impl Write) -> () {
+pub fn print_space(dest: &mut impl Write) {
     // Just print a space for now.
     write(dest, " ");
 }
 
-pub fn print_break(dest: &mut impl Write, _x: u32, _y: u32) -> () {
+pub fn print_break(dest: &mut impl Write, _x: u32, _y: u32) {
     // Just print a space for now.
     write(dest, " ");
 }
 
-fn bracket<W: Write>(
-    dest: &mut W,
-    add_brackets: bool,
-    indent: u32,
-    print_action: impl Fn(&mut W) -> (),
-) -> () {
+fn bracket<W: Write>(dest: &mut W, add_brackets: bool, indent: u32, print_action: impl Fn(&mut W)) {
     // Similar to Harrison's `bracket` function but with a unified type `print_action` arg.
     if add_brackets {
         write(dest, "(");
@@ -1067,8 +1036,7 @@ fn strip_quant<T: Clone + Debug + Hash + Eq + Ord>(
     match formula {
         Formula::Forall(x, box yp @ Formula::Forall(_, _))
         | Formula::Exists(x, box yp @ Formula::Exists(_, _)) => {
-            let (xs, q) = strip_quant(&yp);
-            let mut xs = xs.clone();
+            let (mut xs, q) = strip_quant(&yp);
             // NOTE: Order is reversed.
             xs.push(x);
             (xs, q)
@@ -1083,7 +1051,7 @@ fn print_formula<T: Clone + Debug + Hash + Eq + Ord, W: Write>(
     pfn: &fn(&mut W, u32, &T) -> (),
     prec: u32,
     formula: &Formula<T>,
-) -> () {
+) {
     /*NOTE: This is actually Harrison's *inner* print_formula with an additional pfn argument
      *
      * prec is operator precidence
@@ -1122,18 +1090,15 @@ fn print_quant<T: Clone + Debug + Hash + Eq + Ord, W: Write>(
     pfn: &fn(&mut W, u32, &T) -> (),
     qname: &str,
     formula: &Formula<T>,
-) -> () {
+) {
     // Note that `formula` is the entire quantified formula (not just the body).
     let (mut vars, body) = strip_quant(formula);
     // `strip_quant` returns vars in reverse order.
     vars.reverse();
     write(dest, qname);
-    let _ = vars
-        .iter()
-        .map(|v| {
-            write(dest, &(" ".to_string() + v));
-        })
-        .collect::<()>();
+    vars.iter().for_each(|v| {
+        write(dest, &(" ".to_string() + v));
+    });
     write(dest, ". ");
     open_box(0);
     print_formula(dest, pfn, 0, &body);
@@ -1146,7 +1111,7 @@ fn print_prefix<T: Clone + Debug + Hash + Eq + Ord, W: Write>(
     prec: u32,
     symbol: &str,
     inner: &Formula<T>,
-) -> () {
+) {
     write(dest, symbol);
     // let prec = prec + 1;
     // NOTE that harrison seems to think (pg 627 that we should drop be dropping
@@ -1165,7 +1130,7 @@ fn print_infix<T: Clone + Debug + Hash + Eq + Ord, W: Write>(
     symbol: &str,
     left: &Formula<T>,
     right: &Formula<T>,
-) -> () {
+) {
     // As in the double negation case, this will lead to extra brackets in A & (B & C).
     print_formula(dest, pfn, prec + 1, left);
     write(dest, &(" ".to_string() + symbol));
@@ -1174,7 +1139,7 @@ fn print_infix<T: Clone + Debug + Hash + Eq + Ord, W: Write>(
 }
 
 impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
-    pub fn pprint_general<W: Write>(&self, dest: &mut W, pfn: &fn(&mut W, u32, &T) -> ()) -> () {
+    pub fn pprint_general<W: Write>(&self, dest: &mut W, pfn: &fn(&mut W, u32, &T) -> ()) {
         // Takes a generic Write for `dest`, e.g. one can use std::io::stdout()
         // pfn is a sub-parser for atoms (type T)
         // NOTE:  It appears that both times this is passed a `pfn`, that function
@@ -1200,7 +1165,7 @@ mod generic_ast_print_tests {
 
     fn test_write() {
         let mut output = Vec::new();
-        let _ = write(&mut output, "TESTING");
+        write(&mut output, "TESTING");
         let output = String::from_utf8(output).expect("Not UTF-8");
         assert_eq!(output, "TESTING");
     }
@@ -1211,8 +1176,8 @@ mod generic_ast_print_tests {
         let test_action: fn(&mut _) -> () = |dest| {
             write(dest, "TESTING");
         };
-        let _ = bracket(&mut output1, true, 0, test_action);
-        let _ = bracket(&mut output2, false, 0, test_action);
+        bracket(&mut output1, true, 0, test_action);
+        bracket(&mut output2, false, 0, test_action);
         let output1 = String::from_utf8(output1).expect("Not UTF-8");
         let output2 = String::from_utf8(output2).expect("Not UTF-8");
         assert_eq!(output1, "(TESTING)");
@@ -1246,13 +1211,14 @@ mod generic_ast_print_tests {
     }
 
     fn _test_pprint_general(formula: Formula<String>, desired: &str) {
-        fn _test_atom_parser<W: Write>(dest: &mut W, _prec: u32, name: &String) -> () {
-            // A toy parser for `Atom<String>`s that simply prints the `String`.
+        #[allow(clippy::ptr_arg)]
+        fn _test_atom_printer<W: Write>(dest: &mut W, _prec: u32, name: &String) {
+            // A toy printer for `Atom<String>`s that simply prints the `String`.
             write(dest, name);
         }
 
         let mut output = Vec::new();
-        let pfn: fn(&mut _, u32, &String) -> () = _test_atom_parser;
+        let pfn: fn(&mut _, u32, &String) -> () = _test_atom_printer;
         formula.pprint_general(&mut output, &pfn);
         let output = String::from_utf8(output).expect("Not UTF-8");
         assert_eq!(output, desired);
