@@ -4,7 +4,7 @@
 // propositional (aka sentential) logic.
 
 use std::cmp;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Debug;
 use std::io::Write;
 
@@ -316,12 +316,14 @@ mod eval_tests {
 // ### Core SAT definitions (ie. brute-force algorithms).
 
 impl Formula<Prop> {
-    fn get_all_valuations(atoms: &BTreeSet<Prop>) -> Vec<Valuation> {
+    fn get_all_valuations(atoms: &HashSet<Prop>) -> Vec<Valuation> {
         // Initialize result to the singleton with the empty valuation.
         // WARNING, running time/space is Exp(|atoms|))
 
+        let mut sorted: Vec<Prop> = atoms.iter().cloned().collect();
+        sorted.sort();
         let mut result = vec![BTreeMap::new()];
-        for atom in atoms {
+        for atom in sorted {
             let mut new_result = Vec::new();
             for val in result {
                 let mut positive = val.clone();
@@ -417,7 +419,7 @@ mod core_sat_definitions_tests {
 
     #[test]
     fn test_get_all_valuations() {
-        let atoms = BTreeSet::from([prop("A"), prop("B"), prop("C")]);
+        let atoms = HashSet::from([prop("A"), prop("B"), prop("C")]);
         let result = Formula::get_all_valuations(&atoms);
         let desired_result = vec![
             BTreeMap::from([(prop("A"), true), (prop("B"), true), (prop("C"), true)]),
@@ -488,7 +490,7 @@ false false false | true
 // non-literals from going in there.
 // In the meantime, we use a BTreeSet here so that we can order the items
 // by Prop.name.
-type FormulaSet = BTreeSet<BTreeSet<Formula<Prop>>>;
+pub type FormulaSet = BTreeSet<BTreeSet<Formula<Prop>>>;
 
 impl Formula<Prop> {
     fn psubst(&self, subfn: &HashMap<Prop, Formula<Prop>>) -> Formula<Prop> {

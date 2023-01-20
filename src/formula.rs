@@ -2,7 +2,7 @@
 // that do *not* depend on T.  See propositional_logic and first_order_logic
 // files for specific parsing/printing functions that specify T.
 
-use std::collections::{BTreeSet, HashSet};
+use std::collections::HashSet;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::io::Write;
@@ -175,8 +175,8 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
         HashSet::from_iter(iter)
     }
 
-    pub fn atoms(&self) -> BTreeSet<T> {
-        BTreeSet::from_iter(self.atom_union(|x| x.clone()))
+    pub fn atoms(&self) -> HashSet<T> {
+        HashSet::from_iter(self.atom_union(|x| x.clone()))
     }
 
     // May be able to extend this for quantifiers in which case we should remove the 'p"
