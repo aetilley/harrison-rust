@@ -229,7 +229,7 @@ fn get_board_formula(board: &Board, board_size: usize, subboard_size: usize) -> 
     constraints
 }
 
-fn get_all_board_formulas(
+fn get_board_formulas(
     boards: &[Board],
     board_size: usize,
     subboard_size: usize,
@@ -251,18 +251,26 @@ fn get_all_board_formulas(
         .collect()
 }
 
-fn solve_repeatedly_and_average(formula: &FormulaSet, num_iters: u32) {
-    // Solve for SAT several times and take the average time.
+fn solve_repeatedly_and_average<F>(func: F, formulas: &Vec<FormulaSet>, num_iters: u32)
+where
+    F: Fn(&FormulaSet) -> bool,
+{
+    // Solve each formula in `formula` `num_iters` times.  Taking the average.
     let now = Instant::now();
 
-    for _ in 0..num_iters {
-        let val = Formula::<Prop>::dpll(formula);
-        assert!(val, "Should be sat!");
+    for formula in formulas {
+        for _ in 0..num_iters {
+            let val = func(formula);
+            assert!(val, "Should be sat!");
+        }
     }
 
     let elapsed: Duration = now.elapsed();
-    let average: Duration = elapsed / num_iters;
-    println!("Average time over {num_iters} iterations is {average:?}");
+
+    let num_formulas: u32 = formulas.len() as u32;
+    let total_runs = num_iters * num_formulas;
+    let average: Duration = elapsed / total_runs;
+    println!("Average time over a total of {total_runs} runs ({num_formulas} formulas at {num_iters} iterations each) is {average:?}.");
 }
 
 #[cfg(test)]
@@ -533,12 +541,12 @@ mod sudoku_tests {
     }
 
     #[test]
-    fn test_parse_file_and_get_all_formulas() {
+    fn test_parse_file_and_get_some_formulas() {
         let limit = 5;
         let boards: Vec<Board> = parse_sudoku_dataset(Some(limit));
         assert_eq!(boards.len(), limit);
 
-        let all_formulas = get_all_board_formulas(&boards, BOARD_SIZE, SUBBOARD_SIZE);
+        let all_formulas = get_board_formulas(&boards, BOARD_SIZE, SUBBOARD_SIZE);
         assert_eq!(all_formulas.len(), limit);
 
         let some_index = 3;
@@ -552,11 +560,30 @@ mod sudoku_tests {
         assert_eq!(boards.len(), NUM_BOARDS);
     }
 
-    // #[test] //SLOOOOOOOOOOOWWWWWWWWW...
-    fn solve_test() {
-        let boards: Vec<Board> = parse_sudoku_dataset(Some(1));
-        let board = boards[0].clone();
-        let formula = get_board_formula(&board, BOARD_SIZE, SUBBOARD_SIZE);
-        solve_repeatedly_and_average(&formula, 1);
+    // #[test] //SLOWWW...
+    fn solve_test_dpll() {
+        let num_boards = 3;
+        let num_iters = 3;
+        let boards: Vec<Board> = parse_sudoku_dataset(Some(num_boards));
+        let formulas = get_board_formulas(&boards, BOARD_SIZE, SUBBOARD_SIZE);
+        solve_repeatedly_and_average(Formula::dpll, &formulas, num_iters);
+    }
+
+    //#[test] //SLOWWW...
+    fn solve_test_dpli() {
+        let num_boards = 3;
+        let num_iters = 3;
+        let boards: Vec<Board> = parse_sudoku_dataset(Some(num_boards));
+        let formulas = get_board_formulas(&boards, BOARD_SIZE, SUBBOARD_SIZE);
+        solve_repeatedly_and_average(Formula::dpli, &formulas, num_iters);
+    }
+
+    //#[test] //SLOWWW...
+    fn solve_test_dplb() {
+        let num_boards = 3;
+        let num_iters = 3;
+        let boards: Vec<Board> = parse_sudoku_dataset(Some(num_boards));
+        let formulas = get_board_formulas(&boards, BOARD_SIZE, SUBBOARD_SIZE);
+        solve_repeatedly_and_average(Formula::dplb, &formulas, num_iters);
     }
 }
