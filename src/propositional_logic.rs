@@ -4,6 +4,7 @@
 // propositional (aka sentential) logic.
 
 use std::cmp;
+use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Debug;
 use std::io::Write;
@@ -12,7 +13,10 @@ use crate::formula::{parse_formula, write, Formula};
 use crate::parse::{generic_parser, ErrInner, PartialParseResult};
 
 use log::debug;
+use priority_queue::PriorityQueue;
 use regex::Regex;
+
+const EMPTY: BTreeSet<Formula<Prop>> = BTreeSet::new();
 
 // A propositional variable.
 #[derive(Debug, PartialEq, Clone, Hash, Eq, PartialOrd, Ord)]
@@ -275,7 +279,7 @@ impl Prop {
 
 // Propositional Formula Eval
 impl Formula<Prop> {
-    fn eval(&self, val: &Valuation) -> bool {
+    pub fn eval(&self, val: &Valuation) -> bool {
         // NOTE:  We could just as well give trivial definitions for when a propositional
         // formula is quantified, but for now we'll just panic.
         let prop_atom_eval = |prop: &Prop| prop.eval(val);
@@ -680,6 +684,10 @@ impl Formula<Prop> {
             .map(|conj| Formula::list_disj(&conj))
             .collect();
         Formula::list_conj(&partial)
+    }
+
+    pub fn formulaset_to_formula(formula_set: FormulaSet) -> Formula<Prop> {
+        Formula::_formulaset_to_cnf(formula_set)
     }
 
     fn _is_disjunction_of_literals(&self) -> bool {
@@ -1370,24 +1378,12 @@ impl Formula<Prop> {
         num_containing_lit * num_containing_neg - (num_containing_lit + num_containing_neg)
     }
 
-    fn _find_min<F>(obj: &F, domain: &BTreeSet<Formula<Prop>>) -> Option<Formula<Prop>>
+    pub fn _find_min<F>(obj: &F, domain: &BTreeSet<Formula<Prop>>) -> Option<Formula<Prop>>
     where
         F: Fn(&Formula<Prop>) -> isize,
     {
-        // Returns the input that minimizes `obj` */
-        if domain.is_empty() {
-            return None;
-        }
-        let mut minimizing_input: Formula<Prop> = Vec::from_iter(domain)[0].clone();
-        let mut min_value = obj(&minimizing_input);
-        for atom in domain {
-            let atom_value = obj(atom);
-            if atom_value < min_value {
-                minimizing_input = atom.clone();
-                min_value = atom_value;
-            }
-        }
-        Some(minimizing_input)
+        let comp = |f1: &&Formula<Prop>, f2: &&Formula<Prop>| -> Ordering { obj(f1).cmp(&obj(f2)) };
+        domain.iter().min_by(comp).cloned()
     }
 
     fn _resolution_rule(clauses: &FormulaSet) -> FormulaSet {
@@ -1694,7 +1690,7 @@ mod dp_tests {
 
 // DPLL
 impl Formula<Prop> {
-    fn _posneg_count(clauses: &FormulaSet, literal: &Formula<Prop>) -> isize {
+    pub fn _posneg_count(clauses: &FormulaSet, literal: &Formula<Prop>) -> isize {
         // splitting creates *two* formulae for DPLL of sizes
         // N + 1 each, but the next call to DPLL will call the unit clause rule
         // which will reduce each by
@@ -1706,6 +1702,12 @@ impl Formula<Prop> {
         let (num_containing_lit, num_containing_neg) =
             Formula::_counts_containing_literal_and_negation(clauses, literal);
         num_containing_lit + num_containing_neg
+    }
+
+    fn _neg_count(clauses: &FormulaSet, literal: &Formula<Prop>) -> isize {
+        let (_, num_containing_neg) =
+            Formula::_counts_containing_literal_and_negation(clauses, literal);
+        num_containing_neg
     }
 
     pub fn dpll(clauses: &FormulaSet) -> bool {
@@ -1806,141 +1808,218 @@ pub enum Mix {
 // Unlike Harrison, we will push to / pop from the back.
 pub type Trail = Vec<(Formula<Prop>, Mix)>;
 
-// Iterative DPLL
-impl Formula<Prop> {
-    fn unit_propagate(clauses: &FormulaSet, trail: Trail) -> (FormulaSet, Trail) {
-        // Kick of recursive unit_subpropagation with a `trail_set` matching the incoming `trail`.
-        let trail_set: HashSet<Formula<Prop>> = trail.iter().map(|pair| pair.0.clone()).collect();
-        let (reduced_clauses, _, new_trail) = Formula::unit_subpropagate(clauses, trail_set, trail);
-        (reduced_clauses, new_trail)
-    }
-
-    fn unit_subpropagate(
-        clauses: &FormulaSet,
-        mut trail_set: HashSet<Formula<Prop>>,
-        mut trail: Trail,
-    ) -> (FormulaSet, HashSet<Formula<Prop>>, Trail) {
-        // Filter out disjuncts that disagree with `trail_set`
-        // from clauses.  If there are any new resulting unit clauses
-        // add these to `trail` and `trail_set` and repeat.
-        let reduced_clauses: FormulaSet = clauses
-            .clone()
-            .into_iter()
-            .map(|clause| {
-                clause
-                    .into_iter()
-                    .filter(|disjunct| !trail_set.contains(&Formula::negate(disjunct)))
-                    .collect()
-            })
-            .collect();
-        let new_units: HashSet<Formula<Prop>> = reduced_clauses
-            .iter()
-            .filter(|clause| clause.len() == 1 && !trail_set.contains(clause.first().unwrap()))
-            .map(|clause| clause.first().unwrap().clone())
-            .collect();
-        if new_units.is_empty() {
-            (reduced_clauses, trail_set, trail)
-        } else {
-            for unit in new_units.into_iter() {
-                trail.push((unit.clone(), Mix::Deduced));
-                trail_set.insert(unit);
-            }
-            Formula::unit_subpropagate(&reduced_clauses, trail_set, trail)
+fn get_valuation_from_trail(trail: &Trail) -> Valuation {
+    fn _get_atom_prop(atom: Formula<Prop>) -> Prop {
+        match atom {
+            Formula::Atom(prop) => prop,
+            _ => panic!(),
         }
     }
 
-    fn _lit_abs(lit: &Formula<Prop>) -> Formula<Prop> {
-        let result = match lit {
-            Formula::Not(box p) => p,
-            _ => lit,
-        };
-        result.clone()
+    trail
+        .iter()
+        .map(|(lit, _)| (_get_atom_prop(_lit_abs(lit)), !Formula::negative(lit)))
+        .collect()
+}
+
+fn _lit_abs(lit: &Formula<Prop>) -> Formula<Prop> {
+    let result = match lit {
+        Formula::Not(box p) => p,
+        _ => lit,
+    };
+    result.clone()
+}
+
+fn unit_subpropagate(
+    clauses: FormulaSet,
+    mut trail_set: BTreeSet<Formula<Prop>>,
+    mut trail: Trail,
+) -> (FormulaSet, BTreeSet<Formula<Prop>>, Trail) {
+    // Filter out disjuncts that disagree with `trail_set`
+    // from clauses.  If there are any new resulting unit clauses
+    // add these to `trail` and `trail_set` and repeat.
+    let reduced_clauses: FormulaSet = clauses
+        .into_iter()
+        .map(|clause| {
+            clause
+                .into_iter()
+                .filter(|disjunct| !trail_set.contains(&Formula::negate(disjunct)))
+                .collect()
+        })
+        .collect();
+
+    if reduced_clauses.contains(&EMPTY) {
+        return (BTreeSet::from([EMPTY]), trail_set, trail);
     }
 
-    fn get_unassigned_props(clauses: &FormulaSet, trail: &Trail) -> BTreeSet<Formula<Prop>> {
-        // All Props that occur in `clauses` but not in `trail`.
+    let new_units: BTreeSet<Formula<Prop>> = reduced_clauses
+        .iter()
+        .filter(|clause| clause.len() == 1 && !trail_set.contains(clause.first().unwrap()))
+        .map(|clause| clause.first().unwrap().clone())
+        .collect();
 
-        let clause_props: BTreeSet<_> = clauses
+    if new_units.is_empty() {
+        (reduced_clauses, trail_set, trail)
+    } else {
+        // Filter out all clauses that have agreeing conjuncts
+        // (Not 100% sure this speeds things up....)
+        // let reduced_clauses: FormulaSet = reduced_clauses
+        //     .into_iter()
+        //     .filter(|clause| clause.is_disjoint(&new_units))
+        //     .collect();
+
+        for unit in new_units.into_iter() {
+            trail.push((unit.clone(), Mix::Deduced));
+            trail_set.insert(unit);
+        }
+        unit_subpropagate(reduced_clauses, trail_set, trail)
+    }
+}
+
+pub struct DPLISolver {
+    clauses: FormulaSet,
+    trail: Trail,
+    unassigned: PriorityQueue<Formula<Prop>, isize>,
+    sat: Option<bool>,
+    scores: HashMap<Formula<Prop>, isize>,
+}
+
+impl DPLISolver {
+    pub fn new(clauses: &FormulaSet) -> DPLISolver {
+        let props: HashSet<Formula<Prop>> = clauses
             .iter()
             .fold(BTreeSet::new(), |x, y| &x | y)
             .iter()
-            .map(Formula::_lit_abs)
+            .map(_lit_abs)
             .collect();
 
-        let trail_props: BTreeSet<_> = trail
-            .iter()
-            .map(|(lit, _)| Formula::_lit_abs(lit))
+        let scores: HashMap<Formula<Prop>, isize> = props
+            .into_iter()
+            .map(|prop| {
+                let count = Formula::_posneg_count(clauses, &prop);
+                (prop, count)
+            })
             .collect();
-        clause_props.difference(&trail_props).cloned().collect()
-    }
 
-    fn backtrack(trail: &mut Trail) {
-        // Pop until we get to a Guessed value or the empty trail.
-        if let Some((_, Mix::Deduced)) = trail.last() {
-            trail.pop();
-            Formula::backtrack(trail)
+        let unassigned: PriorityQueue<Formula<Prop>, isize> = scores.clone().into_iter().collect();
+
+        let trail = Trail::with_capacity(unassigned.len());
+
+        DPLISolver {
+            clauses: clauses.clone(),
+            trail,
+            unassigned,
+            sat: None,
+            scores,
         }
     }
 
-    fn functional_backtrack(trail: &Trail) -> Trail {
-        // Pop until we get to a Guessed value or the empty trail.
-        let mut copy = trail.clone();
-        Formula::backtrack(&mut copy);
-        copy
+    fn _reset(&mut self) {
+        self.trail.clear();
+        self.sat = None;
     }
 
-    pub fn _dpli(clauses: &FormulaSet, trail: &mut Trail) -> bool {
-        // Start by unit propagating.  If this results in a contradiction, backtrack.
-        let (simplified_clauses, mut extended_trail) =
-            Formula::unit_propagate(clauses, trail.to_owned());
+    fn trail_pop(&mut self) -> Option<Formula<Prop>> {
+        // Pop and add back to `self.unassigned`.
+        match self.trail.pop() {
+            Some((lit, _)) => {
+                let abs = _lit_abs(&lit);
+                self.unassigned.push(abs.clone(), self.scores[&abs]);
+                Some(lit)
+            }
+            None => None,
+        }
+    }
 
-        if simplified_clauses.contains(&BTreeSet::new()) {
+    fn unit_propagate(&self) -> (FormulaSet, Trail) {
+        // Kick of recursive unit_subpropagation with a `trail_set` matching the incoming `trail`.
+        let trail_set: BTreeSet<Formula<Prop>> =
+            self.trail.clone().into_iter().map(|pair| pair.0).collect();
+        let (reduced_clauses, _, extended_trail) =
+            unit_subpropagate(self.clauses.clone(), trail_set, self.trail.clone());
+        (reduced_clauses, extended_trail)
+    }
+
+    fn backtrack(&mut self) {
+        // Pop until we get to a Guessed value or the empty trail.
+        if let Some((_, Mix::Deduced)) = self.trail.last() {
+            self.trail_pop();
+            self.backtrack()
+        }
+    }
+
+    pub fn _dpli(&mut self) -> bool {
+        // Start by unit propagating.  If this results in a contradiction, backtrack.
+        let (simplified_clauses, extended_trail) = self.unit_propagate();
+
+        if simplified_clauses.contains(&EMPTY) {
             // Reach a contradiction.  Must backtrack.
-            Formula::backtrack(trail);
-            let last = trail.last();
+            self.backtrack();
+            let last = self.trail.last();
             // Unfortunately cloning/to_owned-ing a Option<&T> gives the same type.
             // So we use "map" here as a kludge.
             let copy = last.map(|inner| inner.to_owned());
             match copy {
                 // Switch parity of our last guess.  Marking as Deduced this time.
                 Some((lit, Mix::Guessed)) => {
-                    trail.pop();
-                    trail.push((Formula::negate(&lit), Mix::Deduced));
-                    Formula::_dpli(clauses, trail)
+                    assert!(!Formula::negative(&lit));
+                    self.trail.pop();
+                    self.trail.push((Formula::negate(&lit), Mix::Deduced));
+                    self._dpli()
                 }
                 // If there were no more Guesses, the clauses are not satisfiable.
                 _ => false,
             }
         } else {
             // Above propagation was consistent.  Choose another variable to guess.
-            let unassigned = Formula::get_unassigned_props(clauses, &extended_trail);
-            if unassigned.is_empty() {
-                true
-            } else {
-                let optimum = Formula::_find_min(
-                    &|lit| -Formula::_posneg_count(&simplified_clauses, lit),
-                    &unassigned,
-                )
-                .unwrap();
-                extended_trail.push((optimum, Mix::Guessed));
-                Formula::_dpli(clauses, &mut extended_trail)
+            let xlen = extended_trail.len();
+            let num_new = xlen - self.trail.len();
+            for (prop, _mix) in &extended_trail[xlen - num_new..] {
+                self.unassigned.remove(&_lit_abs(prop));
+            }
+            self.trail = extended_trail;
+            match self.unassigned.pop() {
+                Some(optimum) => {
+                    self.trail.push((optimum.0, Mix::Guessed));
+                    self._dpli()
+                }
+                None => {
+                    // Done.  Satisfiable.
+                    true
+                }
             }
         }
     }
 
-    pub fn dpli(clauses: &FormulaSet) -> bool {
-        Formula::_dpli(clauses, &mut vec![])
+    pub fn solve(&mut self) -> bool {
+        self._reset();
+        let sat = self._dpli();
+        self.sat = Some(sat);
+        sat
+    }
+
+    pub fn get_valuation(&self) -> Option<Valuation> {
+        match self.sat {
+            Some(true) => Some(get_valuation_from_trail(&self.trail)),
+            _ => None,
+        }
     }
 }
 
 #[cfg(test)]
-mod dpli_tests {
+mod dpli_solver_tests {
 
     use super::*;
 
+    fn get_empty_solver() -> DPLISolver {
+        DPLISolver::new(&BTreeSet::from([BTreeSet::new()]))
+    }
+
     #[test]
     fn test_backtrack() {
-        let mut trail = vec![
+        let mut solver = get_empty_solver();
+
+        solver.trail = vec![
             (Formula::atom(Prop::new("E")), Mix::Deduced),
             (Formula::atom(Prop::new("D")), Mix::Guessed),
             (Formula::atom(Prop::new("C")), Mix::Deduced),
@@ -1948,9 +2027,19 @@ mod dpli_tests {
             (Formula::atom(Prop::new("A")), Mix::Guessed),
         ];
 
-        Formula::backtrack(&mut trail);
+        // The following is just so we don't get a lookup error.
+        solver.scores = HashMap::from([
+            (Formula::atom(Prop::new("E")), 0),
+            (Formula::atom(Prop::new("D")), 0),
+            (Formula::atom(Prop::new("C")), 0),
+            (Formula::atom(Prop::new("B")), 0),
+            (Formula::atom(Prop::new("A")), 0),
+        ]);
+
+        solver.backtrack();
+
         assert_eq!(
-            trail.last(),
+            solver.trail.last(),
             Some(&(Formula::atom(Prop::new("A")), Mix::Guessed))
         );
         let desired_trail = vec![
@@ -1960,51 +2049,31 @@ mod dpli_tests {
             (Formula::atom(Prop::new("B")), Mix::Deduced),
             (Formula::atom(Prop::new("A")), Mix::Guessed),
         ];
-        assert_eq!(trail, desired_trail);
+        assert_eq!(solver.trail, desired_trail);
 
-        trail.pop();
-        Formula::backtrack(&mut trail);
+        solver.trail.pop();
+        solver.backtrack();
         assert_eq!(
-            trail.last(),
+            solver.trail.last(),
             Some(&(Formula::atom(Prop::new("D")), Mix::Guessed))
         );
         let desired_trail = vec![
             (Formula::atom(Prop::new("E")), Mix::Deduced),
             (Formula::atom(Prop::new("D")), Mix::Guessed),
         ];
-        assert_eq!(trail, desired_trail);
+        assert_eq!(solver.trail, desired_trail);
 
-        trail.pop();
-        Formula::backtrack(&mut trail);
-        assert_eq!(trail.last(), None);
+        solver.trail.pop();
+        solver.backtrack();
+        assert_eq!(solver.trail.last(), None);
         let desired_trail = vec![];
-        assert_eq!(trail, desired_trail);
-    }
-
-    #[test]
-    fn test_unassigned() {
-        let trail: Trail = vec![
-            (Formula::atom(Prop::new("E")), Mix::Deduced),
-            (Formula::not(Formula::atom(Prop::new("D"))), Mix::Guessed),
-            (Formula::atom(Prop::new("B")), Mix::Deduced),
-            (Formula::not(Formula::atom(Prop::new("C"))), Mix::Guessed),
-        ];
-
-        let clauses: FormulaSet = BTreeSet::from([
-            BTreeSet::from([Formula::atom(Prop::new("Z")), Formula::atom(Prop::new("D"))]),
-            BTreeSet::from([
-                Formula::atom(Prop::new("C")),
-                Formula::not(Formula::atom(Prop::new("X"))),
-            ]),
-        ]);
-        let result: BTreeSet<Formula<Prop>> = Formula::get_unassigned_props(&clauses, &trail);
-        let desired =
-            BTreeSet::from([Formula::atom(Prop::new("Z")), Formula::atom(Prop::new("X"))]);
-        assert_eq!(result, desired);
+        assert_eq!(solver.trail, desired_trail);
     }
 
     #[test]
     fn test_unit_propagate() {
+        let mut solver = get_empty_solver();
+
         let clauses: FormulaSet = BTreeSet::from([
             BTreeSet::from([
                 Formula::not(Formula::atom(Prop::new("A"))),
@@ -2026,7 +2095,10 @@ mod dpli_tests {
             (Formula::atom(Prop::new("A")), Mix::Guessed),
             (Formula::atom(Prop::new("Z")), Mix::Deduced),
         ]);
-        let (result_clauses, result_trail) = Formula::unit_propagate(&clauses, trail);
+        solver.clauses = clauses;
+        solver.trail = trail;
+        let (result_clauses, result_trail) = solver.unit_propagate();
+
         let desired_clauses: FormulaSet = BTreeSet::from([
             BTreeSet::from([Formula::atom(Prop::new("B"))]),
             BTreeSet::from([Formula::not(Formula::atom(Prop::new("D")))]),
@@ -2046,7 +2118,7 @@ mod dpli_tests {
     }
 
     #[test]
-    fn test_dpli() {
+    fn test_dpli_1() {
         let formula_set = BTreeSet::from([
             BTreeSet::from([
                 Formula::atom(Prop::new("A")),
@@ -2067,10 +2139,16 @@ mod dpli_tests {
             ]),
         ]);
 
-        let result = Formula::dpli(&formula_set);
-        let desired = false;
-        assert_eq!(result, desired);
+        let mut solver = DPLISolver::new(&formula_set);
+        let result = solver.solve();
+        assert!(!result);
+        assert_eq!(solver.sat, Some(false));
+        let valuation = solver.get_valuation();
+        assert_eq!(valuation, None);
+    }
 
+    #[test]
+    fn test_dpli_2() {
         let formula_set = BTreeSet::from([
             BTreeSet::from([
                 Formula::atom(Prop::new("A")),
@@ -2090,84 +2168,233 @@ mod dpli_tests {
                 Formula::atom(Prop::new("C")),
             ]),
         ]);
+        let mut solver = DPLISolver::new(&formula_set);
+        let result = solver.solve();
+        assert!(result);
+        assert_eq!(solver.sat, Some(true));
+        let valuation = solver.get_valuation();
+        let desired_valuation = BTreeMap::from([
+            (Prop::new("A"), true),
+            (Prop::new("C"), true),
+            (Prop::new("D"), true),
+        ]);
+        assert_eq!(valuation, Some(desired_valuation));
+    }
 
-        let result = Formula::dpli(&formula_set);
-        let desired = true;
-        assert_eq!(result, desired);
+    #[test]
+    fn test_dpli_3() {
+        let formula_set = BTreeSet::from([
+            BTreeSet::from([
+                Formula::not(Formula::atom(Prop::new("A"))),
+                Formula::atom(Prop::new("E")),
+            ]),
+            BTreeSet::from([
+                Formula::not(Formula::atom(Prop::new("D"))),
+                Formula::not(Formula::atom(Prop::new("C"))),
+            ]),
+            BTreeSet::from([
+                Formula::not(Formula::atom(Prop::new("A"))),
+                Formula::atom(Prop::new("D")),
+            ]),
+            BTreeSet::from([Formula::atom(Prop::new("A")), Formula::atom(Prop::new("C"))]),
+            BTreeSet::from([
+                Formula::not(Formula::atom(Prop::new("A"))),
+                Formula::atom(Prop::new("C")),
+            ]),
+            BTreeSet::from([Formula::not(Formula::atom(Prop::new("E")))]),
+        ]);
+        let mut solver = DPLISolver::new(&formula_set);
+        let result = solver.solve();
+        assert!(result);
+        assert_eq!(solver.sat, Some(true));
+        let valuation = solver.get_valuation();
+        let desired_valuation = BTreeMap::from([
+            (Prop::new("A"), false),
+            (Prop::new("C"), true),
+            (Prop::new("D"), false),
+            (Prop::new("E"), false),
+        ]);
+        assert_eq!(valuation, Some(desired_valuation));
     }
 }
 
-// Backjumping
-impl Formula<Prop> {
-    fn backjump(clauses: &FormulaSet, p: &Formula<Prop>, trail: &Trail) -> Trail {
-        // To be called when `p` is inconsistent with `trail`.
-        let mut new_trail = Formula::functional_backtrack(trail);
-        if let Some((_, Mix::Guessed)) = new_trail.last() {
-            new_trail.pop();
-            new_trail.push((p.clone(), Mix::Guessed));
-            let (reduced_clauses, _) = Formula::unit_propagate(clauses, new_trail.clone());
-            if reduced_clauses.contains(&BTreeSet::new()) {
-                new_trail.pop();
-                return Formula::backjump(clauses, p, &new_trail);
-            }
+// Backjumping / Conflict clause learning
+
+pub struct DPLBSolver {
+    clauses: FormulaSet,
+    trail: Trail,
+    unassigned: PriorityQueue<Formula<Prop>, isize>,
+    sat: Option<bool>,
+    scores: HashMap<Formula<Prop>, isize>, // read only
+}
+
+impl DPLBSolver {
+    pub fn new(clauses: &FormulaSet) -> DPLBSolver {
+        let props: HashSet<Formula<Prop>> = clauses
+            .iter()
+            .fold(BTreeSet::new(), |x, y| &x | y)
+            .iter()
+            .map(_lit_abs)
+            .collect();
+
+        let scores: HashMap<Formula<Prop>, isize> = props
+            .into_iter()
+            .map(|prop| {
+                let count = Formula::_posneg_count(clauses, &prop);
+                (prop, count)
+            })
+            .collect();
+
+        let unassigned: PriorityQueue<Formula<Prop>, isize> = scores.clone().into_iter().collect();
+
+        let trail = Trail::with_capacity(unassigned.len());
+
+        DPLBSolver {
+            clauses: clauses.clone(),
+            trail,
+            unassigned,
+            sat: None,
+            scores,
         }
-        trail.clone()
     }
 
-    pub fn _dplb(clauses: &FormulaSet, trail: &mut Trail) -> bool {
-        // Start by unit propagating.  If this results in a contradiction, backtrack.
-        let (simplified_clauses, mut extended_trail) =
-            Formula::unit_propagate(clauses, trail.to_owned());
+    pub fn num_props(&self) -> usize {
+        self.scores.len()
+    }
 
-        if simplified_clauses.contains(&BTreeSet::new()) {
+    fn trail_pop(&mut self) -> Option<Formula<Prop>> {
+        // Pop and add back to `self.unassigned`.
+        match self.trail.pop() {
+            Some((lit, _)) => {
+                let abs = _lit_abs(&lit);
+                self.unassigned.push(abs.clone(), self.scores[&abs]);
+                Some(lit)
+            }
+            None => None,
+        }
+    }
+
+    fn _reset(&mut self) {
+        self.trail.clear();
+        self.unassigned = self.scores.clone().into_iter().collect();
+        self.sat = None;
+    }
+
+    fn unit_propagate(&self) -> (FormulaSet, Trail) {
+        // Kick of recursive unit_subpropagation with a `trail_set` matching the incoming `self.trail`.
+        let trail_set: BTreeSet<Formula<Prop>> =
+            self.trail.iter().map(|pair| pair.0.clone()).collect();
+        let (reduced_clauses, _, extended_trail) =
+            unit_subpropagate(self.clauses.clone(), trail_set, self.trail.clone());
+        (reduced_clauses, extended_trail)
+    }
+
+    fn backtrack(&mut self) {
+        // Pop until we get to a Guessed value or the empty trail.
+        if let Some((_, Mix::Deduced)) = self.trail.last() {
+            self.trail_pop();
+            self.backtrack()
+        }
+    }
+
+    fn backjump(&mut self, p: &Formula<Prop>) {
+        // To be called when `p` is inconsistent with `trail`./
+        let orig_trail = self.trail.clone();
+        let orig_unassigned = self.unassigned.clone();
+        self.backtrack();
+        if let Some((_, Mix::Guessed)) = self.trail.last() {
+            // Temporarity put p on the trail for purposes of calling
+            // unit_propagate.
+            self.trail_pop();
+            self.trail.push((p.clone(), Mix::Guessed));
+            self.unassigned.remove(p).unwrap();
+            let (reduced_clauses, _) = self.unit_propagate();
+            self.trail_pop();
+            if reduced_clauses.contains(&EMPTY) {
+                self.backjump(p);
+                return;
+            }
+        }
+        self.trail = orig_trail;
+        self.unassigned = orig_unassigned;
+    }
+
+    pub fn _dplb(&mut self) -> bool {
+        // Start by unit propagating.  If this results in a contradiction, backtrack.
+        //
+        let (simplified_clauses, extended_trail) = self.unit_propagate();
+
+        if simplified_clauses.contains(&EMPTY) {
             // Reach a contradiction.  Must backtrack.
-            Formula::backtrack(trail);
-            match trail.last() {
+            self.backtrack();
+            let last = self.trail.last();
+            // Unfortunately cloning/to_owned-ing a Option<&T> gives the same type.
+            // So we use "map" here as a kludge.
+            let copy = last.map(|inner| inner.to_owned());
+            match copy {
                 // Switch parity of our last guess.  Marking as Deduced this time.
                 Some((lit, Mix::Guessed)) => {
-                    let mut bj_trail = Formula::backjump(clauses, lit, trail);
+                    self.trail_pop();
+                    self.backjump(&lit);
+
                     // A clause of the negations of all guesses up till but not including
                     // p.  Note that those guesses are jointly consistent (were one to conjoin them),
                     // but not if we were to add `val`.
-                    let mut constraint: BTreeSet<Formula<Prop>> = bj_trail
+                    //
+                    let mut constraint: BTreeSet<Formula<Prop>> = self
+                        .trail
                         .iter()
                         .filter(|(_, mix)| mix == &Mix::Guessed)
                         .map(|(val, _)| Formula::negate(val))
                         .collect();
-                    constraint.insert(Formula::negate(lit));
-                    // TODO: use mutable variable instead?
-                    let mut new_clauses = clauses.clone();
-                    new_clauses.insert(constraint);
-                    trail.push((Formula::negate(lit), Mix::Deduced));
-                    Formula::_dplb(&new_clauses, &mut bj_trail)
+                    constraint.insert(Formula::negate(&lit));
+                    self.clauses.insert(constraint);
+                    self.trail.push((Formula::negate(&lit), Mix::Deduced));
+                    self.unassigned.remove(&lit).unwrap();
+                    self._dplb()
                 }
 
                 _ => false,
             }
         } else {
             // Above propagation was consistent.  Choose another variable to guess.
-            let unassigned = Formula::get_unassigned_props(clauses, &extended_trail);
-            if unassigned.is_empty() {
-                true
-            } else {
-                let optimum = Formula::_find_min(
-                    &|lit| -Formula::_posneg_count(&simplified_clauses, lit),
-                    &unassigned,
-                )
-                .unwrap();
-                extended_trail.push((optimum, Mix::Guessed));
-                Formula::_dpli(clauses, &mut extended_trail)
+            let xlen = extended_trail.len();
+            let num_new = xlen - self.trail.len();
+            for (prop, _mix) in &extended_trail[xlen - num_new..] {
+                self.unassigned.remove(&_lit_abs(prop)).unwrap();
+            }
+            self.trail = extended_trail;
+
+            match self.unassigned.pop() {
+                Some(optimum) => {
+                    self.trail.push((optimum.0, Mix::Guessed));
+                    self._dplb()
+                }
+                None => {
+                    // Done.  Satisfiable.
+                    true
+                }
             }
         }
     }
 
-    pub fn dplb(clauses: &FormulaSet) -> bool {
-        Formula::_dplb(clauses, &mut vec![])
+    pub fn solve(&mut self) -> bool {
+        self._reset();
+        let sat = self._dplb();
+        self.sat = Some(sat);
+        sat
+    }
+
+    pub fn get_valuation(&self) -> Option<Valuation> {
+        match self.sat {
+            Some(true) => Some(get_valuation_from_trail(&self.trail)),
+            _ => None,
+        }
     }
 }
 
 #[cfg(test)]
-mod dplb_tests {
+mod dplb_solver_tests {
 
     use super::*;
 
@@ -2193,6 +2420,18 @@ mod dplb_tests {
             ]),
         ]);
 
+        let scores = HashMap::from([
+            (Formula::atom(Prop::new("A")), 0),
+            (Formula::atom(Prop::new("B")), 0),
+            (Formula::atom(Prop::new("D")), 0),
+            (Formula::atom(Prop::new("F")), 0),
+            (Formula::atom(Prop::new("R")), 0),
+            (Formula::atom(Prop::new("Z")), 0),
+            (Formula::atom(Prop::new("M")), 0),
+            (Formula::atom(Prop::new("N")), 0),
+            (Formula::atom(Prop::new("Y")), 0),
+        ]);
+
         let p = Formula::atom(Prop::new("A"));
         let trail: Trail = Vec::from([
             (Formula::atom(Prop::new("N")), Mix::Deduced),
@@ -2202,18 +2441,22 @@ mod dplb_tests {
             (Formula::atom(Prop::new("R")), Mix::Deduced),
         ]);
 
-        let result = Formula::backjump(&clauses, &p, &trail);
+        let mut solver = DPLBSolver::new(&clauses);
+        solver.trail = trail;
+        solver.scores = scores;
+
+        solver.backjump(&p);
 
         let desired: Trail = Vec::from([
             (Formula::atom(Prop::new("N")), Mix::Deduced),
             (Formula::not(Formula::atom(Prop::new("M"))), Mix::Guessed),
             (Formula::atom(Prop::new("Z")), Mix::Guessed),
         ]);
-        assert_eq!(result, desired);
+        assert_eq!(solver.trail, desired);
     }
 
     #[test]
-    fn test_dplb() {
+    fn test_dplb_1() {
         let formula_set = BTreeSet::from([
             BTreeSet::from([
                 Formula::atom(Prop::new("A")),
@@ -2234,10 +2477,16 @@ mod dplb_tests {
             ]),
         ]);
 
-        let result = Formula::dplb(&formula_set);
-        let desired = false;
-        assert_eq!(result, desired);
+        let mut solver = DPLBSolver::new(&formula_set);
+        let result = solver.solve();
+        assert!(!result);
+        assert_eq!(solver.sat, Some(false));
+        let valuation = solver.get_valuation();
+        assert_eq!(valuation, None);
+    }
 
+    #[test]
+    fn test_dplb_2() {
         let formula_set = BTreeSet::from([
             BTreeSet::from([
                 Formula::atom(Prop::new("A")),
@@ -2257,9 +2506,52 @@ mod dplb_tests {
                 Formula::atom(Prop::new("C")),
             ]),
         ]);
+        let mut solver = DPLBSolver::new(&formula_set);
+        let result = solver.solve();
+        assert!(result);
+        assert_eq!(solver.sat, Some(true));
+        let valuation = solver.get_valuation();
+        let desired_valuation = BTreeMap::from([
+            (Prop::new("A"), true),
+            (Prop::new("C"), true),
+            (Prop::new("D"), true),
+        ]);
+        assert_eq!(valuation, Some(desired_valuation));
+    }
 
-        let result = Formula::dpli(&formula_set);
-        let desired = true;
-        assert_eq!(result, desired);
+    #[test]
+    fn test_dplb_3() {
+        let formula_set = BTreeSet::from([
+            BTreeSet::from([
+                Formula::not(Formula::atom(Prop::new("A"))),
+                Formula::atom(Prop::new("E")),
+            ]),
+            BTreeSet::from([
+                Formula::not(Formula::atom(Prop::new("D"))),
+                Formula::not(Formula::atom(Prop::new("C"))),
+            ]),
+            BTreeSet::from([
+                Formula::not(Formula::atom(Prop::new("A"))),
+                Formula::atom(Prop::new("D")),
+            ]),
+            BTreeSet::from([Formula::atom(Prop::new("A")), Formula::atom(Prop::new("C"))]),
+            BTreeSet::from([
+                Formula::not(Formula::atom(Prop::new("A"))),
+                Formula::atom(Prop::new("C")),
+            ]),
+            BTreeSet::from([Formula::not(Formula::atom(Prop::new("E")))]),
+        ]);
+        let mut solver = DPLBSolver::new(&formula_set);
+        let result = solver.solve();
+        assert!(result);
+        assert_eq!(solver.sat, Some(true));
+        let valuation = solver.get_valuation();
+        let desired_valuation = BTreeMap::from([
+            (Prop::new("A"), false),
+            (Prop::new("C"), true),
+            (Prop::new("D"), false),
+            (Prop::new("E"), false),
+        ]);
+        assert_eq!(valuation, Some(desired_valuation));
     }
 }

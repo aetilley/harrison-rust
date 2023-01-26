@@ -6,6 +6,6 @@ pub mod first_order_logic;
 pub mod formula;
 mod parse;
 pub mod propositional_logic;
-mod sudoku;
+pub mod sudoku;
 mod token;
-mod utils;
+pub mod utils;

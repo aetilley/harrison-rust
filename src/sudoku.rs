@@ -2,7 +2,6 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fs;
 use std::ops::RangeInclusive;
 use std::path::Path;
-use std::time::{Duration, Instant};
 
 use crate::formula::Formula;
 use crate::propositional_logic::{FormulaSet, Prop};
@@ -17,7 +16,7 @@ const PATH: &str = "./data/sudoku.txt";
 const NUM_BOARDS: usize = 95;
 const FILE_LEN_CHARS: usize = NUM_BOARDS * (BOARD_SIZE * BOARD_SIZE + 1); //(board size plus newline)
 
-type Board = BTreeMap<(usize, usize), Option<u32>>;
+pub type Board = BTreeMap<(usize, usize), Option<u32>>;
 
 fn _parse_board(input: &str) -> Board {
     // Returns a 1-indexed board.
@@ -36,10 +35,9 @@ fn _parse_board(input: &str) -> Board {
     data
 }
 
-fn parse_sudoku_dataset(maybe_limit: Option<usize>) -> Vec<Board> {
+pub fn parse_sudoku_dataset(path: &Path, maybe_limit: Option<usize>) -> Vec<Board> {
     // Read from PATH and return the first `limit`-many parsed boards
 
-    let path: &Path = Path::new(PATH);
     let file_string = fs::read_to_string(path).unwrap();
     let lines: Vec<&str> = file_string.lines().collect();
     let limit = maybe_limit.unwrap_or(lines.len());
@@ -213,23 +211,7 @@ fn get_start_constraints(props: &AllProps, board_size: usize, board: &Board) -> 
     start_constraint
 }
 
-fn get_board_formula(board: &Board, board_size: usize, subboard_size: usize) -> FormulaSet {
-    // Note that only `get_start_constraints` depends on `board`.
-    let props = get_all_props(board_size);
-    let constraints: FormulaSet = [
-        get_row_constraints(&props, board_size),
-        get_col_constraints(&props, board_size),
-        get_subboard_constraints(&props, board_size, subboard_size),
-        get_numerical_constraints(&props, board_size),
-        get_start_constraints(&props, board_size, board),
-    ]
-    .iter()
-    .fold(FormulaSet::new(), |x, y| &x | y);
-
-    constraints
-}
-
-fn get_board_formulas(
+pub fn get_board_formulas(
     boards: &[Board],
     board_size: usize,
     subboard_size: usize,
@@ -251,32 +233,12 @@ fn get_board_formulas(
         .collect()
 }
 
-fn solve_repeatedly_and_average<F>(func: F, formulas: &Vec<FormulaSet>, num_iters: u32)
-where
-    F: Fn(&FormulaSet) -> bool,
-{
-    // Solve each formula in `formula` `num_iters` times.  Taking the average.
-    let now = Instant::now();
-
-    for formula in formulas {
-        for _ in 0..num_iters {
-            let val = func(formula);
-            assert!(val, "Should be sat!");
-        }
-    }
-
-    let elapsed: Duration = now.elapsed();
-
-    let num_formulas: u32 = formulas.len() as u32;
-    let total_runs = num_iters * num_formulas;
-    let average: Duration = elapsed / total_runs;
-    println!("Average time over a total of {total_runs} runs ({num_formulas} formulas at {num_iters} iterations each) is {average:?}.");
-}
-
 #[cfg(test)]
 mod sudoku_tests {
 
     use super::*;
+    use crate::propositional_logic::{DPLBSolver, DPLISolver};
+    use crate::utils::run_repeatedly_and_average;
 
     #[test]
     fn test_exactly_one() {
@@ -543,47 +505,49 @@ mod sudoku_tests {
     #[test]
     fn test_parse_file_and_get_some_formulas() {
         let limit = 5;
-        let boards: Vec<Board> = parse_sudoku_dataset(Some(limit));
+        let path: &Path = Path::new(PATH);
+        let boards: Vec<Board> = parse_sudoku_dataset(path, Some(limit));
         assert_eq!(boards.len(), limit);
 
         let all_formulas = get_board_formulas(&boards, BOARD_SIZE, SUBBOARD_SIZE);
         assert_eq!(all_formulas.len(), limit);
-
-        let some_index = 3;
-        let some_board_formula = get_board_formula(&boards[some_index], BOARD_SIZE, SUBBOARD_SIZE);
-        assert_eq!(all_formulas[some_index], some_board_formula);
     }
 
     // #[test] //Slow.
     fn test_parse_whole_file() {
-        let boards: Vec<Board> = parse_sudoku_dataset(None);
+        let path: &Path = Path::new(PATH);
+        let boards: Vec<Board> = parse_sudoku_dataset(path, None);
         assert_eq!(boards.len(), NUM_BOARDS);
     }
 
     // #[test] //SLOWWW...
-    fn solve_test_dpll() {
-        let num_boards = 3;
-        let num_iters = 3;
-        let boards: Vec<Board> = parse_sudoku_dataset(Some(num_boards));
-        let formulas = get_board_formulas(&boards, BOARD_SIZE, SUBBOARD_SIZE);
-        solve_repeatedly_and_average(Formula::dpll, &formulas, num_iters);
+    fn solve_test_dpli_solver() {
+        let path: &Path = Path::new(PATH);
+        let boards: Vec<Board> = parse_sudoku_dataset(path, Some(2));
+        let start_clauses = get_board_formulas(&boards, BOARD_SIZE, SUBBOARD_SIZE)[0].clone();
+        let mut solver = DPLISolver::new(&start_clauses);
+        let is_sat = solver.solve();
+        assert!(is_sat);
+        let formula = Formula::formulaset_to_formula(start_clauses);
+        assert!(formula.eval(&solver.get_valuation().unwrap()));
     }
 
-    //#[test] //SLOWWW...
-    fn solve_test_dpli() {
-        let num_boards = 3;
-        let num_iters = 3;
-        let boards: Vec<Board> = parse_sudoku_dataset(Some(num_boards));
-        let formulas = get_board_formulas(&boards, BOARD_SIZE, SUBBOARD_SIZE);
-        solve_repeatedly_and_average(Formula::dpli, &formulas, num_iters);
-    }
-
-    //#[test] //SLOWWW...
-    fn solve_test_dplb() {
-        let num_boards = 3;
-        let num_iters = 3;
-        let boards: Vec<Board> = parse_sudoku_dataset(Some(num_boards));
-        let formulas = get_board_formulas(&boards, BOARD_SIZE, SUBBOARD_SIZE);
-        solve_repeatedly_and_average(Formula::dplb, &formulas, num_iters);
+    // Should probably be run in release mode.
+    // #[test] //SLOWWW...
+    fn solve_test_dplb_solver() {
+        let path: &Path = Path::new(PATH);
+        let boards: Vec<Board> = parse_sudoku_dataset(path, Some(2));
+        let start_clauses = get_board_formulas(&boards, BOARD_SIZE, SUBBOARD_SIZE)[1].clone();
+        let mut solver = DPLBSolver::new(&start_clauses);
+        let is_sat = solver.solve();
+        assert!(is_sat);
+        let formula = Formula::formulaset_to_formula(start_clauses);
+        assert!(formula.eval(&solver.get_valuation().unwrap()));
+        run_repeatedly_and_average(
+            || {
+                solver.solve();
+            },
+            10,
+        );
     }
 }

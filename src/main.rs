@@ -1,9 +1,8 @@
 #![feature(box_patterns)]
 
-use harrison_rust::applications_propositional::ripplecarry;
 use harrison_rust::first_order_logic::{Interpretation, Language, Pred, Valuation};
 use harrison_rust::formula::Formula;
-use harrison_rust::propositional_logic::Prop;
+use harrison_rust::propositional_logic::{DPLBSolver, Prop};
 
 use std::collections::{HashMap, HashSet};
 
@@ -12,84 +11,50 @@ use std::io::stdout;
 fn main() {
     let mut stdout = stdout();
 
-    // ### PROPOSITIONAL LOGIC ###
-
-    // Example 1:  Simple formula.
     println!("\nExample 1: Simple formula");
+
     let formula = Formula::<Prop>::parse("C \\/ D <=> (~A /\\ B)");
     formula.pprint(&mut stdout);
     formula.print_truthtable(&mut stdout);
     let cnf = Formula::cnf(&formula);
     cnf.pprint(&mut stdout);
     // Satisfiable
-    assert!(formula.dpll_sat());
+    println!("Is satisfiable?: {}", formula.dpll_sat());
     // Not a tautology
-    assert!(!formula.dpll_taut());
-    //
-    // Example 2:  A tautology
-    println!("\nExample 2: Simple formula");
+    println!("Is tautology?: {}", formula.dpll_taut());
+
+    println!("\nExample 2: A Tautology");
+
     let formula = Formula::<Prop>::parse("A \\/ ~A");
     formula.pprint(&mut stdout);
     formula.print_truthtable(&mut stdout);
     let cnf = Formula::cnf(&formula);
     cnf.pprint(&mut stdout);
-    // A tautology
-    assert!(formula.dpll_taut());
+    // Satisfiable
+    println!("Is satisfiable?: {}", formula.dpll_sat());
+    // Not a tautology
+    println!("Is tautology?: {}", formula.dpll_taut());
 
-    // Example 3:  A contradiction
-    println!("\nExample 3: Simple formula");
+    println!("\nExample 3: A Contradiction");
+
     let formula = Formula::<Prop>::parse("~A /\\ A");
     formula.pprint(&mut stdout);
     formula.print_truthtable(&mut stdout);
     let dnf = Formula::dnf(&formula);
     dnf.pprint(&mut stdout);
-    // A contradiction.
-    assert!(!formula.dpll_sat());
-    // ...this means, it's negation is a tautology.
-    let negation = Formula::not(formula);
-    assert!(negation.dpll_taut());
+    println!("Is satisfiable?: {}", formula.dpll_sat());
+    println!("Is tautology?: {}", formula.dpll_taut());
+    println!("Is contradiction?: {}", Formula::not(formula).dpll_taut());
 
-    // Example 4: Simplification
     println!("\nExample 4: Formula simplification");
+
     let formula = Formula::<Prop>::parse("((true ==> (x <=> false)) ==> ~(y \\/ (false /\\ z)))");
+    formula.pprint(&mut stdout);
+    println!("...simplifies to...");
     let simplified = formula.psimplify();
     simplified.pprint(&mut stdout);
 
-    // Example 5:
-    println!("\nExample 5: Ripple Carry");
-    // The function `ripplecarry` below defines an array of `num_bits`-many full-adders
-    // interconnected as usual.
-    let num_bits = 3;
-    // Greater indices should correspond to more significant digits so e.g.
-    // 3 = (bin) [1 1 0] =
-    let x = vec![Formula::True, Formula::True, Formula::False];
-    // 5 = (bin) [1 0 1] =
-    let y = vec![Formula::True, Formula::False, Formula::True];
-    let symbolic_carry = vec![
-        Formula::atom(Prop::new("C1")),
-        Formula::atom(Prop::new("C2")),
-        Formula::atom(Prop::new("C3")),
-    ];
-    let out = vec![
-        Formula::False,
-        Formula::False,
-        Formula::False,
-        Formula::True,
-    ]; // 0 0 0 1 (8)
-    let formula = ripplecarry(&x, &y, &symbolic_carry, &out, num_bits);
-
-    // This is accurate, but our formula simplfier could use some improvement.
-    formula.pprint(&mut stdout);
-
-    // (DPLL method for computing Sat).
-    assert!(formula.dpll_sat());
-    assert!(!formula.dpll_taut());
-    println!("\n");
-
-    // ### PREDICATE LOGIC ###
-
-    // ### Arithmetic mod n (n >= 2) ###
-    println!("Example 6: Arithmetic mod n (n >= 2)\n");
+    println!("\nExample 5: Arithmetic mod n (n >= 2)\n");
 
     fn integers_mod_n(n: u32) -> Interpretation<u32> {
         assert!(n > 1);
@@ -134,6 +99,9 @@ fn main() {
     // (have multiplicative inverses) if and only if n is prime.
     let mult_inverse = "forall x. ~(x = 0) ==> exists y. x * y = 1";
     let mult_inverse_formula = Formula::<Pred>::parse(mult_inverse);
+    println!("Definition of multiplicative inverses:");
+    mult_inverse_formula.pprint(&mut stdout);
+
     let empty_valuation = Valuation::new();
     println!("Model:         |  Is a field?");
     for n in 2..20 {
@@ -141,4 +109,34 @@ fn main() {
         let sat = mult_inverse_formula.eval(&interpretation, &empty_valuation);
         println!("Integers mod {n}:  {sat}");
     }
+
+    println!("\nExample 6: Solve a hard sudoku board");
+
+    use harrison_rust::sudoku::{get_board_formulas, parse_sudoku_dataset, Board};
+    use harrison_rust::utils::run_repeatedly_and_average;
+    use std::path::Path;
+
+    let path_str: &str = "../data/sudoku.txt";
+    let path: &Path = Path::new(path_str);
+    let boards: Vec<Board> = parse_sudoku_dataset(path, Some(1));
+    let clauses = get_board_formulas(&boards, 9, 3)[0].clone();
+    let mut solver = DPLBSolver::new(&clauses);
+    let num_props = solver.num_props();
+    println!("(A sentence in {num_props} propositional variables)");
+    let is_sat = solver.solve();
+    println!("Is satisfiable?: {is_sat}");
+    assert!(is_sat);
+    let formula = Formula::formulaset_to_formula(clauses);
+    // Check that the resulting valuation does indeed satisfy the
+    // initial formula:
+    let check = formula.eval(&solver.get_valuation().unwrap());
+    println!("Check: Solution satisfies original constraints?: {check}");
+    println!("Let's use the same solver to run several times and take the average time...");
+    // Run ten times and take average run time:
+    run_repeatedly_and_average(
+        || {
+            solver.solve();
+        },
+        10,
+    );
 }
