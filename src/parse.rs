@@ -227,17 +227,14 @@ pub fn maybe_parse_bracketed<'a, AST: Clone + Debug>(
     input: &'a [String],
 ) -> Result<PartialParseResult<'a, AST>, ErrInner> {
     // To be called after an opening bracket has been read.
-    // The subparser may fail, but if it succees to parse
-    // any piece then it should parse all the way
-    // to the closing bracket otherwise return Result::Err.
-    debug!("parse_bracketed called on input {input:?}");
+    // The subparser may fail.  If it does or if it fails to
+    // parse all the way to a closing bracket, return Result::Err.
+    debug!("maybe_parse_bracketed called on input {input:?}");
     let (ast, rest) = subparser.call(input)?;
 
     match rest {
         [head, tail @ ..] if head == ")" => Ok((ast, tail)),
-        _ => {
-            panic!("Closing bracket expected. Found {rest:?}");
-        }
+        _ => Err("did not parse to close bracket"),
     }
 }
 

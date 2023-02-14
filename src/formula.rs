@@ -179,10 +179,7 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
         HashSet::from_iter(self.atom_union(|x| x.clone()))
     }
 
-    // May be able to extend this for quantifiers in which case we should remove the 'p"
-    // from the name.  And if the quantifier version ends up being a different function,
-    // then move this and `psimplify` to the `propositional_logic` module.
-    fn _psimplify1(formula: &Formula<T>) -> Formula<T> {
+    pub fn psimplify_step(formula: &Formula<T>) -> Formula<T> {
         // Simplify formulas involving `True` or `False` (constants).  Also
         // eliminate double negations
         match formula {
@@ -224,21 +221,109 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
         }
     }
 
-    pub fn psimplify(&self) -> Formula<T> {
+    pub fn simplify_recursive(&self, step: &dyn Fn(&Formula<T>) -> Formula<T>) -> Formula<T> {
         // Apply `psimplify1` bottom-up to `self`.
         match self {
-            Formula::Not(box p) => Formula::_psimplify1(&Formula::not(p.psimplify())),
-            Formula::And(box p, box q) => {
-                Formula::_psimplify1(&Formula::and(p.psimplify(), q.psimplify()))
-            }
-            Formula::Or(box p, box q) => {
-                Formula::_psimplify1(&Formula::or(p.psimplify(), q.psimplify()))
-            }
+            Formula::Not(box p) => step(&Formula::not(p.simplify_recursive(step))),
+            Formula::And(box p, box q) => step(&Formula::and(
+                p.simplify_recursive(step),
+                q.simplify_recursive(step),
+            )),
+            Formula::Or(box p, box q) => step(&Formula::or(
+                p.simplify_recursive(step),
+                q.simplify_recursive(step),
+            )),
+            Formula::Imp(box p, box q) => step(&Formula::imp(
+                p.simplify_recursive(step),
+                q.simplify_recursive(step),
+            )),
+            Formula::Iff(box p, box q) => step(&Formula::iff(
+                p.simplify_recursive(step),
+                q.simplify_recursive(step),
+            )),
+            Formula::Forall(x, box p) => step(&Formula::forall(x, p.simplify_recursive(step))),
+            Formula::Exists(y, box p) => step(&Formula::exists(y, p.simplify_recursive(step))),
+            _ => self.clone(),
+        }
+    }
+
+    pub fn raw_nnf(&self) -> Formula<T> {
+        // Negation normal form
+
+        match self {
+            Formula::And(box p, box q) => Formula::and(p.raw_nnf(), q.raw_nnf()),
+            Formula::Or(box p, box q) => Formula::or(p.raw_nnf(), q.raw_nnf()),
             Formula::Imp(box p, box q) => {
-                Formula::_psimplify1(&Formula::imp(p.psimplify(), q.psimplify()))
+                Formula::or(Formula::not(p.clone()).raw_nnf(), q.raw_nnf())
             }
-            Formula::Iff(box p, box q) => {
-                Formula::_psimplify1(&Formula::iff(p.psimplify(), q.psimplify()))
+            Formula::Iff(box p, box q) => Formula::or(
+                Formula::and(p.raw_nnf(), q.raw_nnf()),
+                Formula::and(
+                    Formula::not(q.clone()).raw_nnf(),
+                    Formula::not(p.clone()).raw_nnf(),
+                ),
+            ),
+            Formula::Not(box Formula::Not(box p)) => p.raw_nnf(),
+            Formula::Not(box Formula::And(box p, box q)) => Formula::or(
+                Formula::not(p.clone()).raw_nnf(),
+                Formula::not(q.clone()).raw_nnf(),
+            ),
+            Formula::Not(box Formula::Or(box p, box q)) => Formula::and(
+                Formula::not(p.clone()).raw_nnf(),
+                Formula::not(q.clone()).raw_nnf(),
+            ),
+            Formula::Not(box Formula::Imp(box p, box q)) => {
+                Formula::and(p.raw_nnf(), Formula::not(q.clone()).raw_nnf())
+            }
+            Formula::Not(box Formula::Iff(box p, box q)) => Formula::or(
+                Formula::and(p.raw_nnf(), Formula::not(q.clone()).raw_nnf()),
+                Formula::and(Formula::not(p.clone()).raw_nnf(), q.raw_nnf()),
+            ),
+            Formula::Forall(x, box p) => Formula::forall(x, p.raw_nnf()),
+            Formula::Exists(x, box p) => Formula::exists(x, p.raw_nnf()),
+            Formula::Not(box Formula::Forall(x, box p)) => {
+                Formula::exists(x, Formula::not(p.clone()).raw_nnf())
+            }
+            Formula::Not(box Formula::Exists(x, box p)) => {
+                Formula::forall(x, Formula::not(p.clone()).raw_nnf())
+            }
+            _ => self.clone(),
+        }
+    }
+
+    pub fn raw_nenf(&self) -> Formula<T> {
+        // Negation and normal form also allowing equivalences (iff).
+        // NOTE that this and `raw_nnf` could factor through a common function
+        // (with an additional parameter for a `normalizer` but low priority for now.
+        match self {
+            Formula::And(box p, box q) => Formula::and(p.raw_nenf(), q.raw_nenf()),
+            Formula::Or(box p, box q) => Formula::or(p.raw_nenf(), q.raw_nenf()),
+            Formula::Imp(box p, box q) => {
+                Formula::or(Formula::not(p.clone()).raw_nenf(), q.raw_nenf())
+            }
+            Formula::Iff(box p, box q) => Formula::iff(p.raw_nenf(), q.raw_nenf()),
+            Formula::Not(box Formula::Not(box p)) => p.raw_nenf(),
+            Formula::Not(box Formula::And(box p, box q)) => Formula::or(
+                Formula::not(p.clone()).raw_nenf(),
+                Formula::not(q.clone()).raw_nenf(),
+            ),
+            Formula::Not(box Formula::Or(box p, box q)) => Formula::and(
+                Formula::not(p.clone()).raw_nenf(),
+                Formula::not(q.clone()).raw_nenf(),
+            ),
+            Formula::Not(box Formula::Imp(box p, box q)) => {
+                Formula::and(p.raw_nenf(), Formula::not(q.clone()).raw_nenf())
+            }
+            Formula::Not(box Formula::Iff(box p, box q)) => {
+                Formula::iff(p.raw_nenf(), Formula::not(q.clone()).raw_nenf())
+            }
+            Formula::Forall(x, box p) => Formula::forall(x, p.raw_nenf()),
+            Formula::Exists(x, box p) => Formula::exists(x, p.raw_nenf()),
+            Formula::Not(box Formula::Forall(x, box p)) => {
+                Formula::exists(x, Formula::not(p.clone()).raw_nenf())
+            }
+            Formula::Not(box Formula::Exists(x, box p)) => {
+                Formula::forall(x, Formula::not(p.clone()).raw_nenf())
             }
             _ => self.clone(),
         }
@@ -527,110 +612,192 @@ mod formula_tests {
     }
 
     #[test]
-    fn test_psimplify() {
+    fn test_psimplify_step() {
         let formula = Formula::not(Formula::not(Formula::not(Formula::Atom("Hello"))));
         let result = Formula::not(Formula::Atom("Hello"));
-        assert_eq!(formula.psimplify(), result);
+        assert_eq!(Formula::psimplify_step(&formula), result);
 
         let formula = Formula::not(Formula::<String>::True);
         let result = Formula::False;
-        assert_eq!(formula.psimplify(), result);
+        assert_eq!(Formula::psimplify_step(&formula), result);
 
         let formula = Formula::not(Formula::<String>::False);
         let result = Formula::True;
-        assert_eq!(formula.psimplify(), result);
+        assert_eq!(Formula::psimplify_step(&formula), result);
 
         let formula = Formula::and(Formula::True, Formula::atom("A"));
         let result = Formula::atom("A");
-        assert_eq!(formula.psimplify(), result);
+        assert_eq!(Formula::psimplify_step(&formula), result);
 
         let formula = Formula::and(Formula::atom("A"), Formula::True);
         let result = Formula::atom("A");
-        assert_eq!(formula.psimplify(), result);
+        assert_eq!(Formula::psimplify_step(&formula), result);
 
         let formula = Formula::and(Formula::False, Formula::atom("A"));
         let result = Formula::False;
-        assert_eq!(formula.psimplify(), result);
+        assert_eq!(Formula::psimplify_step(&formula), result);
 
         let formula = Formula::and(Formula::atom("A"), Formula::False);
         let result = Formula::False;
-        assert_eq!(formula.psimplify(), result);
+        assert_eq!(Formula::psimplify_step(&formula), result);
 
         let formula = Formula::or(Formula::True, Formula::atom("A"));
         let result = Formula::True;
-        assert_eq!(formula.psimplify(), result);
+        assert_eq!(Formula::psimplify_step(&formula), result);
 
         let formula = Formula::or(Formula::atom("A"), Formula::True);
         let result = Formula::True;
-        assert_eq!(formula.psimplify(), result);
+        assert_eq!(Formula::psimplify_step(&formula), result);
 
         let formula = Formula::or(Formula::False, Formula::atom("A"));
         let result = Formula::atom("A");
-        assert_eq!(formula.psimplify(), result);
+        assert_eq!(Formula::psimplify_step(&formula), result);
 
         let formula = Formula::or(Formula::atom("A"), Formula::False);
         let result = Formula::atom("A");
-        assert_eq!(formula.psimplify(), result);
+        assert_eq!(Formula::psimplify_step(&formula), result);
 
         let formula = Formula::imp(Formula::True, Formula::atom("A"));
         let result = Formula::atom("A");
-        assert_eq!(formula.psimplify(), result);
+        assert_eq!(Formula::psimplify_step(&formula), result);
 
         let formula = Formula::imp(Formula::atom("A"), Formula::True);
         let result = Formula::True;
-        assert_eq!(formula.psimplify(), result);
+        assert_eq!(Formula::psimplify_step(&formula), result);
 
         let formula = Formula::imp(Formula::False, Formula::atom("A"));
         let result = Formula::True;
-        assert_eq!(formula.psimplify(), result);
+        assert_eq!(Formula::psimplify_step(&formula), result);
 
         let formula = Formula::imp(Formula::atom("A"), Formula::False);
         let result = Formula::not(Formula::atom("A"));
-        assert_eq!(formula.psimplify(), result);
+        assert_eq!(Formula::psimplify_step(&formula), result);
 
         let formula = Formula::iff(Formula::True, Formula::atom("A"));
         let result = Formula::atom("A");
-        assert_eq!(formula.psimplify(), result);
+        assert_eq!(Formula::psimplify_step(&formula), result);
 
         let formula = Formula::iff(Formula::atom("A"), Formula::True);
         let result = Formula::atom("A");
-        assert_eq!(formula.psimplify(), result);
+        assert_eq!(Formula::psimplify_step(&formula), result);
 
         let formula = Formula::iff(Formula::False, Formula::atom("A"));
         let result = Formula::not(Formula::atom("A"));
-        assert_eq!(formula.psimplify(), result);
+        assert_eq!(Formula::psimplify_step(&formula), result);
 
         let formula = Formula::iff(Formula::atom("A"), Formula::False);
         let result = Formula::not(Formula::atom("A"));
-        assert_eq!(formula.psimplify(), result);
+        assert_eq!(Formula::psimplify_step(&formula), result);
+
+        let formula = Formula::iff(Formula::<String>::False, Formula::False);
+        let result = Formula::True;
+        assert_eq!(Formula::psimplify_step(&formula), result);
+    }
+
+    #[test]
+    fn test_simplify_recursive() {
+        let step = &Formula::psimplify_step;
 
         let formula = Formula::or(
             Formula::and(Formula::False, Formula::False),
             Formula::imp(Formula::False, Formula::atom("B")),
         );
         let result = Formula::True;
-        assert_eq!(formula.psimplify(), result);
+        assert_eq!(formula.simplify_recursive(step), result);
 
-        let formula = Formula::imp(
+        let formula = Formula::forall(
+            "x",
             Formula::imp(
-                Formula::True,
-                Formula::iff(Formula::atom("x"), Formula::False),
+                Formula::imp(
+                    Formula::True,
+                    Formula::iff(Formula::atom("x"), Formula::False),
+                ),
+                Formula::exists(
+                    "y",
+                    Formula::not(Formula::or(
+                        Formula::atom("y"),
+                        Formula::and(Formula::False, Formula::atom("z")),
+                    )),
+                ),
             ),
-            Formula::not(Formula::or(
-                Formula::atom("y"),
-                Formula::and(Formula::False, Formula::atom("z")),
+        );
+        let result = Formula::forall(
+            "x",
+            Formula::imp(
+                Formula::not(Formula::atom("x")),
+                Formula::exists("y", Formula::not(Formula::atom("y"))),
+            ),
+        );
+
+        assert_eq!(formula.simplify_recursive(step), result);
+    }
+
+    #[test]
+    fn test_raw_nnf() {
+        let formula = Formula::not(Formula::and(
+            Formula::atom("A"),
+            Formula::or(Formula::atom("B"), Formula::atom("C")),
+        ));
+
+        let desired = Formula::or(
+            Formula::not(Formula::atom("A")),
+            Formula::and(
+                Formula::not(Formula::atom("B")),
+                Formula::not(Formula::atom("C")),
+            ),
+        );
+        assert_eq!(formula.raw_nnf(), desired);
+
+        let formula = Formula::exists(
+            "z",
+            Formula::not(Formula::imp(
+                Formula::not(Formula::forall("A", Formula::atom("A"))),
+                Formula::iff(Formula::atom("B"), Formula::atom("C")),
             )),
         );
-        let result = Formula::imp(
-            Formula::not(Formula::atom("x")),
-            Formula::not(Formula::atom("y")),
+        let desired = Formula::exists(
+            "z",
+            Formula::and(
+                Formula::exists("A", Formula::not(Formula::atom("A"))),
+                Formula::or(
+                    Formula::and(Formula::atom("B"), Formula::not(Formula::atom("C"))),
+                    Formula::and(Formula::not(Formula::atom("B")), Formula::atom("C")),
+                ),
+            ),
         );
-        assert_eq!(formula.psimplify(), result);
+        assert_eq!(formula.raw_nnf(), desired);
+    }
 
-        // Iff(False, False)),
-        let formula = Formula::iff(Formula::<String>::False, Formula::<String>::False);
-        let result = Formula::<String>::True;
-        assert_eq!(formula.psimplify(), result);
+    #[test]
+    fn test_raw_nenf() {
+        // let formula = Formula::<Prop>::parse("~(A /\\ (B \\/ C))");
+        let formula = Formula::not(Formula::and(
+            Formula::atom("A"),
+            Formula::or(Formula::atom("B"), Formula::atom("C")),
+        ));
+        let desired = Formula::or(
+            Formula::not(Formula::atom("A")),
+            Formula::and(
+                Formula::not(Formula::atom("B")),
+                Formula::not(Formula::atom("C")),
+            ),
+        );
+        assert_eq!(formula.raw_nenf(), desired);
+        let formula = Formula::exists(
+            "z",
+            Formula::not(Formula::imp(
+                Formula::not(Formula::forall("A", Formula::atom("A"))),
+                Formula::iff(Formula::atom("B"), Formula::atom("C")),
+            )),
+        );
+        let desired = Formula::exists(
+            "z",
+            Formula::and(
+                Formula::exists("A", Formula::not(Formula::atom("A"))),
+                Formula::iff(Formula::atom("B"), Formula::not(Formula::atom("C"))),
+            ),
+        );
+        assert_eq!(formula.raw_nenf(), desired);
     }
 
     #[test]

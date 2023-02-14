@@ -3,7 +3,9 @@ John Harrison's text on Automated Theorem Proving.
 
 (Harrison, J. (2009). Handbook of Practical Logic and Automated Reasoning. Cambridge: Cambridge University Press)
 
-This package is still in its nascent stages, but the following are supported:
+(Harrison's text gives its code in Ocaml.)
+
+This package is a work in progress, but the following are supported:
 
 For propositional logic:
 1) datatypes/parsing/printing operations
@@ -16,6 +18,7 @@ For propositional logic:
 For predicate (first-order) logic:
 1) datatypes/parsing/printing operations
 1) `eval`
+1) Prenex form
 
 NOTE:  Currently this project RELIES ON NIGHTLY RUST for exactly one feature `box_patterns`.
 For more info, see

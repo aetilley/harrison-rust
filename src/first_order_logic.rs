@@ -620,6 +620,55 @@ mod parse_pred_formula_tests {
     }
 
     #[test]
+    fn test_parse_pred_formula_variables_2() {
+        let input = "(R(Y, X) /\\ false)";
+
+        let result = Formula::<Pred>::parse(input);
+
+        let desired = Formula::and(
+            Formula::atom(Pred::new("R", &[Term::var("Y"), Term::var("X")])),
+            Formula::False,
+        );
+        assert_eq!(result, desired);
+    }
+
+    #[test]
+    fn test_parse_pred_formula_variables_3() {
+        let input = "(Y = X)";
+        let result = Formula::<Pred>::parse(input);
+        let desired = Formula::atom(Pred::new("=", &[Term::var("Y"), Term::var("X")]));
+        assert_eq!(result, desired);
+    }
+
+    #[test]
+    fn test_parse_pred_formula_variables_4() {
+        let _ = env_logger::builder().is_test(true).try_init();
+        let input = "Y = X \\/ false";
+
+        let result = Formula::<Pred>::parse(input);
+
+        let desired = Formula::or(
+            Formula::atom(Pred::new("=", &[Term::var("Y"), Term::var("X")])),
+            Formula::False,
+        );
+        assert_eq!(result, desired);
+    }
+
+    #[test]
+    fn test_parse_pred_formula_variables_5() {
+        let _ = env_logger::builder().is_test(true).try_init();
+        let input = "(Y = X \\/ false)";
+
+        let result = Formula::<Pred>::parse(input);
+
+        let desired = Formula::or(
+            Formula::atom(Pred::new("=", &[Term::var("Y"), Term::var("X")])),
+            Formula::False,
+        );
+        assert_eq!(result, desired);
+    }
+
+    #[test]
     fn test_parse_pred_formula_quantifiers() {
         // Remember that quantifiers bind looser than any connective.
         let input = "forall y w. F(RED) /\\ exists RED BLUE. G(d(y))";
@@ -662,7 +711,6 @@ mod parse_pred_formula_tests {
 
     #[test]
     fn test_simple_infix() {
-        env_logger::init();
         let input = "~(x = y)";
         let desired = Formula::not(Formula::atom(Pred::new(
             "=",
@@ -1148,9 +1196,6 @@ mod test_formula_eval {
         ]);
         let v = Valuation::from(&map);
 
-        // let pred = Pred::new("bar", &vec![Term::var("X"), Term::var("Z")]); // 14 + 2 % 2 = 0
-        // let formula_1 = Formula::atom(pred);
-
         let formula_1 = Formula::<Pred>::parse("bar(X, Z)");
         assert!(formula_1.eval(&m, &v));
     }
@@ -1162,7 +1207,6 @@ mod test_formula_eval {
         let map = HashMap::from([("Z".to_string(), 2)]);
         let v = Valuation::from(&map);
 
-        // exists X. X + 2 % 2 == 0
         let formula_1 = Formula::<Pred>::parse("exists X. bar(X, Z)");
 
         assert!(formula_1.eval(&m, &v));
@@ -1179,13 +1223,11 @@ mod test_formula_eval {
         ]);
         let v = Valuation::from(&map);
 
-        // exists X Y. X + Y + 42 == 58
         let formula_1 = Formula::<Pred>::parse("exists X. exists Y. foo(X, Y, Z) = W");
 
         // A Solution exists.
         assert!(formula_1.eval(&m, &v));
 
-        // exists X Y. X + Y + 42 == 43
         let formula_2 = Formula::<Pred>::parse("exists X. exists Y. foo(X, Y, Z) = U");
         // No Solution exists in (1..=60)
         assert!(!formula_2.eval(&m, &v));
@@ -1203,6 +1245,9 @@ mod test_formula_eval {
     }
 }
 
+// Term Variables
+type Instantiation = HashMap<String, Term>;
+
 impl Term {
     fn get_variables_for_termlist(terms: &[Term]) -> HashSet<String> {
         terms
@@ -1211,15 +1256,47 @@ impl Term {
     }
 
     fn variables(&self) -> HashSet<String> {
+        // Theorem (Harrison 3.1)
+        // if `t: Term` and if `v, v': Valuation` such that
+        // for all x in t.variables() we have v(x) == v'(x), then
+        // t.eval(M, v) == t.eval(M, v') for any `M: Interpretation`.
         match self {
             Term::Var(name) => HashSet::from([name.clone()]),
             Term::Fun(_name, terms) => Term::get_variables_for_termlist(terms),
+        }
+    }
+
+    pub fn subst(&self, inst: &Instantiation) -> Term {
+        // Substitute Terms for Vars throughout according to `inst`.
+        //
+        // Lemma (Harrison 3.5)
+        // For any `t: Term`, `inst: Instatiation`, `M: Interpretation`
+        // `v: Valuation`, we have
+        // t.subst(inst).eval(M, v) = t.eval(M, {x |-> inst(x).eval(M, v)})
+        match self {
+            Term::Var(x) => inst.get(x).unwrap_or(&Term::var(x)).clone(),
+            Term::Fun(name, args) => {
+                let new_args: Vec<Term> = args.iter().map(|term| term.subst(inst)).collect();
+                Term::fun(name, &new_args)
+            }
+        }
+    }
+
+    pub fn variant(var: &str, vars: &HashSet<String>) -> String {
+        // Add primes ("'") to `var` until the result is not in `vars`.
+        if vars.contains(var) {
+            let guess = format!("{var}'");
+            Term::variant(&guess, vars)
+        } else {
+            var.to_owned()
         }
     }
 }
 
 #[cfg(test)]
 mod test_term_variables {
+
+    use crate::utils::slice_to_set_of_owned;
 
     use super::*;
 
@@ -1235,6 +1312,44 @@ mod test_term_variables {
             result,
             HashSet::from(["A".to_string(), "B".to_string(), "C".to_string()])
         );
+    }
+
+    #[test]
+    fn test_variables() {
+        let input = Term::parset("F1(foo(A), B, bar(B, baz(C)))");
+        let result = input.variables();
+        assert_eq!(
+            result,
+            HashSet::from(["A".to_string(), "B".to_string(), "C".to_string()])
+        );
+    }
+
+    #[test]
+    fn test_subst() {
+        let input = Term::parset("F1(foo(A), B, bar(B, baz(C)))");
+        let t1 = Term::var("S");
+        let t2 = Term::fun("B", &[Term::var("v")]);
+        let inst = Instantiation::from([("B".to_string(), t1), ("C".to_string(), t2)]);
+        let result = input.subst(&inst);
+        let desired = Term::parset("F1(foo(A), S, bar(S, baz(B(v))))");
+        assert_eq!(result, desired);
+    }
+
+    #[test]
+    fn test_variant() {
+        let existing: HashSet<String> = slice_to_set_of_owned(&["a", "b", "b'"]);
+
+        let var = "c";
+        let result = Term::variant(var, &existing);
+        assert_eq!(result, "c");
+
+        let var = "a";
+        let result = Term::variant(var, &existing);
+        assert_eq!(result, "a'");
+
+        let var = "b";
+        let result = Term::variant(var, &existing);
+        assert_eq!(result, "b''");
     }
 }
 
@@ -1264,6 +1379,15 @@ impl Formula<Pred> {
     }
 
     fn free_variables(&self) -> HashSet<String> {
+        // Theorem (Harrison 3.2)
+        // If `p: Formula<Pred>` and if `v, v': Valuation` such that
+        // for all x in p.free_variables()  we have v(x) == v'(x), then
+        // p.eval(M, v) == p.eval(M, v') for any `M: Interpretation.
+        //
+        // Corollary (Harrision 3.3)
+        // If `p: Formula<Pred>` and p.free_variables() == {}, then
+        // p.eval(M, v) == p.eval(M, v') for any `M: Interpretation`
+        // and any `v, v': Valuation`.
         match self {
             Formula::True | Formula::False => HashSet::new(),
             Formula::Atom(pred) => pred.variables(),
@@ -1277,6 +1401,82 @@ impl Formula<Pred> {
                 vars.remove(var);
                 vars
             }
+        }
+    }
+
+    fn generalize(&self) -> Formula<Pred> {
+        // The universal closure of `formula`.
+
+        let mut sorted: Vec<String> = self.free_variables().iter().cloned().collect();
+        sorted.sort();
+        sorted
+            .iter()
+            .fold(self.clone(), |formula, var| Formula::forall(var, formula))
+    }
+
+    fn _subst_quant(
+        inst: &Instantiation,
+        quant_const: &QuantConstructor,
+        var: &String,
+        formula: &Formula<Pred>,
+    ) -> Formula<Pred> {
+        // Helper function for `subst`.  Does substitution in `formula` according to `inst`
+        // and re-attaches the quantifier for `quant_const`, making sure to change the
+        // variable of quantification (if necessary) to one not occuring free in the resulting
+        // formula (substitution result).
+        let mut other_vars = formula.free_variables();
+        other_vars.remove(var);
+        let mut would_be_captured = false;
+        for free_var in other_vars {
+            // Try apply?
+            let image_free_variables = inst
+                .get(&free_var)
+                .unwrap_or(&Term::var(&free_var))
+                .variables();
+            if image_free_variables.contains(var) {
+                would_be_captured = true;
+                break;
+            }
+        }
+        let new_var = if would_be_captured {
+            let mut tmp_inst = inst.clone();
+            tmp_inst.remove(var);
+            let free_variables = formula.subst(&tmp_inst).free_variables();
+            Term::variant(var, &free_variables)
+        } else {
+            var.clone()
+        };
+
+        let mut new_inst = inst.clone();
+        new_inst.insert(var.clone(), Term::var(&new_var));
+        quant_const(&new_var, formula.subst(&new_inst))
+    }
+
+    pub fn subst(&self, inst: &Instantiation) -> Formula<Pred> {
+        // Substitute Terms for Vars throughout according to `inst`, swapping in
+        // fresh variables of quantification when necessary to avoid unwanted
+        // capture.
+        //
+        // Theorem (Harrision 3.7)
+        // For any `p: Formula<Pred>`, `inst: Instatiation`, `M: Interpretation`
+        // `v: Valuation`, we have
+        // p.subst(inst).eval(M, v) = p.eval(M, {x |-> inst(x).eval(M, v)})
+        //
+        // Corollary (Harrison 3.8)
+        // If a formula is valid, then so is any substitution instance.
+        match self {
+            Formula::False | Formula::True => self.clone(),
+            Formula::Atom(Pred { name, terms }) => {
+                let new_args: Vec<Term> = terms.iter().map(|term| term.subst(inst)).collect();
+                Formula::atom(Pred::new(name, &new_args))
+            }
+            Formula::Not(box p) => Formula::not(p.subst(inst)),
+            Formula::And(box p, box q) => Formula::and(p.subst(inst), q.subst(inst)),
+            Formula::Or(box p, box q) => Formula::or(p.subst(inst), q.subst(inst)),
+            Formula::Imp(box p, box q) => Formula::imp(p.subst(inst), q.subst(inst)),
+            Formula::Iff(box p, box q) => Formula::iff(p.subst(inst), q.subst(inst)),
+            Formula::Forall(x, box p) => Formula::_subst_quant(inst, &Formula::forall, x, p),
+            Formula::Exists(x, box p) => Formula::_subst_quant(inst, &Formula::exists, x, p),
         }
     }
 }
@@ -1293,8 +1493,325 @@ mod test_formula_variables {
         let result_all = formula.variables();
         let desired_all = slice_to_set_of_owned(&["U", "W", "X", "Z"]);
         assert_eq!(result_all, desired_all);
+    }
+
+    #[test]
+    fn test_formula_free_variables() {
+        let formula = Formula::<Pred>::parse("forall X. X = W ==> exists W. foo(X, W, Z) = U");
         let result_free = formula.free_variables();
         let desired_free = slice_to_set_of_owned(&["U", "W", "Z"]);
         assert_eq!(result_free, desired_free);
+    }
+
+    #[test]
+    fn test_generalize() {
+        let formula = Formula::<Pred>::parse("forall X. X = W ==> exists W. foo(X, W) = U");
+        let result = formula.generalize();
+        let desired = Formula::<Pred>::parse("forall W U X. X = W ==> exists W. foo(X, W) = U");
+        assert_eq!(result, desired);
+    }
+
+    #[test]
+    fn test_subst() {
+        let formula = Formula::<Pred>::parse("R(foo(X, W, Z), U)");
+        let inst = Instantiation::from([
+            ("W".to_string(), Term::parset("Z")),
+            ("Z".to_string(), Term::parset("U")),
+        ]);
+        let result = formula.subst(&inst);
+        let desired = Formula::<Pred>::parse("R(foo(X, Z, U), U)");
+        assert_eq!(result, desired);
+
+        let formula = Formula::<Pred>::parse("forall X. X = W ==> exists W. foo(X, W, Z) = U");
+        let inst = Instantiation::from([("W".to_string(), Term::parset("bar(X, R)"))]);
+        let result = formula.subst(&inst);
+        let desired =
+            Formula::<Pred>::parse("forall X'. X' = bar(X, R) ==> exists W. foo(X', W, Z) = U");
+        assert_eq!(result, desired);
+
+        let formula = Formula::<Pred>::parse("forall X. X = W ==> exists W. foo(X, W, Z) = U");
+        let inst = Instantiation::from([("X".to_string(), Term::parset("W"))]);
+        let result = formula.subst(&inst);
+        let desired = formula;
+        assert_eq!(result, desired);
+    }
+}
+
+type QuantConstructor = dyn Fn(&str, Formula<Pred>) -> Formula<Pred>;
+type BinopConstructor = dyn Fn(Formula<Pred>, Formula<Pred>) -> Formula<Pred>;
+// Normal Forms
+impl Formula<Pred> {
+    fn fo_simplify_step(formula: &Formula<Pred>) -> Formula<Pred> {
+        // In addition to core simplifications, removes quantifiers `Qx` in
+        // formulas `Qx.p` when quantified formulas `p` do not contain
+        // free occurences of `x`.
+        match formula {
+            Formula::Forall(x, box p) | Formula::Exists(x, box p) => {
+                if p.free_variables().contains(x) {
+                    formula.clone()
+                } else {
+                    p.clone()
+                }
+            }
+            _ => Formula::psimplify_step(formula),
+        }
+    }
+
+    fn fo_simplify(self: &Formula<Pred>) -> Formula<Pred> {
+        self.simplify_recursive(&Formula::fo_simplify_step)
+    }
+
+    fn nnf(&self) -> Formula<Pred> {
+        // Negation normal form
+        // NOTE:  Harrison actually doesn't simplify first (but makes
+        // sure to simplify in the final definition of prenex form.
+        self.fo_simplify().raw_nnf()
+    }
+
+    fn pull_quantifiers(formula: &Formula<Pred>) -> Formula<Pred> {
+        // Assumes that `formula` is of the form `<binop>(p, q)` where `p, q` are
+        // already in prenex form.
+        // Recursively pulls out all quantifiers leading `p` and `q` to result in
+        // a prenex formula.
+        match formula {
+            Formula::And(box Formula::Forall(x, box p), box Formula::Forall(y, box q)) => {
+                Formula::pullq(
+                    true,
+                    true,
+                    formula,
+                    &Formula::forall,
+                    &Formula::and,
+                    x,
+                    y,
+                    p,
+                    q,
+                )
+            }
+            Formula::Or(box Formula::Exists(x, box p), box Formula::Exists(y, box q)) => {
+                Formula::pullq(
+                    true,
+                    true,
+                    formula,
+                    &Formula::exists,
+                    &Formula::or,
+                    x,
+                    y,
+                    p,
+                    q,
+                )
+            }
+            Formula::And(box Formula::Forall(x, box p), q) => Formula::pullq(
+                true,
+                false,
+                formula,
+                &Formula::forall,
+                &Formula::and,
+                x,
+                x,
+                p,
+                q,
+            ),
+            Formula::And(p, box Formula::Forall(y, box q)) => Formula::pullq(
+                false,
+                true,
+                formula,
+                &Formula::forall,
+                &Formula::and,
+                y,
+                y,
+                p,
+                q,
+            ),
+            Formula::Or(box Formula::Forall(x, box p), q) => Formula::pullq(
+                true,
+                false,
+                formula,
+                &Formula::forall,
+                &Formula::or,
+                x,
+                x,
+                p,
+                q,
+            ),
+            Formula::Or(p, box Formula::Forall(y, box q)) => Formula::pullq(
+                false,
+                true,
+                formula,
+                &Formula::forall,
+                &Formula::or,
+                y,
+                y,
+                p,
+                q,
+            ),
+            Formula::And(box Formula::Exists(x, box p), q) => Formula::pullq(
+                true,
+                false,
+                formula,
+                &Formula::exists,
+                &Formula::and,
+                x,
+                x,
+                p,
+                q,
+            ),
+            Formula::And(p, box Formula::Exists(y, box q)) => Formula::pullq(
+                false,
+                true,
+                formula,
+                &Formula::exists,
+                &Formula::and,
+                y,
+                y,
+                p,
+                q,
+            ),
+            Formula::Or(box Formula::Exists(x, box p), q) => Formula::pullq(
+                true,
+                false,
+                formula,
+                &Formula::exists,
+                &Formula::or,
+                x,
+                x,
+                p,
+                q,
+            ),
+            Formula::Or(p, box Formula::Exists(y, box q)) => Formula::pullq(
+                false,
+                true,
+                formula,
+                &Formula::exists,
+                &Formula::or,
+                y,
+                y,
+                p,
+                q,
+            ),
+            _ => formula.clone(),
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn pullq(
+        sub_left: bool,
+        sub_right: bool,
+        formula: &Formula<Pred>,
+        quant_const: &QuantConstructor,
+        binop_const: &BinopConstructor,
+        x: &str,
+        y: &str,
+        p: &Formula<Pred>,
+        q: &Formula<Pred>,
+    ) -> Formula<Pred> {
+        // Mutually recursive helper function called by `pull_quantifiers`.  Handles
+        // the move of a single quantifier (of type corresponding to `quant_const`)
+        // occuring at the heads of one or both  sides of a binary operation
+        // (corresponding to (binop_const)).  `formula` is the entire formula.
+        // Which side(s) the quantifiers are from is represented by `sub_left`/`sub_right`
+        // `x`/`y` are the corresponding variables (if applicable) for the
+        // left/right sides, and `p, q` are the corresponding
+        // quantified formulas (if applicable)
+        // for the left/right sides.
+        let z = Term::variant(x, &formula.free_variables());
+        let p_new = if sub_left {
+            let inst = Instantiation::from([(x.to_owned(), Term::Var(z.clone()))]);
+            p.subst(&inst)
+        } else {
+            p.clone()
+        };
+        let q_new = if sub_right {
+            let inst = Instantiation::from([(y.to_owned(), Term::Var(z.clone()))]);
+            q.subst(&inst)
+        } else {
+            q.clone()
+        };
+        quant_const(&z, Formula::pull_quantifiers(&binop_const(p_new, q_new)))
+    }
+
+    fn raw_prenex(&self) -> Formula<Pred> {
+        // Assumes `formula` is in NNF.
+        match self {
+            Formula::Forall(x, box p) => Formula::forall(x, p.raw_prenex()),
+            Formula::Exists(x, box p) => Formula::exists(x, p.raw_prenex()),
+            Formula::And(box p, box q) => {
+                Formula::pull_quantifiers(&Formula::and(p.raw_prenex(), q.raw_prenex()))
+            }
+            Formula::Or(box p, box q) => {
+                Formula::pull_quantifiers(&Formula::or(p.raw_prenex(), q.raw_prenex()))
+            }
+            _ => self.clone(),
+        }
+    }
+
+    fn prenex(&self) -> Formula<Pred> {
+        // Result should be of the form `Q_1 x_1 ... Q_n x_n. p`
+        // where `p` is a quantifier-free formula in negation normal form.
+        self.fo_simplify().nnf().raw_prenex()
+    }
+}
+
+#[cfg(test)]
+mod normal_form_tests {
+
+    use super::*;
+
+    #[test]
+    fn test_fo_simplify_step() {
+        let formula_string = "exists w. forall z. G(z)";
+        let formula = Formula::<Pred>::parse(formula_string);
+        let result = Formula::fo_simplify_step(&formula);
+        let desired_string = "forall z. G(z)";
+        let desired = Formula::<Pred>::parse(desired_string);
+        assert_eq!(result, desired);
+    }
+
+    #[test]
+    fn test_fo_simplify() {
+        let formula_string = "Y = X /\\ false \\/ (false ==> R(Z))";
+        let formula = Formula::<Pred>::parse(formula_string);
+        let desired = Formula::True;
+        assert_eq!(formula.fo_simplify(), desired);
+
+        let formula_string =
+            "forall x. (true ==> (R(x) <=> false)) ==> exists z exists y. ~(K(y) \\/ false)";
+        let formula = Formula::<Pred>::parse(formula_string);
+        let desired_string = "forall x. (~R(x) ==> exists y. ~K(y))";
+        let desired = Formula::<Pred>::parse(desired_string);
+        assert_eq!(formula.fo_simplify(), desired);
+
+        let formula_string = "exists w. forall z. G(z)";
+        let formula = Formula::<Pred>::parse(formula_string);
+        let desired_string = "forall z. G(z)";
+        let desired = Formula::<Pred>::parse(desired_string);
+        assert_eq!(formula.fo_simplify(), desired);
+    }
+
+    #[test]
+    fn test_raw_prenex() {
+        let formula_string = "F(x) /\\ forall y. exists w. (G(y, z) \\/ exists z. ~F(z))";
+        let formula = Formula::<Pred>::parse(formula_string);
+        let result = formula.raw_prenex();
+        let desired_string = "forall y. exists w. exists z'. F(x) /\\ (G(y, z) \\/ ~F(z'))";
+        let desired = Formula::<Pred>::parse(desired_string);
+        assert_eq!(result, desired);
+
+        // let formula_string = "(exists x. F(x, z)) ==> (exists w forall z. ~G(z, x))";
+        let formula_string = "(forall x. ~F(x, z)) \\/ (forall z. ~G(z, x))";
+        let formula = Formula::<Pred>::parse(formula_string);
+        let result = formula.raw_prenex();
+        let desired_string = "forall x'. forall z'. ~F(x', z) \\/ ~G(z', x)";
+        let desired = Formula::<Pred>::parse(desired_string);
+        assert_eq!(result, desired);
+    }
+
+    #[test]
+    fn test_prenex() {
+        let formula_string = "(exists x. F(x, z)) ==> (exists w. forall z. ~G(z, x))";
+        let formula = Formula::<Pred>::parse(formula_string);
+        let result = formula.prenex();
+        let desired_string = "forall x'. forall z'. ~F(x', z) \\/ ~G(z', x)";
+        let desired = Formula::<Pred>::parse(desired_string);
+        assert_eq!(result, desired);
     }
 }

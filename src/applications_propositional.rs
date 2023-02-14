@@ -200,8 +200,8 @@ mod adder_tests {
             &Formula::atom(Prop::new("Sum")),
             &Formula::atom(Prop::new("Carry")),
         );
-        assert!(!formula.tautology());
-        assert!(formula.satisfiable());
+        assert!(!formula.brute_tautology());
+        assert!(formula.brute_satisfiable());
     }
 
     #[test]

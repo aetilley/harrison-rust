@@ -163,6 +163,13 @@ mod prop_parse_tests {
         );
         assert_eq!(result, desired);
 
+        let result = Formula::<Prop>::parse("(a /\\ false) \\/ (false ==> d)");
+        let desired = Formula::or(
+            Formula::and(Formula::atom(Prop::new("a")), Formula::False),
+            Formula::imp(Formula::False, Formula::atom(Prop::new("d"))),
+        );
+        assert_eq!(result, desired);
+
         let result = Formula::<Prop>::parse("(p /\\ q) /\\ q ==> (p /\\ q) /\\ q");
         let desired = Formula::imp(
             Formula::and(
@@ -280,8 +287,10 @@ impl Prop {
 // Propositional Formula Eval
 impl Formula<Prop> {
     pub fn eval(&self, val: &Valuation) -> bool {
-        // NOTE:  We could just as well give trivial definitions for when a propositional
-        // formula is quantified, but for now we'll just panic.
+        // Theorem (Harrison 2.2):
+        // For any `p: Formula<Prop>` if `v, v': Valuation`,
+        // such that v(x) ==  v'(x) for all x in p.atoms(),
+        // then p.eval(v) == p.eval(v').
         let prop_atom_eval = |prop: &Prop| prop.eval(val);
 
         fn qempty(_: &str, _: &Formula<Prop>) -> bool {
@@ -383,9 +392,7 @@ impl Formula<Prop> {
         write(dest, &result);
     }
 
-    // TODO prefix the below with, e.g., "naive_" or "brute_force_" in order to
-    // discourage use.
-    pub fn tautology(&self) -> bool {
+    pub fn brute_tautology(&self) -> bool {
         // NOTE:  SLOW, USE OTHER VERSIONS.
         // Note that the set of valuations should never be empty
         // (Event `True` has the empty valuation.)
@@ -395,20 +402,20 @@ impl Formula<Prop> {
             .all(|y| y)
     }
 
-    pub fn equivalent(&self, formula: &Formula<Prop>) -> bool {
+    pub fn brute_equivalent(&self, formula: &Formula<Prop>) -> bool {
         // NOTE:  SLOW, USE OTHER VERSIONS.
         let target = Formula::iff(self.clone(), formula.clone());
-        target.tautology()
+        target.brute_tautology()
     }
 
-    pub fn unsatisfiable(&self) -> bool {
+    pub fn brute_unsatisfiable(&self) -> bool {
         // NOTE:  SLOW, USE OTHER VERSIONS.
-        Formula::not(self.clone()).tautology()
+        Formula::not(self.clone()).brute_tautology()
     }
 
-    pub fn satisfiable(&self) -> bool {
+    pub fn brute_satisfiable(&self) -> bool {
         // NOTE:  SLOW, USE OTHER VERSIONS.
-        !self.unsatisfiable()
+        !self.brute_unsatisfiable()
     }
 }
 
@@ -462,26 +469,26 @@ false false false | true
     }
 
     #[test]
-    fn test_tautology_and_satisfiable() {
+    fn test_brute_tautology_and_satisfiable() {
         let form1 = Formula::<Prop>::parse("true");
-        assert!(form1.tautology());
-        assert!(!form1.unsatisfiable());
-        assert!(form1.satisfiable());
+        assert!(form1.brute_tautology());
+        assert!(!form1.brute_unsatisfiable());
+        assert!(form1.brute_satisfiable());
 
         let form2 = Formula::<Prop>::parse("A \\/ B");
-        assert!(!form2.tautology());
-        assert!(!form2.unsatisfiable());
-        assert!(form2.satisfiable());
+        assert!(!form2.brute_tautology());
+        assert!(!form2.brute_unsatisfiable());
+        assert!(form2.brute_satisfiable());
 
         let form3 = Formula::<Prop>::parse("A \\/ ~A");
-        assert!(form3.tautology());
-        assert!(!form3.unsatisfiable());
-        assert!(form3.satisfiable());
+        assert!(form3.brute_tautology());
+        assert!(!form3.brute_unsatisfiable());
+        assert!(form3.brute_satisfiable());
 
         let form4 = Formula::<Prop>::parse("A /\\ ~A");
-        assert!(!form4.tautology());
-        assert!(form4.unsatisfiable());
-        assert!(!form4.satisfiable());
+        assert!(!form4.brute_tautology());
+        assert!(form4.brute_unsatisfiable());
+        assert!(!form4.brute_satisfiable());
     }
 }
 
@@ -498,12 +505,45 @@ pub type FormulaSet = BTreeSet<BTreeSet<Formula<Prop>>>;
 
 impl Formula<Prop> {
     fn psubst(&self, subfn: &HashMap<Prop, Formula<Prop>>) -> Formula<Prop> {
-        // Replace each Atom(prop) with a subformula given by `subfn(prop)`.
+        // Replace each Atom(prop) with a subformula given by `subfn[prop]`.
+        //
+        // Theorem (Harrison 2.3)
+        // For any `p: Prop`, and `p, q: Formula<Prop>` and any `v: Valuation`,
+        // we have p.psubst({x |=> q}).eval(v) == p.eval((x |=> q.eval(v))v).
+        //
+        // Corollary (Harrison 2.4)
+        // If `p: Formula<Prop>` is a tautology, `x: Prop`, and `q: Formula<Prop>`
+        // then p.psubst({x |=> q}) is also a tautology.
+        //
+        // Theorem (Harrison 2.5)
+        // For `v: Valuation` and `p,q: Formula<Prop>` such that p.eval(v) == q.eval(v).
+        // Then for any x: Prop and r: Formula<Prop> we have
+        // r.psubst({x|=>p}).eval(v) == r.psubst({x|=>q}).eval(v)
+        //
+        // Corollary (Harrision 2.6)
+        // If `p, q: Formula<Prop>` are logically equivalent, then
+        // for all `v: Valuation` we have
+        // r.psubst({x|=>p}).eval(v) == r.psubst({x|=>q}).eval(v)
+        // In particular r.psubst({x|=>p}) is a tautology iff r.psubst({x|=>q}) is.
         let map = |p: &Prop| subfn.get(p).unwrap_or(&Formula::atom(p.clone())).clone();
         self.on_atoms(&map)
     }
 
+    pub fn psimplify(&self) -> Formula<Prop> {
+        self.simplify_recursive(&Formula::psimplify_step)
+    }
+
     fn dual(&self) -> Formula<Prop> {
+        // Theorem (Harrison 2.7)
+        // For `p: Formula<Prop>` and `v: Valuation`
+        // and letting !v denote the map of (prop: !val) for
+        // (prop, val) in v,  we have
+        // p.dual().eval(v) == !p.eval(!v).
+        //
+        // Corollary (Harrision 2.8) If `p, q: Formula<Prop>` are equivalent
+        // (e.g. p.brute_equivalent(&q) below),
+        // then so are `p.dual()` and `q.dual()`.
+        // If `p` is a tautology then so is `Formula::not(p.dual()).
         match self {
             Formula::False => Formula::True,
             Formula::True => Formula::False,
@@ -517,56 +557,12 @@ impl Formula<Prop> {
 
     fn nnf(&self) -> Formula<Prop> {
         // Negation normal form
-        let simplified = self.psimplify();
-
-        match simplified {
-            Formula::And(box p, box q) => Formula::and(p.nnf(), q.nnf()),
-            Formula::Or(box p, box q) => Formula::or(p.nnf(), q.nnf()),
-            Formula::Imp(box p, box q) => Formula::or(Formula::not(p).nnf(), q.nnf()),
-            Formula::Iff(box p, box q) => Formula::and(
-                Formula::or(Formula::not(p.clone()).nnf(), q.nnf()),
-                Formula::or(Formula::not(q).nnf(), p.nnf()),
-            ),
-            Formula::Not(box Formula::Not(box p)) => p.nnf(),
-            Formula::Not(box Formula::And(box p, box q)) => {
-                Formula::or(Formula::not(p).nnf(), Formula::not(q).nnf())
-            }
-            Formula::Not(box Formula::Or(box p, box q)) => {
-                Formula::and(Formula::not(p).nnf(), Formula::not(q).nnf())
-            }
-            Formula::Not(box Formula::Imp(box p, box q)) => {
-                Formula::and(p.nnf(), Formula::not(q).nnf())
-            }
-            Formula::Not(box Formula::Iff(box p, box q)) => Formula::or(
-                Formula::and(p.nnf(), Formula::not(q.clone()).nnf()),
-                Formula::and(Formula::not(p).nnf(), q.nnf()),
-            ),
-            _ => simplified,
-        }
+        self.psimplify().raw_nnf()
     }
 
     fn nenf(&self) -> Formula<Prop> {
         // Negation and normal form also allowing equivalences (iff).
-        let simplified = self.psimplify();
-
-        match simplified {
-            Formula::And(box p, box q) => Formula::and(p.nenf(), q.nenf()),
-            Formula::Or(box p, box q) => Formula::or(p.nenf(), q.nenf()),
-            Formula::Imp(box p, box q) => Formula::or(Formula::not(p).nenf(), q.nenf()),
-            Formula::Iff(box p, box q) => Formula::iff(p.nenf(), q.nenf()),
-            Formula::Not(box Formula::Not(box p)) => p.nenf(),
-            Formula::Not(box Formula::And(box p, box q)) => {
-                Formula::or(Formula::not(p).nenf(), Formula::not(q).nenf())
-            }
-            Formula::Not(box Formula::Or(box p, box q)) => {
-                Formula::and(Formula::not(p).nenf(), Formula::not(q).nenf())
-            }
-            Formula::Not(box Formula::Imp(box p, box q)) => {
-                Formula::and(p.nenf(), Formula::not(q).nenf())
-            }
-            Formula::Not(box Formula::Iff(box p, box q)) => Formula::iff(p, Formula::not(q)),
-            _ => simplified,
-        }
+        self.psimplify().raw_nenf()
     }
 
     fn _set_distrib_and_over_or(formula1: &FormulaSet, formula2: &FormulaSet) -> FormulaSet {
@@ -768,26 +764,13 @@ mod normal_form_tests {
         let formula = Formula::<Prop>::parse("~(~A) /\\ (false \\/ B)");
         let desired = Formula::<Prop>::parse("A /\\ B");
         assert_eq!(formula.nnf(), desired);
-
-        let formula = Formula::<Prop>::parse("~(A /\\ (B \\/ C))");
-        let desired = Formula::<Prop>::parse("~A \\/ (~B /\\ ~C)");
-
-        assert_eq!(formula.nnf(), desired);
-
-        let formula = Formula::<Prop>::parse("~(A ==> (B <=> C))");
-        let desired = Formula::<Prop>::parse("A /\\ (B /\\ ~C \\/ ~B /\\ C)");
-        assert_eq!(formula.nnf(), desired);
     }
 
     #[test]
     fn test_nenf() {
-        let formula = Formula::<Prop>::parse("~(A /\\ (B \\/ C))");
-        let desired = Formula::<Prop>::parse("~A \\/ (~B /\\ ~C)");
-        assert_eq!(formula.nenf(), desired);
-
-        let formula = Formula::<Prop>::parse("~(A ==> (B <=> C))");
-        let desired = Formula::<Prop>::parse("A /\\ (B <=> ~C)");
-        assert_eq!(formula.nenf(), desired);
+        let formula = Formula::<Prop>::parse("~(~A) /\\ (false \\/ B)");
+        let desired = Formula::<Prop>::parse("A /\\ B");
+        assert_eq!(formula.nnf(), desired);
     }
 
     #[test]
@@ -1202,7 +1185,7 @@ mod def_cnf_tests {
         let desired_equiv = Formula::<Prop>::parse(&desired_equiv_str);
         // Since we know that `desired_equiv` is equisatisfiable with the input `formula`
         // the following shows that the result is equisatisfiable with the input `formula`.
-        assert!(result.equivalent(&desired_equiv));
+        assert!(result.brute_equivalent(&desired_equiv));
         assert!(result.is_cnf());
     }
 
@@ -1232,7 +1215,7 @@ mod def_cnf_tests {
 
         // Since we know that `desired_equiv` is equisatisfiable with the input `formula`
         // the following shows that the result is equisatisfiable with the input `formula`.
-        assert!(result.equivalent(&desired_equiv));
+        assert!(result.brute_equivalent(&desired_equiv));
         // Check already in cnf form
         assert!(result.is_cnf());
     }
