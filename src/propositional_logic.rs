@@ -75,7 +75,7 @@ impl Formula<Prop> {
         );
         match input {
             // The conditional here seems unnecessary given how this is used in parse_formula.
-            [p, rest @ ..] if p != "(" => (Formula::atom(Prop::new(p)), rest),
+            [p, rest @ ..] if p != "(" => (Formula::atom(&Prop::new(p)), rest),
             _ => panic!("Failed to parse propvar."),
         }
     }
@@ -129,88 +129,91 @@ mod prop_parse_tests {
         assert_eq!(result, desired);
 
         let result = Formula::<Prop>::parse("A \\/ B");
-        let desired = Formula::or(Formula::atom(prop("A")), Formula::atom(prop("B")));
+        let desired = Formula::or(&Formula::atom(&prop("A")), &Formula::atom(&prop("B")));
         assert_eq!(result, desired);
 
         let result = Formula::<Prop>::parse("A \\/ ~A");
         let desired = Formula::or(
-            Formula::atom(prop("A")),
-            Formula::not(Formula::atom(prop("A"))),
+            &Formula::atom(&prop("A")),
+            &Formula::not(&Formula::atom(&prop("A"))),
         );
         assert_eq!(result, desired);
 
         let result = Formula::<Prop>::parse("(A /\\ ~A)");
         let desired = Formula::and(
-            Formula::atom(prop("A")),
-            Formula::not(Formula::atom(prop("A"))),
+            &Formula::atom(&prop("A")),
+            &Formula::not(&Formula::atom(&prop("A"))),
         );
         assert_eq!(result, desired);
 
         let result = Formula::<Prop>::parse("p /\\ q /\\ p /\\ q");
         let desired = Formula::and(
-            Formula::atom(prop("p")),
-            Formula::and(
-                Formula::atom(prop("q")),
-                Formula::and(Formula::atom(prop("p")), Formula::atom(prop("q"))),
+            &Formula::atom(&prop("p")),
+            &Formula::and(
+                &Formula::atom(&prop("q")),
+                &Formula::and(&Formula::atom(&prop("p")), &Formula::atom(&prop("q"))),
             ),
         );
         assert_eq!(result, desired);
 
         let result = Formula::<Prop>::parse("a <=> (b /\\ c)");
         let desired = Formula::iff(
-            Formula::atom(Prop::new("a")),
-            Formula::and(Formula::atom(Prop::new("b")), Formula::atom(Prop::new("c"))),
+            &Formula::atom(&Prop::new("a")),
+            &Formula::and(
+                &Formula::atom(&Prop::new("b")),
+                &Formula::atom(&Prop::new("c")),
+            ),
         );
         assert_eq!(result, desired);
 
         let result = Formula::<Prop>::parse("(a /\\ false) \\/ (false ==> d)");
         let desired = Formula::or(
-            Formula::and(Formula::atom(Prop::new("a")), Formula::False),
-            Formula::imp(Formula::False, Formula::atom(Prop::new("d"))),
+            &Formula::and(&Formula::atom(&Prop::new("a")), &Formula::False),
+            &Formula::imp(&Formula::False, &Formula::atom(&Prop::new("d"))),
         );
         assert_eq!(result, desired);
 
         let result = Formula::<Prop>::parse("(p /\\ q) /\\ q ==> (p /\\ q) /\\ q");
         let desired = Formula::imp(
-            Formula::and(
-                Formula::and(Formula::atom(prop("p")), Formula::atom(prop("q"))),
-                Formula::atom(prop("q")),
+            &Formula::and(
+                &Formula::and(&Formula::atom(&prop("p")), &Formula::atom(&prop("q"))),
+                &Formula::atom(&prop("q")),
             ),
-            Formula::and(
-                Formula::and(Formula::atom(prop("p")), Formula::atom(prop("q"))),
-                Formula::atom(prop("q")),
+            &Formula::and(
+                &Formula::and(&Formula::atom(&prop("p")), &Formula::atom(&prop("q"))),
+                &Formula::atom(&prop("q")),
             ),
         );
         assert_eq!(result, desired);
 
         let result = Formula::<Prop>::parse("a /\\ ~b \\/ (~c \\/ d)");
         let desired = Formula::or(
-            Formula::and(
-                Formula::atom(prop("a")),
-                Formula::not(Formula::atom(prop("b"))),
+            &Formula::and(
+                &Formula::atom(&prop("a")),
+                &Formula::not(&Formula::atom(&prop("b"))),
             ),
-            Formula::or(
-                Formula::not(Formula::atom(prop("c"))),
-                Formula::atom(prop("d")),
+            &Formula::or(
+                &Formula::not(&Formula::atom(&prop("c"))),
+                &Formula::atom(&prop("d")),
             ),
         );
         assert_eq!(result, desired);
 
         let result = Formula::<Prop>::parse("~(~A)");
-        let desired = Formula::not(Formula::not(Formula::atom(prop("A"))));
+        let desired = Formula::not(&Formula::not(&Formula::atom(&prop("A"))));
         assert_eq!(result, desired);
 
         let result = Formula::<Prop>::parse("A /\\ (false \\/ B)");
         let desired = Formula::and(
-            Formula::atom(prop("A")),
-            Formula::or(Formula::False, Formula::atom(prop("B"))),
+            &Formula::atom(&prop("A")),
+            &Formula::or(&Formula::False, &Formula::atom(&prop("B"))),
         );
         assert_eq!(result, desired);
 
         let result = Formula::<Prop>::parse("~(A ==> (B <=> C))");
-        let desired = Formula::not(Formula::imp(
-            Formula::atom(prop("A")),
-            Formula::iff(Formula::atom(prop("B")), Formula::atom(prop("C"))),
+        let desired = Formula::not(&Formula::imp(
+            &Formula::atom(&prop("A")),
+            &Formula::iff(&Formula::atom(&prop("B")), &Formula::atom(&prop("C"))),
         ));
         assert_eq!(result, desired);
     }
@@ -247,15 +250,15 @@ mod prop_formula_print_tests {
     #[test]
     fn test_pprint() {
         let formula = Formula::and(
-            Formula::atom(Prop::new("Prop5")),
-            Formula::iff(
-                Formula::atom(Prop::new("Prop2")),
-                Formula::imp(
-                    Formula::or(
-                        Formula::atom(Prop::new("Prop3")),
-                        Formula::atom(Prop::new("Prop4")),
+            &Formula::atom(&Prop::new("Prop5")),
+            &Formula::iff(
+                &Formula::atom(&Prop::new("Prop2")),
+                &Formula::imp(
+                    &Formula::or(
+                        &Formula::atom(&Prop::new("Prop3")),
+                        &Formula::atom(&Prop::new("Prop4")),
                     ),
-                    Formula::atom(Prop::new("Prop1")),
+                    &Formula::atom(&Prop::new("Prop1")),
                 ),
             ),
         );
@@ -404,13 +407,13 @@ impl Formula<Prop> {
 
     pub fn brute_equivalent(&self, formula: &Formula<Prop>) -> bool {
         // NOTE:  SLOW, USE OTHER VERSIONS.
-        let target = Formula::iff(self.clone(), formula.clone());
+        let target = Formula::iff(self, formula);
         target.brute_tautology()
     }
 
     pub fn brute_unsatisfiable(&self) -> bool {
         // NOTE:  SLOW, USE OTHER VERSIONS.
-        Formula::not(self.clone()).brute_tautology()
+        Formula::not(self).brute_tautology()
     }
 
     pub fn brute_satisfiable(&self) -> bool {
@@ -525,7 +528,7 @@ impl Formula<Prop> {
         // for all `v: Valuation` we have
         // r.psubst({x|=>p}).eval(v) == r.psubst({x|=>q}).eval(v)
         // In particular r.psubst({x|=>p}) is a tautology iff r.psubst({x|=>q}) is.
-        let map = |p: &Prop| subfn.get(p).unwrap_or(&Formula::atom(p.clone())).clone();
+        let map = |p: &Prop| subfn.get(p).unwrap_or(&Formula::atom(p)).clone();
         self.on_atoms(&map)
     }
 
@@ -548,9 +551,9 @@ impl Formula<Prop> {
             Formula::False => Formula::True,
             Formula::True => Formula::False,
             Formula::Atom(_) => self.clone(),
-            Formula::Not(p) => Formula::not(p.dual()),
-            Formula::And(p, q) => Formula::or(p.dual(), q.dual()),
-            Formula::Or(p, q) => Formula::and(p.dual(), q.dual()),
+            Formula::Not(p) => Formula::not(&p.dual()),
+            Formula::And(p, q) => Formula::or(&p.dual(), &q.dual()),
+            Formula::Or(p, q) => Formula::and(&p.dual(), &q.dual()),
             _ => panic!("Formula involves connectives '==>' or '<=>'"),
         }
     }
@@ -597,7 +600,7 @@ impl Formula<Prop> {
         // DNF by converting formulas to set of sets representation.
         // NOTE that representation of the result is not the same as the representation of
         // intermediate results.
-        let negation_in_purednf: FormulaSet = Formula::not(self.clone())._purednf();
+        let negation_in_purednf: FormulaSet = Formula::not(self)._purednf();
         // distribute matching negation from outside (and assuming dual representation).
         let result: FormulaSet = negation_in_purednf
             .iter()
@@ -776,31 +779,31 @@ mod normal_form_tests {
     #[test]
     fn test_set_distrib_and_over_or() {
         let formula1 = BTreeSet::from([
-            BTreeSet::from([Formula::atom(prop("A")), Formula::atom(prop("B"))]),
-            BTreeSet::from([Formula::atom(prop("B")), Formula::atom(prop("C"))]),
+            BTreeSet::from([Formula::atom(&prop("A")), Formula::atom(&prop("B"))]),
+            BTreeSet::from([Formula::atom(&prop("B")), Formula::atom(&prop("C"))]),
         ]);
         let formula2 = BTreeSet::from([
-            BTreeSet::from([Formula::atom(prop("A"))]),
-            BTreeSet::from([Formula::atom(prop("D")), Formula::atom(prop("C"))]),
+            BTreeSet::from([Formula::atom(&prop("A"))]),
+            BTreeSet::from([Formula::atom(&prop("D")), Formula::atom(&prop("C"))]),
         ]);
 
         let desired = BTreeSet::from([
-            BTreeSet::from([Formula::atom(prop("A")), Formula::atom(prop("B"))]),
+            BTreeSet::from([Formula::atom(&prop("A")), Formula::atom(&prop("B"))]),
             BTreeSet::from([
-                Formula::atom(prop("A")),
-                Formula::atom(prop("B")),
-                Formula::atom(prop("D")),
-                Formula::atom(prop("C")),
+                Formula::atom(&prop("A")),
+                Formula::atom(&prop("B")),
+                Formula::atom(&prop("D")),
+                Formula::atom(&prop("C")),
             ]),
             BTreeSet::from([
-                Formula::atom(prop("B")),
-                Formula::atom(prop("C")),
-                Formula::atom(prop("A")),
+                Formula::atom(&prop("B")),
+                Formula::atom(&prop("C")),
+                Formula::atom(&prop("A")),
             ]),
             BTreeSet::from([
-                Formula::atom(prop("B")),
-                Formula::atom(prop("C")),
-                Formula::atom(prop("D")),
+                Formula::atom(&prop("B")),
+                Formula::atom(&prop("C")),
+                Formula::atom(&prop("D")),
             ]),
         ]);
         let result = Formula::_set_distrib_and_over_or(&formula1, &formula2);
@@ -814,21 +817,21 @@ mod normal_form_tests {
         );
         let result = formula._purednf();
         let desired = BTreeSet::from([
-            BTreeSet::from([Formula::atom(prop("A"))]),
+            BTreeSet::from([Formula::atom(&prop("A"))]),
             BTreeSet::from([
-                Formula::atom(prop("A")),
-                Formula::atom(prop("D")),
-                Formula::atom(prop("C")),
+                Formula::atom(&prop("A")),
+                Formula::atom(&prop("D")),
+                Formula::atom(&prop("C")),
             ]),
             BTreeSet::from([
-                Formula::atom(prop("B")),
-                Formula::atom(prop("C")),
-                Formula::atom(prop("A")),
+                Formula::atom(&prop("B")),
+                Formula::atom(&prop("C")),
+                Formula::atom(&prop("A")),
             ]),
             BTreeSet::from([
-                Formula::atom(prop("B")),
-                Formula::atom(prop("C")),
-                Formula::atom(prop("D")),
+                Formula::atom(&prop("B")),
+                Formula::atom(&prop("C")),
+                Formula::atom(&prop("D")),
             ]),
         ]);
         assert_eq!(result, desired);
@@ -848,15 +851,15 @@ mod normal_form_tests {
             ";
         let formula = Formula::<Prop>::parse(sentence);
         let desired = BTreeSet::from([
-            BTreeSet::from([Formula::atom(prop("A")), Formula::atom(prop("B"))]),
-            BTreeSet::from([Formula::atom(prop("A")), Formula::atom(prop("C"))]),
+            BTreeSet::from([Formula::atom(&prop("A")), Formula::atom(&prop("B"))]),
+            BTreeSet::from([Formula::atom(&prop("A")), Formula::atom(&prop("C"))]),
             BTreeSet::from([
-                Formula::not(Formula::atom(prop("A"))),
-                Formula::atom(prop("D")),
+                Formula::not(&Formula::atom(&prop("A"))),
+                Formula::atom(&prop("D")),
             ]),
             BTreeSet::from([
-                Formula::not(Formula::atom(prop("A"))),
-                Formula::atom(prop("C")),
+                Formula::not(&Formula::atom(&prop("A"))),
+                Formula::atom(&prop("C")),
             ]),
         ]);
         assert_eq!(formula._purecnf(), desired);
@@ -868,11 +871,11 @@ mod normal_form_tests {
     }
     #[test]
     fn test_contradictory_lits() {
-        let lits1 = BTreeSet::from([Formula::atom(prop("A")), Formula::atom(prop("B"))]);
+        let lits1 = BTreeSet::from([Formula::atom(&prop("A")), Formula::atom(&prop("B"))]);
         let lits2 = BTreeSet::from([
-            Formula::atom(prop("A")),
-            Formula::atom(prop("B")),
-            Formula::not(Formula::atom(prop("A"))),
+            Formula::atom(&prop("A")),
+            Formula::atom(&prop("B")),
+            Formula::not(&Formula::atom(&prop("A"))),
         ]);
 
         assert!(!Formula::_contradictory_lits(&lits1));
@@ -883,40 +886,40 @@ mod normal_form_tests {
     fn test_strip_supersets() {
         let formula = BTreeSet::from([
             BTreeSet::from([
-                Formula::atom(prop("A")),
-                Formula::atom(prop("B")),
-                Formula::atom(prop("D")),
-                Formula::atom(prop("C")),
+                Formula::atom(&prop("A")),
+                Formula::atom(&prop("B")),
+                Formula::atom(&prop("D")),
+                Formula::atom(&prop("C")),
             ]),
             BTreeSet::from([
-                Formula::atom(prop("B")),
-                Formula::atom(prop("C")),
-                Formula::atom(prop("A")),
+                Formula::atom(&prop("B")),
+                Formula::atom(&prop("C")),
+                Formula::atom(&prop("A")),
             ]),
             BTreeSet::from([
-                Formula::atom(prop("A")),
-                Formula::atom(prop("B")),
-                Formula::atom(prop("D")),
-                Formula::atom(prop("C")),
-                Formula::atom(prop("E")),
+                Formula::atom(&prop("A")),
+                Formula::atom(&prop("B")),
+                Formula::atom(&prop("D")),
+                Formula::atom(&prop("C")),
+                Formula::atom(&prop("E")),
             ]),
             BTreeSet::from([
-                Formula::atom(prop("B")),
-                Formula::atom(prop("C")),
-                Formula::atom(prop("E")),
+                Formula::atom(&prop("B")),
+                Formula::atom(&prop("C")),
+                Formula::atom(&prop("E")),
             ]),
         ]);
 
         let desired = BTreeSet::from([
             BTreeSet::from([
-                Formula::atom(prop("B")),
-                Formula::atom(prop("C")),
-                Formula::atom(prop("A")),
+                Formula::atom(&prop("B")),
+                Formula::atom(&prop("C")),
+                Formula::atom(&prop("A")),
             ]),
             BTreeSet::from([
-                Formula::atom(prop("B")),
-                Formula::atom(prop("C")),
-                Formula::atom(prop("E")),
+                Formula::atom(&prop("B")),
+                Formula::atom(&prop("C")),
+                Formula::atom(&prop("E")),
             ]),
         ]);
         let result = Formula::_strip_supersets(&formula);
@@ -979,7 +982,7 @@ mod normal_form_tests {
 // ### Definitional CNF
 
 type Triple = (Formula<Prop>, Defs, usize);
-type BinOp = fn(Formula<Prop>, Formula<Prop>) -> Formula<Prop>;
+type BinOp = fn(&Formula<Prop>, &Formula<Prop>) -> Formula<Prop>;
 type Defs = HashMap<Formula<Prop>, (Formula<Prop>, Formula<Prop>)>;
 
 impl Formula<Prop> {
@@ -1018,15 +1021,15 @@ impl Formula<Prop> {
         let (_current_formula, defs0, n0) = params;
         let (literal1, defs1, n1) = Formula::_main_def_cnf(&operands.0, &defs0, n0);
         let (literal2, mut defs2, n2) = Formula::_main_def_cnf(&operands.1, &defs1, n1);
-        let operation = bin_op(literal1, literal2);
+        let operation = bin_op(&literal1, &literal2);
         if defs2.contains_key(&operation) {
             return (defs2[&operation].0.clone(), defs2, n2);
         }
 
-        let atom = Formula::atom(Self::_mkprop(n2));
+        let atom = Formula::atom(&Self::_mkprop(n2));
         defs2.insert(
             operation.clone(),
-            (atom.clone(), Formula::iff(atom.clone(), operation)),
+            (atom.clone(), Formula::iff(&atom, &operation)),
         );
 
         (atom, defs2, n2 + 1)
@@ -1102,7 +1105,7 @@ impl Formula<Prop> {
         /* Apply `f` to both children accumulating defs as we go */
         let (formula1, defs1, n1) = f(&operands.0, &defs0, n0);
         let (formula2, defs2, n2) = f(&operands.1, &defs1, n1);
-        (bin_op(formula1, formula2), defs2, n2)
+        (bin_op(&formula1, &formula2), defs2, n2)
     }
 
     // TODO make the triple functions consume an actual triple?
@@ -1406,7 +1409,7 @@ impl Formula<Prop> {
         Formula::dp(&Formula::_cnf_formulaset(self))
     }
     pub fn dp_taut(&self) -> bool {
-        !Formula::dp_sat(&Formula::not(self.clone()))
+        !Formula::dp_sat(&Formula::not(self))
     }
 }
 
@@ -1421,28 +1424,28 @@ mod dp_tests {
     #[test]
     fn test_one_literal_rule() {
         let formula_set = BTreeSet::from([
-            BTreeSet::from([Formula::atom(prop("A"))]),
-            BTreeSet::from([Formula::atom(prop("B")), Formula::atom(prop("C"))]),
-            BTreeSet::from([Formula::atom(prop("A")), Formula::atom(prop("C"))]),
+            BTreeSet::from([Formula::atom(&prop("A"))]),
+            BTreeSet::from([Formula::atom(&prop("B")), Formula::atom(&prop("C"))]),
+            BTreeSet::from([Formula::atom(&prop("A")), Formula::atom(&prop("C"))]),
             BTreeSet::from([
-                Formula::not(Formula::atom(prop("A"))),
-                Formula::atom(prop("C")),
+                Formula::not(&Formula::atom(&prop("A"))),
+                Formula::atom(&prop("C")),
             ]),
         ]);
         let desired = BTreeSet::from([
-            BTreeSet::from([Formula::atom(prop("B")), Formula::atom(prop("C"))]),
-            BTreeSet::from([Formula::atom(prop("C"))]),
+            BTreeSet::from([Formula::atom(&prop("B")), Formula::atom(&prop("C"))]),
+            BTreeSet::from([Formula::atom(&prop("C"))]),
         ]);
 
         let result = Formula::_one_literal_rule(&formula_set);
         assert_eq!(result, Ok(desired));
 
         let formula_set_no_unit = BTreeSet::from([
-            BTreeSet::from([Formula::atom(prop("B")), Formula::atom(prop("C"))]),
-            BTreeSet::from([Formula::atom(prop("A")), Formula::atom(prop("C"))]),
+            BTreeSet::from([Formula::atom(&prop("B")), Formula::atom(&prop("C"))]),
+            BTreeSet::from([Formula::atom(&prop("A")), Formula::atom(&prop("C"))]),
             BTreeSet::from([
-                Formula::not(Formula::atom(prop("A"))),
-                Formula::atom(prop("C")),
+                Formula::not(&Formula::atom(&prop("A"))),
+                Formula::atom(&prop("C")),
             ]),
         ]);
         let result = Formula::_one_literal_rule(&formula_set_no_unit);
@@ -1451,7 +1454,7 @@ mod dp_tests {
 
     #[test]
     fn test_one_literal_rule_single_atom() {
-        let formula_set = BTreeSet::from([BTreeSet::from([Formula::atom(prop("A"))])]);
+        let formula_set = BTreeSet::from([BTreeSet::from([Formula::atom(&prop("A"))])]);
         let result = Formula::_one_literal_rule(&formula_set);
         let desired = BTreeSet::new();
         assert_eq!(result, Ok(desired))
@@ -1460,7 +1463,7 @@ mod dp_tests {
     #[test]
     fn test_one_literal_rule_single_negated() {
         let formula_set =
-            BTreeSet::from([BTreeSet::from([Formula::not(Formula::atom(prop("A")))])]);
+            BTreeSet::from([BTreeSet::from([Formula::not(&Formula::atom(&prop("A")))])]);
         let result = Formula::_one_literal_rule(&formula_set);
         let desired = BTreeSet::new();
         assert_eq!(result, Ok(desired))
@@ -1469,14 +1472,14 @@ mod dp_tests {
     #[test]
     fn test_affirmative_negative_rule_1() {
         let formula_set = BTreeSet::from([
-            BTreeSet::from([Formula::atom(prop("A"))]),
-            BTreeSet::from([Formula::atom(prop("A")), Formula::atom(prop("C"))]),
+            BTreeSet::from([Formula::atom(&prop("A"))]),
+            BTreeSet::from([Formula::atom(&prop("A")), Formula::atom(&prop("C"))]),
             BTreeSet::from([
-                Formula::not(Formula::atom(prop("A"))),
-                Formula::atom(prop("D")),
+                Formula::not(&Formula::atom(&prop("A"))),
+                Formula::atom(&prop("D")),
             ]),
         ]);
-        let desired = BTreeSet::from([BTreeSet::from([Formula::atom(prop("A"))])]);
+        let desired = BTreeSet::from([BTreeSet::from([Formula::atom(&prop("A"))])]);
         let result = Formula::_affirmative_negative_rule(&formula_set);
         assert_eq!(result, Ok(desired))
     }
@@ -1485,16 +1488,16 @@ mod dp_tests {
     fn test_affirmative_negative_rule_2() {
         let formula_set = BTreeSet::from([
             BTreeSet::from([
-                Formula::atom(prop("A")),
-                Formula::not(Formula::atom(prop("C"))),
+                Formula::atom(&prop("A")),
+                Formula::not(&Formula::atom(&prop("C"))),
             ]),
             BTreeSet::from([
-                Formula::not(Formula::atom(prop("A"))),
-                Formula::atom(prop("B")),
+                Formula::not(&Formula::atom(&prop("A"))),
+                Formula::atom(&prop("B")),
             ]),
             BTreeSet::from([
-                Formula::not(Formula::atom(prop("B"))),
-                Formula::atom(prop("C")),
+                Formula::not(&Formula::atom(&prop("B"))),
+                Formula::atom(&prop("C")),
             ]),
         ]);
         let result = Formula::_affirmative_negative_rule(&formula_set);
@@ -1505,7 +1508,7 @@ mod dp_tests {
     #[test]
     fn test_affirmative_negative_rule_3() {
         let formula_set =
-            BTreeSet::from([BTreeSet::from([Formula::not(Formula::atom(prop("A")))])]);
+            BTreeSet::from([BTreeSet::from([Formula::not(&Formula::atom(&prop("A")))])]);
         let result = Formula::_affirmative_negative_rule(&formula_set);
 
         assert_eq!(result, Ok(BTreeSet::new()))
@@ -1513,39 +1516,39 @@ mod dp_tests {
     #[test]
     fn test_resolve_atom() {
         let formula_set = BTreeSet::from([
-            BTreeSet::from([Formula::atom(prop("A")), Formula::atom(prop("E"))]),
+            BTreeSet::from([Formula::atom(&prop("A")), Formula::atom(&prop("E"))]),
             BTreeSet::from([
-                Formula::atom(prop("A")),
-                Formula::not(Formula::atom(prop("C"))),
+                Formula::atom(&prop("A")),
+                Formula::not(&Formula::atom(&prop("C"))),
             ]),
             BTreeSet::from([
-                Formula::not(Formula::atom(prop("A"))),
-                Formula::atom(prop("B")),
-                Formula::atom(prop("D")),
+                Formula::not(&Formula::atom(&prop("A"))),
+                Formula::atom(&prop("B")),
+                Formula::atom(&prop("D")),
             ]),
             BTreeSet::from([
-                Formula::not(Formula::atom(prop("B"))),
-                Formula::atom(prop("C")),
+                Formula::not(&Formula::atom(&prop("B"))),
+                Formula::atom(&prop("C")),
             ]),
         ]);
-        let atom: Formula<Prop> = Formula::atom(prop("A"));
+        let atom: Formula<Prop> = Formula::atom(&prop("A"));
         let result = Formula::_resolve_atom(&formula_set, &atom);
         // {{E}, {~C}} X  {{B, D}}
         let desired_product: FormulaSet = BTreeSet::from([
             BTreeSet::from([
-                Formula::atom(prop("E")),
-                Formula::atom(prop("B")),
-                Formula::atom(prop("D")),
+                Formula::atom(&prop("E")),
+                Formula::atom(&prop("B")),
+                Formula::atom(&prop("D")),
             ]),
             BTreeSet::from([
-                Formula::not(Formula::atom(prop("C"))),
-                Formula::atom(prop("B")),
-                Formula::atom(prop("D")),
+                Formula::not(&Formula::atom(&prop("C"))),
+                Formula::atom(&prop("B")),
+                Formula::atom(&prop("D")),
             ]),
         ]);
         let desired_rest: FormulaSet = BTreeSet::from([BTreeSet::from([
-            Formula::not(Formula::atom(prop("B"))),
-            Formula::atom(prop("C")),
+            Formula::not(&Formula::atom(&prop("B"))),
+            Formula::atom(&prop("C")),
         ])]);
         let desired = &desired_product | &desired_rest;
         assert_eq!(result, desired)
@@ -1557,35 +1560,35 @@ mod dp_tests {
         let opt = |formula: &Formula<Prop>| -(format!("{formula:?}").len() as isize);
         let domain = BTreeSet::from([
             Formula::True,
-            Formula::atom(prop("A")),
-            Formula::or(Formula::atom(prop("A")), Formula::False),
+            Formula::atom(&prop("A")),
+            Formula::or(&Formula::atom(&prop("A")), &Formula::False),
         ]);
         let result = Formula::_find_min(&opt, &domain).unwrap();
-        let desired = Formula::or(Formula::atom(prop("A")), Formula::False);
+        let desired = Formula::or(&Formula::atom(&prop("A")), &Formula::False);
         assert_eq!(result, desired);
     }
 
     #[test]
     fn test_counts_containing_literal_and_negation() {
         let formula_set = BTreeSet::from([
-            BTreeSet::from([Formula::atom(prop("A")), Formula::atom(prop("E"))]),
+            BTreeSet::from([Formula::atom(&prop("A")), Formula::atom(&prop("E"))]),
             BTreeSet::from([
-                Formula::atom(prop("A")),
-                Formula::not(Formula::atom(prop("C"))),
+                Formula::atom(&prop("A")),
+                Formula::not(&Formula::atom(&prop("C"))),
             ]),
             BTreeSet::from([
-                Formula::not(Formula::atom(prop("A"))),
-                Formula::atom(prop("B")),
-                Formula::atom(prop("D")),
+                Formula::not(&Formula::atom(&prop("A"))),
+                Formula::atom(&prop("B")),
+                Formula::atom(&prop("D")),
             ]),
             BTreeSet::from([
-                Formula::not(Formula::atom(prop("B"))),
-                Formula::atom(prop("C")),
+                Formula::not(&Formula::atom(&prop("B"))),
+                Formula::atom(&prop("C")),
             ]),
         ]);
         let result = Formula::_counts_containing_literal_and_negation(
             &formula_set,
-            &Formula::atom(prop("A")),
+            &Formula::atom(&prop("A")),
         );
         // (2 * 1) - 2 - 1 = -1
         let desired: (isize, isize) = (2, 1);
@@ -1596,21 +1599,21 @@ mod dp_tests {
     fn test_resolution_rule() {
         let formula_set = BTreeSet::from([
             BTreeSet::from([
-                Formula::atom(prop("A")),
-                Formula::not(Formula::atom(prop("C"))),
+                Formula::atom(&prop("A")),
+                Formula::not(&Formula::atom(&prop("C"))),
             ]),
             BTreeSet::from([
-                Formula::not(Formula::atom(prop("D"))),
-                Formula::atom(prop("C")),
+                Formula::not(&Formula::atom(&prop("D"))),
+                Formula::atom(&prop("C")),
             ]),
             BTreeSet::from([
-                Formula::not(Formula::atom(prop("A"))),
-                Formula::atom(prop("D")),
+                Formula::not(&Formula::atom(&prop("A"))),
+                Formula::atom(&prop("D")),
             ]),
-            BTreeSet::from([Formula::atom(prop("A")), Formula::atom(prop("C"))]),
+            BTreeSet::from([Formula::atom(&prop("A")), Formula::atom(&prop("C"))]),
             BTreeSet::from([
-                Formula::not(Formula::atom(prop("A"))),
-                Formula::not(Formula::atom(prop("C"))),
+                Formula::not(&Formula::atom(&prop("A"))),
+                Formula::not(&Formula::atom(&prop("C"))),
             ]),
         ]);
 
@@ -1621,7 +1624,7 @@ mod dp_tests {
         // C: 2 * 1 - 2 - 1 = 0
         // D  1 * 1 - 1 - 1 = -1
 
-        let desired_atom: Formula<Prop> = Formula::atom(prop("D"));
+        let desired_atom: Formula<Prop> = Formula::atom(&prop("D"));
         let desired = Formula::_resolve_atom(&formula_set, &desired_atom);
 
         assert_eq!(result, desired)
@@ -1631,21 +1634,21 @@ mod dp_tests {
     fn test_dp() {
         let formula_set = BTreeSet::from([
             BTreeSet::from([
-                Formula::atom(prop("A")),
-                Formula::not(Formula::atom(prop("C"))),
+                Formula::atom(&prop("A")),
+                Formula::not(&Formula::atom(&prop("C"))),
             ]),
             BTreeSet::from([
-                Formula::not(Formula::atom(prop("D"))),
-                Formula::atom(prop("C")),
+                Formula::not(&Formula::atom(&prop("D"))),
+                Formula::atom(&prop("C")),
             ]),
             BTreeSet::from([
-                Formula::not(Formula::atom(prop("A"))),
-                Formula::atom(prop("D")),
+                Formula::not(&Formula::atom(&prop("A"))),
+                Formula::atom(&prop("D")),
             ]),
-            BTreeSet::from([Formula::atom(prop("A")), Formula::atom(prop("C"))]),
+            BTreeSet::from([Formula::atom(&prop("A")), Formula::atom(&prop("C"))]),
             BTreeSet::from([
-                Formula::not(Formula::atom(prop("A"))),
-                Formula::not(Formula::atom(prop("C"))),
+                Formula::not(&Formula::atom(&prop("A"))),
+                Formula::not(&Formula::atom(&prop("C"))),
             ]),
         ]);
 
@@ -1656,7 +1659,7 @@ mod dp_tests {
 
     #[test]
     fn test_dp_simple() {
-        let formula_set = BTreeSet::from([BTreeSet::from([Formula::atom(prop("A"))])]);
+        let formula_set = BTreeSet::from([BTreeSet::from([Formula::atom(&prop("A"))])]);
         assert!(Formula::dp(&formula_set));
     }
 
@@ -1666,8 +1669,8 @@ mod dp_tests {
         assert!(Formula::dp_taut(&Formula::True));
         assert!(!Formula::dp_sat(&Formula::False));
         assert!(!Formula::dp_taut(&Formula::False));
-        assert!(Formula::dp_sat(&Formula::atom(prop("A"))));
-        assert!(!Formula::dp_taut(&Formula::atom(prop("A"))));
+        assert!(Formula::dp_sat(&Formula::atom(&prop("A"))));
+        assert!(!Formula::dp_taut(&Formula::atom(&prop("A"))));
     }
 }
 
@@ -1731,7 +1734,7 @@ impl Formula<Prop> {
         Formula::dpll(&Formula::_cnf_formulaset(self))
     }
     pub fn dpll_taut(&self) -> bool {
-        !Formula::dpll_sat(&Formula::not(self.clone()))
+        !Formula::dpll_sat(&Formula::not(self))
     }
 }
 
@@ -1748,21 +1751,21 @@ mod dpll_tests {
     fn test_dpll() {
         let formula_set = BTreeSet::from([
             BTreeSet::from([
-                Formula::atom(prop("A")),
-                Formula::not(Formula::atom(prop("C"))),
+                Formula::atom(&prop("A")),
+                Formula::not(&Formula::atom(&prop("C"))),
             ]),
             BTreeSet::from([
-                Formula::not(Formula::atom(prop("D"))),
-                Formula::atom(prop("C")),
+                Formula::not(&Formula::atom(&prop("D"))),
+                Formula::atom(&prop("C")),
             ]),
             BTreeSet::from([
-                Formula::not(Formula::atom(prop("A"))),
-                Formula::atom(prop("D")),
+                Formula::not(&Formula::atom(&prop("A"))),
+                Formula::atom(&prop("D")),
             ]),
-            BTreeSet::from([Formula::atom(prop("A")), Formula::atom(prop("C"))]),
+            BTreeSet::from([Formula::atom(&prop("A")), Formula::atom(&prop("C"))]),
             BTreeSet::from([
-                Formula::not(Formula::atom(prop("A"))),
-                Formula::not(Formula::atom(prop("C"))),
+                Formula::not(&Formula::atom(&prop("A"))),
+                Formula::not(&Formula::atom(&prop("C"))),
             ]),
         ]);
 
@@ -1777,8 +1780,8 @@ mod dpll_tests {
         assert!(Formula::dpll_taut(&Formula::True));
         assert!(!Formula::dpll_sat(&Formula::False));
         assert!(!Formula::dpll_taut(&Formula::False));
-        assert!(Formula::dpll_sat(&Formula::atom(prop("A"))));
-        assert!(!Formula::dpll_taut(&Formula::atom(prop("A"))));
+        assert!(Formula::dpll_sat(&Formula::atom(&prop("A"))));
+        assert!(!Formula::dpll_taut(&Formula::atom(&prop("A"))));
     }
 }
 
@@ -2003,34 +2006,34 @@ mod dpli_solver_tests {
         let mut solver = get_empty_solver();
 
         solver.trail = vec![
-            (Formula::atom(Prop::new("E")), Mix::Deduced),
-            (Formula::atom(Prop::new("D")), Mix::Guessed),
-            (Formula::atom(Prop::new("C")), Mix::Deduced),
-            (Formula::atom(Prop::new("B")), Mix::Deduced),
-            (Formula::atom(Prop::new("A")), Mix::Guessed),
+            (Formula::atom(&Prop::new("E")), Mix::Deduced),
+            (Formula::atom(&Prop::new("D")), Mix::Guessed),
+            (Formula::atom(&Prop::new("C")), Mix::Deduced),
+            (Formula::atom(&Prop::new("B")), Mix::Deduced),
+            (Formula::atom(&Prop::new("A")), Mix::Guessed),
         ];
 
         // The following is just so we don't get a lookup error.
         solver.scores = HashMap::from([
-            (Formula::atom(Prop::new("E")), 0),
-            (Formula::atom(Prop::new("D")), 0),
-            (Formula::atom(Prop::new("C")), 0),
-            (Formula::atom(Prop::new("B")), 0),
-            (Formula::atom(Prop::new("A")), 0),
+            (Formula::atom(&Prop::new("E")), 0),
+            (Formula::atom(&Prop::new("D")), 0),
+            (Formula::atom(&Prop::new("C")), 0),
+            (Formula::atom(&Prop::new("B")), 0),
+            (Formula::atom(&Prop::new("A")), 0),
         ]);
 
         solver.backtrack();
 
         assert_eq!(
             solver.trail.last(),
-            Some(&(Formula::atom(Prop::new("A")), Mix::Guessed))
+            Some(&(Formula::atom(&Prop::new("A")), Mix::Guessed))
         );
         let desired_trail = vec![
-            (Formula::atom(Prop::new("E")), Mix::Deduced),
-            (Formula::atom(Prop::new("D")), Mix::Guessed),
-            (Formula::atom(Prop::new("C")), Mix::Deduced),
-            (Formula::atom(Prop::new("B")), Mix::Deduced),
-            (Formula::atom(Prop::new("A")), Mix::Guessed),
+            (Formula::atom(&Prop::new("E")), Mix::Deduced),
+            (Formula::atom(&Prop::new("D")), Mix::Guessed),
+            (Formula::atom(&Prop::new("C")), Mix::Deduced),
+            (Formula::atom(&Prop::new("B")), Mix::Deduced),
+            (Formula::atom(&Prop::new("A")), Mix::Guessed),
         ];
         assert_eq!(solver.trail, desired_trail);
 
@@ -2038,11 +2041,11 @@ mod dpli_solver_tests {
         solver.backtrack();
         assert_eq!(
             solver.trail.last(),
-            Some(&(Formula::atom(Prop::new("D")), Mix::Guessed))
+            Some(&(Formula::atom(&Prop::new("D")), Mix::Guessed))
         );
         let desired_trail = vec![
-            (Formula::atom(Prop::new("E")), Mix::Deduced),
-            (Formula::atom(Prop::new("D")), Mix::Guessed),
+            (Formula::atom(&Prop::new("E")), Mix::Deduced),
+            (Formula::atom(&Prop::new("D")), Mix::Guessed),
         ];
         assert_eq!(solver.trail, desired_trail);
 
@@ -2059,42 +2062,42 @@ mod dpli_solver_tests {
 
         let clauses: FormulaSet = BTreeSet::from([
             BTreeSet::from([
-                Formula::not(Formula::atom(Prop::new("A"))),
-                Formula::atom(Prop::new("B")),
+                Formula::not(&Formula::atom(&Prop::new("A"))),
+                Formula::atom(&Prop::new("B")),
             ]),
             BTreeSet::from([
-                Formula::not(Formula::atom(Prop::new("B"))),
-                Formula::not(Formula::atom(Prop::new("A"))),
-                Formula::not(Formula::atom(Prop::new("D"))),
+                Formula::not(&Formula::atom(&Prop::new("B"))),
+                Formula::not(&Formula::atom(&Prop::new("A"))),
+                Formula::not(&Formula::atom(&Prop::new("D"))),
             ]),
             BTreeSet::from([
-                Formula::not(Formula::atom(Prop::new("B"))),
-                Formula::atom(Prop::new("E")),
-                Formula::atom(Prop::new("D")),
-                Formula::not(Formula::atom(Prop::new("C"))),
+                Formula::not(&Formula::atom(&Prop::new("B"))),
+                Formula::atom(&Prop::new("E")),
+                Formula::atom(&Prop::new("D")),
+                Formula::not(&Formula::atom(&Prop::new("C"))),
             ]),
         ]);
         let trail: Trail = Vec::from([
-            (Formula::atom(Prop::new("A")), Mix::Guessed),
-            (Formula::atom(Prop::new("Z")), Mix::Deduced),
+            (Formula::atom(&Prop::new("A")), Mix::Guessed),
+            (Formula::atom(&Prop::new("Z")), Mix::Deduced),
         ]);
         solver.clauses = clauses;
         solver.trail = trail;
         let (result_clauses, result_trail) = solver.unit_propagate();
 
         let desired_clauses: FormulaSet = BTreeSet::from([
-            BTreeSet::from([Formula::atom(Prop::new("B"))]),
-            BTreeSet::from([Formula::not(Formula::atom(Prop::new("D")))]),
+            BTreeSet::from([Formula::atom(&Prop::new("B"))]),
+            BTreeSet::from([Formula::not(&Formula::atom(&Prop::new("D")))]),
             BTreeSet::from([
-                Formula::atom(Prop::new("E")),
-                Formula::not(Formula::atom(Prop::new("C"))),
+                Formula::atom(&Prop::new("E")),
+                Formula::not(&Formula::atom(&Prop::new("C"))),
             ]),
         ]);
         let desired_trail: Trail = Vec::from([
-            (Formula::atom(Prop::new("A")), Mix::Guessed),
-            (Formula::atom(Prop::new("Z")), Mix::Deduced),
-            (Formula::atom(Prop::new("B")), Mix::Deduced),
-            (Formula::not(Formula::atom(Prop::new("D"))), Mix::Deduced),
+            (Formula::atom(&Prop::new("A")), Mix::Guessed),
+            (Formula::atom(&Prop::new("Z")), Mix::Deduced),
+            (Formula::atom(&Prop::new("B")), Mix::Deduced),
+            (Formula::not(&Formula::atom(&Prop::new("D"))), Mix::Deduced),
         ]);
         assert_eq!(result_clauses, desired_clauses);
         assert_eq!(result_trail, desired_trail);
@@ -2104,21 +2107,24 @@ mod dpli_solver_tests {
     fn test_dpli_1() {
         let formula_set = BTreeSet::from([
             BTreeSet::from([
-                Formula::atom(Prop::new("A")),
-                Formula::not(Formula::atom(Prop::new("C"))),
+                Formula::atom(&Prop::new("A")),
+                Formula::not(&Formula::atom(&Prop::new("C"))),
             ]),
             BTreeSet::from([
-                Formula::not(Formula::atom(Prop::new("D"))),
-                Formula::atom(Prop::new("C")),
+                Formula::not(&Formula::atom(&Prop::new("D"))),
+                Formula::atom(&Prop::new("C")),
             ]),
             BTreeSet::from([
-                Formula::not(Formula::atom(Prop::new("A"))),
-                Formula::atom(Prop::new("D")),
+                Formula::not(&Formula::atom(&Prop::new("A"))),
+                Formula::atom(&Prop::new("D")),
             ]),
-            BTreeSet::from([Formula::atom(Prop::new("A")), Formula::atom(Prop::new("C"))]),
             BTreeSet::from([
-                Formula::not(Formula::atom(Prop::new("A"))),
-                Formula::not(Formula::atom(Prop::new("C"))),
+                Formula::atom(&Prop::new("A")),
+                Formula::atom(&Prop::new("C")),
+            ]),
+            BTreeSet::from([
+                Formula::not(&Formula::atom(&Prop::new("A"))),
+                Formula::not(&Formula::atom(&Prop::new("C"))),
             ]),
         ]);
 
@@ -2134,21 +2140,24 @@ mod dpli_solver_tests {
     fn test_dpli_2() {
         let formula_set = BTreeSet::from([
             BTreeSet::from([
-                Formula::atom(Prop::new("A")),
-                Formula::not(Formula::atom(Prop::new("C"))),
+                Formula::atom(&Prop::new("A")),
+                Formula::not(&Formula::atom(&Prop::new("C"))),
             ]),
             BTreeSet::from([
-                Formula::not(Formula::atom(Prop::new("D"))),
-                Formula::atom(Prop::new("C")),
+                Formula::not(&Formula::atom(&Prop::new("D"))),
+                Formula::atom(&Prop::new("C")),
             ]),
             BTreeSet::from([
-                Formula::not(Formula::atom(Prop::new("A"))),
-                Formula::atom(Prop::new("D")),
+                Formula::not(&Formula::atom(&Prop::new("A"))),
+                Formula::atom(&Prop::new("D")),
             ]),
-            BTreeSet::from([Formula::atom(Prop::new("A")), Formula::atom(Prop::new("C"))]),
             BTreeSet::from([
-                Formula::not(Formula::atom(Prop::new("A"))),
-                Formula::atom(Prop::new("C")),
+                Formula::atom(&Prop::new("A")),
+                Formula::atom(&Prop::new("C")),
+            ]),
+            BTreeSet::from([
+                Formula::not(&Formula::atom(&Prop::new("A"))),
+                Formula::atom(&Prop::new("C")),
             ]),
         ]);
         let mut solver = DPLISolver::new(&formula_set);
@@ -2168,23 +2177,26 @@ mod dpli_solver_tests {
     fn test_dpli_3() {
         let formula_set = BTreeSet::from([
             BTreeSet::from([
-                Formula::not(Formula::atom(Prop::new("A"))),
-                Formula::atom(Prop::new("E")),
+                Formula::not(&Formula::atom(&Prop::new("A"))),
+                Formula::atom(&Prop::new("E")),
             ]),
             BTreeSet::from([
-                Formula::not(Formula::atom(Prop::new("D"))),
-                Formula::not(Formula::atom(Prop::new("C"))),
+                Formula::not(&Formula::atom(&Prop::new("D"))),
+                Formula::not(&Formula::atom(&Prop::new("C"))),
             ]),
             BTreeSet::from([
-                Formula::not(Formula::atom(Prop::new("A"))),
-                Formula::atom(Prop::new("D")),
+                Formula::not(&Formula::atom(&Prop::new("A"))),
+                Formula::atom(&Prop::new("D")),
             ]),
-            BTreeSet::from([Formula::atom(Prop::new("A")), Formula::atom(Prop::new("C"))]),
             BTreeSet::from([
-                Formula::not(Formula::atom(Prop::new("A"))),
-                Formula::atom(Prop::new("C")),
+                Formula::atom(&Prop::new("A")),
+                Formula::atom(&Prop::new("C")),
             ]),
-            BTreeSet::from([Formula::not(Formula::atom(Prop::new("E")))]),
+            BTreeSet::from([
+                Formula::not(&Formula::atom(&Prop::new("A"))),
+                Formula::atom(&Prop::new("C")),
+            ]),
+            BTreeSet::from([Formula::not(&Formula::atom(&Prop::new("E")))]),
         ]);
         let mut solver = DPLISolver::new(&formula_set);
         let result = solver.solve();
@@ -2385,43 +2397,43 @@ mod dplb_solver_tests {
     fn test_backjump() {
         let clauses: FormulaSet = BTreeSet::from([
             BTreeSet::from([
-                Formula::not(Formula::atom(Prop::new("A"))),
-                Formula::atom(Prop::new("B")),
+                Formula::not(&Formula::atom(&Prop::new("A"))),
+                Formula::atom(&Prop::new("B")),
             ]),
             BTreeSet::from([
-                Formula::not(Formula::atom(Prop::new("B"))),
-                Formula::not(Formula::atom(Prop::new("A"))),
-                Formula::not(Formula::atom(Prop::new("D"))),
+                Formula::not(&Formula::atom(&Prop::new("B"))),
+                Formula::not(&Formula::atom(&Prop::new("A"))),
+                Formula::not(&Formula::atom(&Prop::new("D"))),
             ]),
             BTreeSet::from([
-                Formula::atom(Prop::new("D")),
-                Formula::not(Formula::atom(Prop::new("Z"))),
+                Formula::atom(&Prop::new("D")),
+                Formula::not(&Formula::atom(&Prop::new("Z"))),
             ]),
             BTreeSet::from([
-                Formula::not(Formula::atom(Prop::new("M"))),
-                Formula::not(Formula::atom(Prop::new("Y"))),
+                Formula::not(&Formula::atom(&Prop::new("M"))),
+                Formula::not(&Formula::atom(&Prop::new("Y"))),
             ]),
         ]);
 
         let scores = HashMap::from([
-            (Formula::atom(Prop::new("A")), 0),
-            (Formula::atom(Prop::new("B")), 0),
-            (Formula::atom(Prop::new("D")), 0),
-            (Formula::atom(Prop::new("F")), 0),
-            (Formula::atom(Prop::new("R")), 0),
-            (Formula::atom(Prop::new("Z")), 0),
-            (Formula::atom(Prop::new("M")), 0),
-            (Formula::atom(Prop::new("N")), 0),
-            (Formula::atom(Prop::new("Y")), 0),
+            (Formula::atom(&Prop::new("A")), 0),
+            (Formula::atom(&Prop::new("B")), 0),
+            (Formula::atom(&Prop::new("D")), 0),
+            (Formula::atom(&Prop::new("F")), 0),
+            (Formula::atom(&Prop::new("R")), 0),
+            (Formula::atom(&Prop::new("Z")), 0),
+            (Formula::atom(&Prop::new("M")), 0),
+            (Formula::atom(&Prop::new("N")), 0),
+            (Formula::atom(&Prop::new("Y")), 0),
         ]);
 
-        let p = Formula::atom(Prop::new("A"));
+        let p = Formula::atom(&Prop::new("A"));
         let trail: Trail = Vec::from([
-            (Formula::atom(Prop::new("N")), Mix::Deduced),
-            (Formula::not(Formula::atom(Prop::new("M"))), Mix::Guessed),
-            (Formula::atom(Prop::new("Z")), Mix::Guessed),
-            (Formula::atom(Prop::new("F")), Mix::Guessed),
-            (Formula::atom(Prop::new("R")), Mix::Deduced),
+            (Formula::atom(&Prop::new("N")), Mix::Deduced),
+            (Formula::not(&Formula::atom(&Prop::new("M"))), Mix::Guessed),
+            (Formula::atom(&Prop::new("Z")), Mix::Guessed),
+            (Formula::atom(&Prop::new("F")), Mix::Guessed),
+            (Formula::atom(&Prop::new("R")), Mix::Deduced),
         ]);
 
         let mut solver = DPLBSolver::new(&clauses);
@@ -2431,9 +2443,9 @@ mod dplb_solver_tests {
         solver.backjump(&p);
 
         let desired: Trail = Vec::from([
-            (Formula::atom(Prop::new("N")), Mix::Deduced),
-            (Formula::not(Formula::atom(Prop::new("M"))), Mix::Guessed),
-            (Formula::atom(Prop::new("Z")), Mix::Guessed),
+            (Formula::atom(&Prop::new("N")), Mix::Deduced),
+            (Formula::not(&Formula::atom(&Prop::new("M"))), Mix::Guessed),
+            (Formula::atom(&Prop::new("Z")), Mix::Guessed),
         ]);
         assert_eq!(solver.trail, desired);
     }
@@ -2442,21 +2454,24 @@ mod dplb_solver_tests {
     fn test_dplb_1() {
         let formula_set = BTreeSet::from([
             BTreeSet::from([
-                Formula::atom(Prop::new("A")),
-                Formula::not(Formula::atom(Prop::new("C"))),
+                Formula::atom(&Prop::new("A")),
+                Formula::not(&Formula::atom(&Prop::new("C"))),
             ]),
             BTreeSet::from([
-                Formula::not(Formula::atom(Prop::new("D"))),
-                Formula::atom(Prop::new("C")),
+                Formula::not(&Formula::atom(&Prop::new("D"))),
+                Formula::atom(&Prop::new("C")),
             ]),
             BTreeSet::from([
-                Formula::not(Formula::atom(Prop::new("A"))),
-                Formula::atom(Prop::new("D")),
+                Formula::not(&Formula::atom(&Prop::new("A"))),
+                Formula::atom(&Prop::new("D")),
             ]),
-            BTreeSet::from([Formula::atom(Prop::new("A")), Formula::atom(Prop::new("C"))]),
             BTreeSet::from([
-                Formula::not(Formula::atom(Prop::new("A"))),
-                Formula::not(Formula::atom(Prop::new("C"))),
+                Formula::atom(&Prop::new("A")),
+                Formula::atom(&Prop::new("C")),
+            ]),
+            BTreeSet::from([
+                Formula::not(&Formula::atom(&Prop::new("A"))),
+                Formula::not(&Formula::atom(&Prop::new("C"))),
             ]),
         ]);
 
@@ -2472,21 +2487,24 @@ mod dplb_solver_tests {
     fn test_dplb_2() {
         let formula_set = BTreeSet::from([
             BTreeSet::from([
-                Formula::atom(Prop::new("A")),
-                Formula::not(Formula::atom(Prop::new("C"))),
+                Formula::atom(&Prop::new("A")),
+                Formula::not(&Formula::atom(&Prop::new("C"))),
             ]),
             BTreeSet::from([
-                Formula::not(Formula::atom(Prop::new("D"))),
-                Formula::atom(Prop::new("C")),
+                Formula::not(&Formula::atom(&Prop::new("D"))),
+                Formula::atom(&Prop::new("C")),
             ]),
             BTreeSet::from([
-                Formula::not(Formula::atom(Prop::new("A"))),
-                Formula::atom(Prop::new("D")),
+                Formula::not(&Formula::atom(&Prop::new("A"))),
+                Formula::atom(&Prop::new("D")),
             ]),
-            BTreeSet::from([Formula::atom(Prop::new("A")), Formula::atom(Prop::new("C"))]),
             BTreeSet::from([
-                Formula::not(Formula::atom(Prop::new("A"))),
-                Formula::atom(Prop::new("C")),
+                Formula::atom(&Prop::new("A")),
+                Formula::atom(&Prop::new("C")),
+            ]),
+            BTreeSet::from([
+                Formula::not(&Formula::atom(&Prop::new("A"))),
+                Formula::atom(&Prop::new("C")),
             ]),
         ]);
         let mut solver = DPLBSolver::new(&formula_set);
@@ -2506,23 +2524,26 @@ mod dplb_solver_tests {
     fn test_dplb_3() {
         let formula_set = BTreeSet::from([
             BTreeSet::from([
-                Formula::not(Formula::atom(Prop::new("A"))),
-                Formula::atom(Prop::new("E")),
+                Formula::not(&Formula::atom(&Prop::new("A"))),
+                Formula::atom(&Prop::new("E")),
             ]),
             BTreeSet::from([
-                Formula::not(Formula::atom(Prop::new("D"))),
-                Formula::not(Formula::atom(Prop::new("C"))),
+                Formula::not(&Formula::atom(&Prop::new("D"))),
+                Formula::not(&Formula::atom(&Prop::new("C"))),
             ]),
             BTreeSet::from([
-                Formula::not(Formula::atom(Prop::new("A"))),
-                Formula::atom(Prop::new("D")),
+                Formula::not(&Formula::atom(&Prop::new("A"))),
+                Formula::atom(&Prop::new("D")),
             ]),
-            BTreeSet::from([Formula::atom(Prop::new("A")), Formula::atom(Prop::new("C"))]),
             BTreeSet::from([
-                Formula::not(Formula::atom(Prop::new("A"))),
-                Formula::atom(Prop::new("C")),
+                Formula::atom(&Prop::new("A")),
+                Formula::atom(&Prop::new("C")),
             ]),
-            BTreeSet::from([Formula::not(Formula::atom(Prop::new("E")))]),
+            BTreeSet::from([
+                Formula::not(&Formula::atom(&Prop::new("A"))),
+                Formula::atom(&Prop::new("C")),
+            ]),
+            BTreeSet::from([Formula::not(&Formula::atom(&Prop::new("E")))]),
         ]);
         let mut solver = DPLBSolver::new(&formula_set);
         let result = solver.solve();

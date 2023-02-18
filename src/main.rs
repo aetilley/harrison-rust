@@ -44,7 +44,7 @@ fn main() {
     dnf.pprint(&mut stdout);
     println!("Is satisfiable?: {}", formula.dpll_sat());
     println!("Is tautology?: {}", formula.dpll_taut());
-    println!("Is contradiction?: {}", Formula::not(formula).dpll_taut());
+    println!("Is contradiction?: {}", Formula::not(&formula).dpll_taut());
 
     println!("\nExample 4: Formula simplification");
 
@@ -116,7 +116,7 @@ fn main() {
     use harrison_rust::utils::run_repeatedly_and_average;
     use std::path::Path;
 
-    let path_str: &str = "../data/sudoku.txt";
+    let path_str: &str = "./data/sudoku.txt";
     let path: &Path = Path::new(path_str);
     let boards: Vec<Board> = parse_sudoku_dataset(path, Some(1));
     let clauses = get_board_formulas(&boards, 9, 3)[0].clone();

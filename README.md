@@ -3,7 +3,7 @@ John Harrison's text on Automated Theorem Proving.
 
 (Harrison, J. (2009). Handbook of Practical Logic and Automated Reasoning. Cambridge: Cambridge University Press)
 
-(Harrison's text gives its code in Ocaml.)
+(Harrison's text uses Ocaml.)
 
 This package is a work in progress, but the following are supported:
 

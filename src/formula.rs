@@ -34,38 +34,37 @@ pub enum Formula<T: Clone + Debug + Hash + Eq + Ord> {
 }
 
 impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
-    // NOTE:  The following builders take ownership.
-    pub fn atom(t: T) -> Formula<T> {
-        Formula::Atom(t)
+    pub fn atom(t: &T) -> Formula<T> {
+        Formula::Atom(t.to_owned())
     }
 
     #[allow(clippy::should_implement_trait)]
-    pub fn not(formula: Formula<T>) -> Formula<T> {
-        Formula::Not(Box::new(formula))
+    pub fn not(formula: &Formula<T>) -> Formula<T> {
+        Formula::Not(Box::new(formula.to_owned()))
     }
 
-    pub fn and(formula1: Formula<T>, formula2: Formula<T>) -> Formula<T> {
-        Formula::And(Box::new(formula1), Box::new(formula2))
+    pub fn and(formula1: &Formula<T>, formula2: &Formula<T>) -> Formula<T> {
+        Formula::And(Box::new(formula1.to_owned()), Box::new(formula2.to_owned()))
     }
 
-    pub fn or(formula1: Formula<T>, formula2: Formula<T>) -> Formula<T> {
-        Formula::Or(Box::new(formula1), Box::new(formula2))
+    pub fn or(formula1: &Formula<T>, formula2: &Formula<T>) -> Formula<T> {
+        Formula::Or(Box::new(formula1.to_owned()), Box::new(formula2.to_owned()))
     }
 
-    pub fn imp(formula1: Formula<T>, formula2: Formula<T>) -> Formula<T> {
-        Formula::Imp(Box::new(formula1), Box::new(formula2))
+    pub fn imp(formula1: &Formula<T>, formula2: &Formula<T>) -> Formula<T> {
+        Formula::Imp(Box::new(formula1.to_owned()), Box::new(formula2.to_owned()))
     }
 
-    pub fn iff(formula1: Formula<T>, formula2: Formula<T>) -> Formula<T> {
-        Formula::Iff(Box::new(formula1), Box::new(formula2))
+    pub fn iff(formula1: &Formula<T>, formula2: &Formula<T>) -> Formula<T> {
+        Formula::Iff(Box::new(formula1.to_owned()), Box::new(formula2.to_owned()))
     }
 
-    pub fn forall(var: &str, formula: Formula<T>) -> Formula<T> {
-        Formula::Forall(String::from(var), Box::new(formula))
+    pub fn forall(var: &str, formula: &Formula<T>) -> Formula<T> {
+        Formula::Forall(String::from(var), Box::new(formula.to_owned()))
     }
 
-    pub fn exists(var: &str, formula: Formula<T>) -> Formula<T> {
-        Formula::Exists(String::from(var), Box::new(formula))
+    pub fn exists(var: &str, formula: &Formula<T>) -> Formula<T> {
+        Formula::Exists(String::from(var), Box::new(formula.to_owned()))
     }
 
     // NOTE:  The following might be better off as methods.
@@ -133,13 +132,13 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
         // in `self` with that atom's image along `map`.
         match self {
             Formula::Atom(t) => map(t),
-            Formula::Not(box p) => Formula::not(p.on_atoms(map)),
-            Formula::And(box p, box q) => Formula::and(p.on_atoms(map), q.on_atoms(map)),
-            Formula::Or(box p, box q) => Formula::or(p.on_atoms(map), q.on_atoms(map)),
-            Formula::Imp(box p, box q) => Formula::imp(p.on_atoms(map), q.on_atoms(map)),
-            Formula::Iff(box p, box q) => Formula::iff(p.on_atoms(map), q.on_atoms(map)),
-            Formula::Forall(var, box p) => Formula::forall(var, p.on_atoms(map)),
-            Formula::Exists(var, box p) => Formula::exists(var, p.on_atoms(map)),
+            Formula::Not(box p) => Formula::not(&p.on_atoms(map)),
+            Formula::And(box p, box q) => Formula::and(&p.on_atoms(map), &q.on_atoms(map)),
+            Formula::Or(box p, box q) => Formula::or(&p.on_atoms(map), &q.on_atoms(map)),
+            Formula::Imp(box p, box q) => Formula::imp(&p.on_atoms(map), &q.on_atoms(map)),
+            Formula::Iff(box p, box q) => Formula::iff(&p.on_atoms(map), &q.on_atoms(map)),
+            Formula::Forall(var, box p) => Formula::forall(var, &p.on_atoms(map)),
+            Formula::Exists(var, box p) => Formula::exists(var, &p.on_atoms(map)),
             _ => self.clone(),
         }
     }
@@ -202,7 +201,7 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
             // The following arm is not in Harrison
             Formula::Imp(box Formula::True, box Formula::False) => Formula::False,
 
-            Formula::Imp(box p, box Formula::False) => Formula::not(p.clone()),
+            Formula::Imp(box p, box Formula::False) => Formula::not(p),
             Formula::Imp(box Formula::True, box p) => p.clone(),
 
             // The following two arms are not in Harrison
@@ -215,7 +214,7 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
                 p.clone()
             }
             Formula::Iff(box Formula::False, box p) | Formula::Iff(box p, box Formula::False) => {
-                Formula::not(p.clone())
+                Formula::not(p)
             }
             _ => formula.clone(),
         }
@@ -224,25 +223,25 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
     pub fn simplify_recursive(&self, step: &dyn Fn(&Formula<T>) -> Formula<T>) -> Formula<T> {
         // Apply `psimplify1` bottom-up to `self`.
         match self {
-            Formula::Not(box p) => step(&Formula::not(p.simplify_recursive(step))),
+            Formula::Not(box p) => step(&Formula::not(&p.simplify_recursive(step))),
             Formula::And(box p, box q) => step(&Formula::and(
-                p.simplify_recursive(step),
-                q.simplify_recursive(step),
+                &p.simplify_recursive(step),
+                &q.simplify_recursive(step),
             )),
             Formula::Or(box p, box q) => step(&Formula::or(
-                p.simplify_recursive(step),
-                q.simplify_recursive(step),
+                &p.simplify_recursive(step),
+                &q.simplify_recursive(step),
             )),
             Formula::Imp(box p, box q) => step(&Formula::imp(
-                p.simplify_recursive(step),
-                q.simplify_recursive(step),
+                &p.simplify_recursive(step),
+                &q.simplify_recursive(step),
             )),
             Formula::Iff(box p, box q) => step(&Formula::iff(
-                p.simplify_recursive(step),
-                q.simplify_recursive(step),
+                &p.simplify_recursive(step),
+                &q.simplify_recursive(step),
             )),
-            Formula::Forall(x, box p) => step(&Formula::forall(x, p.simplify_recursive(step))),
-            Formula::Exists(y, box p) => step(&Formula::exists(y, p.simplify_recursive(step))),
+            Formula::Forall(x, box p) => step(&Formula::forall(x, &p.simplify_recursive(step))),
+            Formula::Exists(y, box p) => step(&Formula::exists(y, &p.simplify_recursive(step))),
             _ => self.clone(),
         }
     }
@@ -251,41 +250,34 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
         // Negation normal form
 
         match self {
-            Formula::And(box p, box q) => Formula::and(p.raw_nnf(), q.raw_nnf()),
-            Formula::Or(box p, box q) => Formula::or(p.raw_nnf(), q.raw_nnf()),
-            Formula::Imp(box p, box q) => {
-                Formula::or(Formula::not(p.clone()).raw_nnf(), q.raw_nnf())
-            }
+            Formula::And(box p, box q) => Formula::and(&p.raw_nnf(), &q.raw_nnf()),
+            Formula::Or(box p, box q) => Formula::or(&p.raw_nnf(), &q.raw_nnf()),
+            Formula::Imp(box p, box q) => Formula::or(&Formula::not(p).raw_nnf(), &q.raw_nnf()),
             Formula::Iff(box p, box q) => Formula::or(
-                Formula::and(p.raw_nnf(), q.raw_nnf()),
-                Formula::and(
-                    Formula::not(q.clone()).raw_nnf(),
-                    Formula::not(p.clone()).raw_nnf(),
-                ),
+                &Formula::and(&p.raw_nnf(), &q.raw_nnf()),
+                &Formula::and(&Formula::not(q).raw_nnf(), &Formula::not(p).raw_nnf()),
             ),
             Formula::Not(box Formula::Not(box p)) => p.raw_nnf(),
-            Formula::Not(box Formula::And(box p, box q)) => Formula::or(
-                Formula::not(p.clone()).raw_nnf(),
-                Formula::not(q.clone()).raw_nnf(),
-            ),
-            Formula::Not(box Formula::Or(box p, box q)) => Formula::and(
-                Formula::not(p.clone()).raw_nnf(),
-                Formula::not(q.clone()).raw_nnf(),
-            ),
+            Formula::Not(box Formula::And(box p, box q)) => {
+                Formula::or(&Formula::not(p).raw_nnf(), &Formula::not(q).raw_nnf())
+            }
+            Formula::Not(box Formula::Or(box p, box q)) => {
+                Formula::and(&Formula::not(p).raw_nnf(), &Formula::not(q).raw_nnf())
+            }
             Formula::Not(box Formula::Imp(box p, box q)) => {
-                Formula::and(p.raw_nnf(), Formula::not(q.clone()).raw_nnf())
+                Formula::and(&p.raw_nnf(), &Formula::not(q).raw_nnf())
             }
             Formula::Not(box Formula::Iff(box p, box q)) => Formula::or(
-                Formula::and(p.raw_nnf(), Formula::not(q.clone()).raw_nnf()),
-                Formula::and(Formula::not(p.clone()).raw_nnf(), q.raw_nnf()),
+                &Formula::and(&p.raw_nnf(), &Formula::not(q).raw_nnf()),
+                &Formula::and(&Formula::not(p).raw_nnf(), &q.raw_nnf()),
             ),
-            Formula::Forall(x, box p) => Formula::forall(x, p.raw_nnf()),
-            Formula::Exists(x, box p) => Formula::exists(x, p.raw_nnf()),
+            Formula::Forall(x, box p) => Formula::forall(x, &p.raw_nnf()),
+            Formula::Exists(x, box p) => Formula::exists(x, &p.raw_nnf()),
             Formula::Not(box Formula::Forall(x, box p)) => {
-                Formula::exists(x, Formula::not(p.clone()).raw_nnf())
+                Formula::exists(x, &Formula::not(p).raw_nnf())
             }
             Formula::Not(box Formula::Exists(x, box p)) => {
-                Formula::forall(x, Formula::not(p.clone()).raw_nnf())
+                Formula::forall(x, &Formula::not(p).raw_nnf())
             }
             _ => self.clone(),
         }
@@ -296,34 +288,30 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
         // NOTE that this and `raw_nnf` could factor through a common function
         // (with an additional parameter for a `normalizer` but low priority for now.
         match self {
-            Formula::And(box p, box q) => Formula::and(p.raw_nenf(), q.raw_nenf()),
-            Formula::Or(box p, box q) => Formula::or(p.raw_nenf(), q.raw_nenf()),
-            Formula::Imp(box p, box q) => {
-                Formula::or(Formula::not(p.clone()).raw_nenf(), q.raw_nenf())
-            }
-            Formula::Iff(box p, box q) => Formula::iff(p.raw_nenf(), q.raw_nenf()),
+            Formula::And(box p, box q) => Formula::and(&p.raw_nenf(), &q.raw_nenf()),
+            Formula::Or(box p, box q) => Formula::or(&p.raw_nenf(), &q.raw_nenf()),
+            Formula::Imp(box p, box q) => Formula::or(&Formula::not(p).raw_nenf(), &q.raw_nenf()),
+            Formula::Iff(box p, box q) => Formula::iff(&p.raw_nenf(), &q.raw_nenf()),
             Formula::Not(box Formula::Not(box p)) => p.raw_nenf(),
-            Formula::Not(box Formula::And(box p, box q)) => Formula::or(
-                Formula::not(p.clone()).raw_nenf(),
-                Formula::not(q.clone()).raw_nenf(),
-            ),
-            Formula::Not(box Formula::Or(box p, box q)) => Formula::and(
-                Formula::not(p.clone()).raw_nenf(),
-                Formula::not(q.clone()).raw_nenf(),
-            ),
+            Formula::Not(box Formula::And(box p, box q)) => {
+                Formula::or(&Formula::not(p).raw_nenf(), &Formula::not(q).raw_nenf())
+            }
+            Formula::Not(box Formula::Or(box p, box q)) => {
+                Formula::and(&Formula::not(p).raw_nenf(), &Formula::not(q).raw_nenf())
+            }
             Formula::Not(box Formula::Imp(box p, box q)) => {
-                Formula::and(p.raw_nenf(), Formula::not(q.clone()).raw_nenf())
+                Formula::and(&p.raw_nenf(), &Formula::not(q).raw_nenf())
             }
             Formula::Not(box Formula::Iff(box p, box q)) => {
-                Formula::iff(p.raw_nenf(), Formula::not(q.clone()).raw_nenf())
+                Formula::iff(&p.raw_nenf(), &Formula::not(q).raw_nenf())
             }
-            Formula::Forall(x, box p) => Formula::forall(x, p.raw_nenf()),
-            Formula::Exists(x, box p) => Formula::exists(x, p.raw_nenf()),
+            Formula::Forall(x, box p) => Formula::forall(x, &p.raw_nenf()),
+            Formula::Exists(x, box p) => Formula::exists(x, &p.raw_nenf()),
             Formula::Not(box Formula::Forall(x, box p)) => {
-                Formula::exists(x, Formula::not(p.clone()).raw_nenf())
+                Formula::exists(x, &Formula::not(p).raw_nenf())
             }
             Formula::Not(box Formula::Exists(x, box p)) => {
-                Formula::forall(x, Formula::not(p.clone()).raw_nenf())
+                Formula::forall(x, &Formula::not(p).raw_nenf())
             }
             _ => self.clone(),
         }
@@ -336,7 +324,7 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
     pub fn negate(&self) -> Formula<T> {
         match self {
             Formula::Not(box p) => p.clone(),
-            _ => Formula::not(self.clone()),
+            _ => Formula::not(self),
         }
     }
 
@@ -348,7 +336,7 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
             items
                 .iter()
                 .cloned()
-                .reduce(|x, y| Formula::and(x, y))
+                .reduce(|x, y| Formula::and(&x, &y))
                 .unwrap()
         }
     }
@@ -361,7 +349,7 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
             items
                 .iter()
                 .cloned()
-                .reduce(|x, y| Formula::or(x, y))
+                .reduce(|x, y| Formula::or(&x, &y))
                 .unwrap()
         }
     }
@@ -424,17 +412,17 @@ mod formula_tests {
     #[test]
     fn test_formula_equality_3() {
         let x: Formula<String> = Formula::iff(
-            Formula::atom(String::from("hello")),
-            Formula::and(
-                Formula::atom(String::from("apples")),
-                Formula::atom(String::from("oranges")),
+            &Formula::atom(&String::from("hello")),
+            &Formula::and(
+                &Formula::atom(&String::from("apples")),
+                &Formula::atom(&String::from("oranges")),
             ),
         );
         let y: Formula<String> = Formula::iff(
-            Formula::atom(String::from("hello")),
-            Formula::and(
-                Formula::atom(String::from("apples")),
-                Formula::atom(String::from("oranges")),
+            &Formula::atom(&String::from("hello")),
+            &Formula::and(
+                &Formula::atom(&String::from("apples")),
+                &Formula::atom(&String::from("oranges")),
             ),
         );
         assert_eq!(x, y);
@@ -442,17 +430,17 @@ mod formula_tests {
     #[test]
     fn test_formula_equality_4() {
         let x: Formula<String> = Formula::iff(
-            Formula::atom(String::from("hello")),
-            Formula::and(
-                Formula::atom(String::from("apples")),
-                Formula::atom(String::from("oranges")),
+            &Formula::atom(&String::from("hello")),
+            &Formula::and(
+                &Formula::atom(&String::from("apples")),
+                &Formula::atom(&String::from("oranges")),
             ),
         );
         let y: Formula<String> = Formula::iff(
-            Formula::atom(String::from("hello")),
-            Formula::and(
-                Formula::atom(String::from("apples")),
-                Formula::atom(String::from("bananas")),
+            &Formula::atom(&String::from("hello")),
+            &Formula::and(
+                &Formula::atom(&String::from("apples")),
+                &Formula::atom(&String::from("bananas")),
             ),
         );
         assert_ne!(x, y);
@@ -460,12 +448,12 @@ mod formula_tests {
 
     #[test]
     fn test_get_iff_ops_good_input() {
-        let conj_left = Formula::atom(String::from("hello"));
+        let conj_left = Formula::atom(&String::from("hello"));
         let conj_right = Formula::or(
-            Formula::atom(String::from("apples")),
-            Formula::atom(String::from("oranges")),
+            &Formula::atom(&String::from("apples")),
+            &Formula::atom(&String::from("oranges")),
         );
-        let good_input: Formula<String> = Formula::iff(conj_left.clone(), conj_right.clone());
+        let good_input: Formula<String> = Formula::iff(&conj_left, &conj_right);
 
         let (result_left, result_right) = Formula::get_iff_ops(&good_input);
         assert_eq!(result_left, conj_left);
@@ -476,8 +464,8 @@ mod formula_tests {
     #[should_panic]
     fn test_get_iff_ops_bad_input() {
         let bad_input: Formula<String> = Formula::and(
-            Formula::atom(String::from("apples")),
-            Formula::atom(String::from("oranges")),
+            &Formula::atom(&String::from("apples")),
+            &Formula::atom(&String::from("oranges")),
         );
 
         Formula::get_iff_ops(&bad_input);
@@ -485,9 +473,9 @@ mod formula_tests {
 
     #[test]
     fn test_antecedent_and_consequent() {
-        let ante = Formula::atom(String::from("apples"));
-        let cons = Formula::atom(String::from("oranges"));
-        let input: Formula<String> = Formula::imp(ante.clone(), cons.clone());
+        let ante = Formula::atom(&String::from("apples"));
+        let cons = Formula::atom(&String::from("oranges"));
+        let input: Formula<String> = Formula::imp(&ante, &cons);
         let result_ante = Formula::antecedent(&input);
         let result_cons = Formula::consequent(&input);
         assert_eq!(result_ante, ante);
@@ -497,23 +485,23 @@ mod formula_tests {
     #[test]
     fn test_conjuncts() {
         let input: Formula<String> = Formula::and(
-            Formula::or(
-                Formula::atom(String::from("A")),
-                Formula::atom(String::from("B")),
+            &Formula::or(
+                &Formula::atom(&String::from("A")),
+                &Formula::atom(&String::from("B")),
             ),
-            Formula::and(
-                Formula::atom(String::from("C")),
-                Formula::atom(String::from("D")),
+            &Formula::and(
+                &Formula::atom(&String::from("C")),
+                &Formula::atom(&String::from("D")),
             ),
         );
         let result_conjuncts = Formula::conjuncts(&input);
         let desired_conjuncts = vec![
             Formula::or(
-                Formula::atom(String::from("A")),
-                Formula::atom(String::from("B")),
+                &Formula::atom(&String::from("A")),
+                &Formula::atom(&String::from("B")),
             ),
-            Formula::atom(String::from("C")),
-            Formula::atom(String::from("D")),
+            Formula::atom(&String::from("C")),
+            Formula::atom(&String::from("D")),
         ];
         assert_eq!(result_conjuncts, desired_conjuncts);
     }
@@ -521,22 +509,22 @@ mod formula_tests {
     #[test]
     fn test_disjuncts() {
         let input: Formula<String> = Formula::or(
-            Formula::or(
-                Formula::atom(String::from("A")),
-                Formula::atom(String::from("B")),
+            &Formula::or(
+                &Formula::atom(&String::from("A")),
+                &Formula::atom(&String::from("B")),
             ),
-            Formula::and(
-                Formula::atom(String::from("C")),
-                Formula::atom(String::from("D")),
+            &Formula::and(
+                &Formula::atom(&String::from("C")),
+                &Formula::atom(&String::from("D")),
             ),
         );
         let result_disjuncts = Formula::disjuncts(&input);
         let desired_disjuncts = vec![
-            Formula::atom(String::from("A")),
-            Formula::atom(String::from("B")),
+            Formula::atom(&String::from("A")),
+            Formula::atom(&String::from("B")),
             Formula::and(
-                Formula::atom(String::from("C")),
-                Formula::atom(String::from("D")),
+                &Formula::atom(&String::from("C")),
+                &Formula::atom(&String::from("D")),
             ),
         ];
         assert_eq!(result_disjuncts, desired_disjuncts);
@@ -545,22 +533,22 @@ mod formula_tests {
     #[test]
     fn test_on_atoms() {
         let input: Formula<String> = Formula::or(
-            Formula::iff(
-                Formula::atom(String::from("A")),
-                Formula::atom(String::from("B")),
+            &Formula::iff(
+                &Formula::atom(&String::from("A")),
+                &Formula::atom(&String::from("B")),
             ),
-            Formula::forall("some_var", Formula::atom(String::from("C"))),
+            &Formula::forall("some_var", &Formula::atom(&String::from("C"))),
         );
 
-        let foo = |s: &String| -> Formula<String> { Formula::atom(s.clone() + "X") };
+        let foo = |s: &String| -> Formula<String> { Formula::atom(&(s.to_owned() + "X")) };
 
         let result = input.on_atoms(&foo);
         let desired: Formula<String> = Formula::or(
-            Formula::iff(
-                Formula::atom(String::from("AX")),
-                Formula::atom(String::from("BX")),
+            &Formula::iff(
+                &Formula::atom(&String::from("AX")),
+                &Formula::atom(&String::from("BX")),
             ),
-            Formula::forall("some_var", Formula::atom(String::from("CX"))),
+            &Formula::forall("some_var", &Formula::atom(&String::from("CX"))),
         );
         assert_eq!(result, desired);
     }
@@ -569,11 +557,11 @@ mod formula_tests {
     fn test_over_atoms() {
         // We Let S = T = String.
         let input: Formula<String> = Formula::or(
-            Formula::iff(
-                Formula::atom(String::from("A")),
-                Formula::atom(String::from("B")),
+            &Formula::iff(
+                &Formula::atom(&String::from("A")),
+                &Formula::atom(&String::from("B")),
             ),
-            Formula::forall("some_var", Formula::atom(String::from("A"))),
+            &Formula::forall("some_var", &Formula::atom(&String::from("A"))),
         );
 
         // Some starting elements
@@ -594,13 +582,13 @@ mod formula_tests {
     fn test_atom_union() {
         // We Let S = T = String.
         let input: Formula<String> = Formula::or(
-            Formula::iff(
-                Formula::atom(String::from("A")),
-                Formula::atom(String::from("B")),
+            &Formula::iff(
+                &Formula::atom(&String::from("A")),
+                &Formula::atom(&String::from("B")),
             ),
-            Formula::imp(
-                Formula::atom(String::from("B")),
-                Formula::atom(String::from("C")),
+            &Formula::imp(
+                &Formula::atom(&String::from("B")),
+                &Formula::atom(&String::from("C")),
             ),
         );
 
@@ -613,83 +601,85 @@ mod formula_tests {
 
     #[test]
     fn test_psimplify_step() {
-        let formula = Formula::not(Formula::not(Formula::not(Formula::Atom("Hello"))));
-        let result = Formula::not(Formula::Atom("Hello"));
+        let formula = Formula::not(&Formula::not(&Formula::not(&Formula::atom(&String::from(
+            "Hello",
+        )))));
+        let result = Formula::not(&Formula::atom(&String::from("Hello")));
         assert_eq!(Formula::psimplify_step(&formula), result);
 
-        let formula = Formula::not(Formula::<String>::True);
+        let formula = Formula::not(&Formula::<String>::True);
         let result = Formula::False;
         assert_eq!(Formula::psimplify_step(&formula), result);
 
-        let formula = Formula::not(Formula::<String>::False);
+        let formula = Formula::not(&Formula::<String>::False);
         let result = Formula::True;
         assert_eq!(Formula::psimplify_step(&formula), result);
 
-        let formula = Formula::and(Formula::True, Formula::atom("A"));
-        let result = Formula::atom("A");
+        let formula = Formula::and(&Formula::True, &Formula::atom(&String::from("A")));
+        let result = Formula::atom(&String::from("A"));
         assert_eq!(Formula::psimplify_step(&formula), result);
 
-        let formula = Formula::and(Formula::atom("A"), Formula::True);
-        let result = Formula::atom("A");
+        let formula = Formula::and(&Formula::atom(&String::from("A")), &Formula::True);
+        let result = Formula::atom(&String::from("A"));
         assert_eq!(Formula::psimplify_step(&formula), result);
 
-        let formula = Formula::and(Formula::False, Formula::atom("A"));
+        let formula = Formula::and(&Formula::False, &Formula::atom(&String::from("A")));
         let result = Formula::False;
         assert_eq!(Formula::psimplify_step(&formula), result);
 
-        let formula = Formula::and(Formula::atom("A"), Formula::False);
+        let formula = Formula::and(&Formula::atom(&String::from("A")), &Formula::False);
         let result = Formula::False;
         assert_eq!(Formula::psimplify_step(&formula), result);
 
-        let formula = Formula::or(Formula::True, Formula::atom("A"));
+        let formula = Formula::or(&Formula::True, &Formula::atom(&String::from("A")));
         let result = Formula::True;
         assert_eq!(Formula::psimplify_step(&formula), result);
 
-        let formula = Formula::or(Formula::atom("A"), Formula::True);
+        let formula = Formula::or(&Formula::atom(&String::from("A")), &Formula::True);
         let result = Formula::True;
         assert_eq!(Formula::psimplify_step(&formula), result);
 
-        let formula = Formula::or(Formula::False, Formula::atom("A"));
-        let result = Formula::atom("A");
+        let formula = Formula::or(&Formula::False, &Formula::atom(&String::from("A")));
+        let result = Formula::atom(&String::from("A"));
         assert_eq!(Formula::psimplify_step(&formula), result);
 
-        let formula = Formula::or(Formula::atom("A"), Formula::False);
-        let result = Formula::atom("A");
+        let formula = Formula::or(&Formula::atom(&String::from("A")), &Formula::False);
+        let result = Formula::atom(&String::from("A"));
         assert_eq!(Formula::psimplify_step(&formula), result);
 
-        let formula = Formula::imp(Formula::True, Formula::atom("A"));
-        let result = Formula::atom("A");
+        let formula = Formula::imp(&Formula::True, &Formula::atom(&String::from("A")));
+        let result = Formula::atom(&String::from("A"));
         assert_eq!(Formula::psimplify_step(&formula), result);
 
-        let formula = Formula::imp(Formula::atom("A"), Formula::True);
+        let formula = Formula::imp(&Formula::atom(&String::from("A")), &Formula::True);
         let result = Formula::True;
         assert_eq!(Formula::psimplify_step(&formula), result);
 
-        let formula = Formula::imp(Formula::False, Formula::atom("A"));
+        let formula = Formula::imp(&Formula::False, &Formula::atom(&String::from("A")));
         let result = Formula::True;
         assert_eq!(Formula::psimplify_step(&formula), result);
 
-        let formula = Formula::imp(Formula::atom("A"), Formula::False);
-        let result = Formula::not(Formula::atom("A"));
+        let formula = Formula::imp(&Formula::atom(&String::from("A")), &Formula::False);
+        let result = Formula::not(&Formula::atom(&String::from("A")));
         assert_eq!(Formula::psimplify_step(&formula), result);
 
-        let formula = Formula::iff(Formula::True, Formula::atom("A"));
-        let result = Formula::atom("A");
+        let formula = Formula::iff(&Formula::True, &Formula::atom(&String::from("A")));
+        let result = Formula::atom(&String::from("A"));
         assert_eq!(Formula::psimplify_step(&formula), result);
 
-        let formula = Formula::iff(Formula::atom("A"), Formula::True);
-        let result = Formula::atom("A");
+        let formula = Formula::iff(&Formula::atom(&String::from("A")), &Formula::True);
+        let result = Formula::atom(&String::from("A"));
         assert_eq!(Formula::psimplify_step(&formula), result);
 
-        let formula = Formula::iff(Formula::False, Formula::atom("A"));
-        let result = Formula::not(Formula::atom("A"));
+        let formula = Formula::iff(&Formula::False, &Formula::atom(&String::from("A")));
+        let result = Formula::not(&Formula::atom(&String::from("A")));
         assert_eq!(Formula::psimplify_step(&formula), result);
 
-        let formula = Formula::iff(Formula::atom("A"), Formula::False);
-        let result = Formula::not(Formula::atom("A"));
+        let formula = Formula::iff(&Formula::atom(&String::from("A")), &Formula::False);
+        let result = Formula::not(&Formula::atom(&String::from("A")));
         assert_eq!(Formula::psimplify_step(&formula), result);
 
-        let formula = Formula::iff(Formula::<String>::False, Formula::False);
+        let formula = Formula::iff(&Formula::<String>::False, &Formula::False);
         let result = Formula::True;
         assert_eq!(Formula::psimplify_step(&formula), result);
     }
@@ -699,33 +689,33 @@ mod formula_tests {
         let step = &Formula::psimplify_step;
 
         let formula = Formula::or(
-            Formula::and(Formula::False, Formula::False),
-            Formula::imp(Formula::False, Formula::atom("B")),
+            &Formula::and(&Formula::False, &Formula::False),
+            &Formula::imp(&Formula::False, &Formula::atom(&"B".to_string())),
         );
         let result = Formula::True;
         assert_eq!(formula.simplify_recursive(step), result);
 
         let formula = Formula::forall(
             "x",
-            Formula::imp(
-                Formula::imp(
-                    Formula::True,
-                    Formula::iff(Formula::atom("x"), Formula::False),
+            &Formula::imp(
+                &Formula::imp(
+                    &Formula::True,
+                    &Formula::iff(&Formula::atom(&"x".to_string()), &Formula::False),
                 ),
-                Formula::exists(
+                &Formula::exists(
                     "y",
-                    Formula::not(Formula::or(
-                        Formula::atom("y"),
-                        Formula::and(Formula::False, Formula::atom("z")),
+                    &Formula::not(&Formula::or(
+                        &Formula::atom(&"y".to_string()),
+                        &Formula::and(&Formula::False, &Formula::atom(&"z".to_string())),
                     )),
                 ),
             ),
         );
         let result = Formula::forall(
             "x",
-            Formula::imp(
-                Formula::not(Formula::atom("x")),
-                Formula::exists("y", Formula::not(Formula::atom("y"))),
+            &Formula::imp(
+                &Formula::not(&Formula::atom(&"x".to_string())),
+                &Formula::exists("y", &Formula::not(&Formula::atom(&"y".to_string()))),
             ),
         );
 
@@ -734,34 +724,46 @@ mod formula_tests {
 
     #[test]
     fn test_raw_nnf() {
-        let formula = Formula::not(Formula::and(
-            Formula::atom("A"),
-            Formula::or(Formula::atom("B"), Formula::atom("C")),
+        let formula = Formula::not(&Formula::and(
+            &Formula::atom(&"A".to_string()),
+            &Formula::or(
+                &Formula::atom(&"B".to_string()),
+                &Formula::atom(&"C".to_string()),
+            ),
         ));
 
         let desired = Formula::or(
-            Formula::not(Formula::atom("A")),
-            Formula::and(
-                Formula::not(Formula::atom("B")),
-                Formula::not(Formula::atom("C")),
+            &Formula::not(&Formula::atom(&"A".to_string())),
+            &Formula::and(
+                &Formula::not(&Formula::atom(&"B".to_string())),
+                &Formula::not(&Formula::atom(&"C".to_string())),
             ),
         );
         assert_eq!(formula.raw_nnf(), desired);
 
         let formula = Formula::exists(
             "z",
-            Formula::not(Formula::imp(
-                Formula::not(Formula::forall("A", Formula::atom("A"))),
-                Formula::iff(Formula::atom("B"), Formula::atom("C")),
+            &Formula::not(&Formula::imp(
+                &Formula::not(&Formula::forall("A", &Formula::atom(&"A".to_string()))),
+                &Formula::iff(
+                    &Formula::atom(&"B".to_string()),
+                    &Formula::atom(&"C".to_string()),
+                ),
             )),
         );
         let desired = Formula::exists(
             "z",
-            Formula::and(
-                Formula::exists("A", Formula::not(Formula::atom("A"))),
-                Formula::or(
-                    Formula::and(Formula::atom("B"), Formula::not(Formula::atom("C"))),
-                    Formula::and(Formula::not(Formula::atom("B")), Formula::atom("C")),
+            &Formula::and(
+                &Formula::exists("A", &Formula::not(&Formula::atom(&"A".to_string()))),
+                &Formula::or(
+                    &Formula::and(
+                        &Formula::atom(&"B".to_string()),
+                        &Formula::not(&Formula::atom(&"C".to_string())),
+                    ),
+                    &Formula::and(
+                        &Formula::not(&Formula::atom(&"B".to_string())),
+                        &Formula::atom(&"C".to_string()),
+                    ),
                 ),
             ),
         );
@@ -770,31 +772,39 @@ mod formula_tests {
 
     #[test]
     fn test_raw_nenf() {
-        // let formula = Formula::<Prop>::parse("~(A /\\ (B \\/ C))");
-        let formula = Formula::not(Formula::and(
-            Formula::atom("A"),
-            Formula::or(Formula::atom("B"), Formula::atom("C")),
+        let formula = Formula::not(&Formula::and(
+            &Formula::atom(&"A".to_string()),
+            &Formula::or(
+                &Formula::atom(&"B".to_string()),
+                &Formula::atom(&"C".to_string()),
+            ),
         ));
         let desired = Formula::or(
-            Formula::not(Formula::atom("A")),
-            Formula::and(
-                Formula::not(Formula::atom("B")),
-                Formula::not(Formula::atom("C")),
+            &Formula::not(&Formula::atom(&"A".to_string())),
+            &Formula::and(
+                &Formula::not(&Formula::atom(&"B".to_string())),
+                &Formula::not(&Formula::atom(&"C".to_string())),
             ),
         );
         assert_eq!(formula.raw_nenf(), desired);
         let formula = Formula::exists(
             "z",
-            Formula::not(Formula::imp(
-                Formula::not(Formula::forall("A", Formula::atom("A"))),
-                Formula::iff(Formula::atom("B"), Formula::atom("C")),
+            &Formula::not(&Formula::imp(
+                &Formula::not(&Formula::forall("A", &Formula::atom(&"A".to_string()))),
+                &Formula::iff(
+                    &Formula::atom(&"B".to_string()),
+                    &Formula::atom(&"C".to_string()),
+                ),
             )),
         );
         let desired = Formula::exists(
             "z",
-            Formula::and(
-                Formula::exists("A", Formula::not(Formula::atom("A"))),
-                Formula::iff(Formula::atom("B"), Formula::not(Formula::atom("C"))),
+            &Formula::and(
+                &Formula::exists("A", &Formula::not(&Formula::atom(&"A".to_string()))),
+                &Formula::iff(
+                    &Formula::atom(&"B".to_string()),
+                    &Formula::not(&Formula::atom(&"C".to_string())),
+                ),
             ),
         );
         assert_eq!(formula.raw_nenf(), desired);
@@ -802,10 +812,13 @@ mod formula_tests {
 
     #[test]
     fn test_negate() {
-        let formula = Formula::Atom("A");
-        assert_eq!(formula.negate(), Formula::not(Formula::Atom("A")));
-        let formula = Formula::not(Formula::Atom("A"));
-        assert_eq!(formula.negate(), Formula::Atom("A"));
+        let formula = Formula::atom(&"A".to_string());
+        assert_eq!(
+            formula.negate(),
+            Formula::not(&Formula::atom(&"A".to_string()))
+        );
+        let formula = Formula::not(&Formula::atom(&"A".to_string()));
+        assert_eq!(formula.negate(), Formula::atom(&"A".to_string()));
     }
 
     #[test]
@@ -819,8 +832,8 @@ mod formula_tests {
         assert_eq!(
             Formula::list_conj(&multiple),
             Formula::and(
-                Formula::and(Formula::Atom("A"), Formula::Atom("B")),
-                Formula::Atom("C")
+                &Formula::and(&Formula::Atom("A"), &Formula::Atom("B")),
+                &Formula::Atom("C")
             )
         );
 
@@ -829,8 +842,8 @@ mod formula_tests {
         assert_eq!(
             Formula::list_disj(&multiple),
             Formula::or(
-                Formula::or(Formula::Atom("A"), Formula::Atom("B")),
-                Formula::Atom("C")
+                &Formula::or(&Formula::Atom("A"), &Formula::Atom("B")),
+                &Formula::Atom("C")
             )
         );
     }
@@ -852,58 +865,58 @@ mod formula_tests {
         formula = Formula::False;
         assert!(!formula.eval_core(&empty, &qempty, &qempty));
 
-        formula = Formula::not(Formula::False);
+        formula = Formula::not(&Formula::False);
         assert!(formula.eval_core(&empty, &qempty, &qempty));
 
-        formula = Formula::not(Formula::True);
+        formula = Formula::not(&Formula::True);
         assert!(!formula.eval_core(&empty, &qempty, &qempty));
 
-        formula = Formula::and(Formula::True, Formula::True);
+        formula = Formula::and(&Formula::True, &Formula::True);
         assert!(formula.eval_core(&empty, &qempty, &qempty));
 
-        formula = Formula::and(Formula::False, Formula::True);
+        formula = Formula::and(&Formula::False, &Formula::True);
         assert!(!formula.eval_core(&empty, &qempty, &qempty));
 
-        formula = Formula::and(Formula::True, Formula::False);
+        formula = Formula::and(&Formula::True, &Formula::False);
         assert!(!formula.eval_core(&empty, &qempty, &qempty));
 
-        formula = Formula::and(Formula::False, Formula::False);
+        formula = Formula::and(&Formula::False, &Formula::False);
         assert!(!formula.eval_core(&empty, &qempty, &qempty));
 
-        formula = Formula::or(Formula::True, Formula::True);
+        formula = Formula::or(&Formula::True, &Formula::True);
         assert!(formula.eval_core(&empty, &qempty, &qempty));
 
-        formula = Formula::or(Formula::False, Formula::True);
+        formula = Formula::or(&Formula::False, &Formula::True);
         assert!(formula.eval_core(&empty, &qempty, &qempty));
 
-        formula = Formula::or(Formula::True, Formula::False);
+        formula = Formula::or(&Formula::True, &Formula::False);
         assert!(formula.eval_core(&empty, &qempty, &qempty));
 
-        formula = Formula::or(Formula::False, Formula::False);
+        formula = Formula::or(&Formula::False, &Formula::False);
         assert!(!formula.eval_core(&empty, &qempty, &qempty));
 
-        formula = Formula::imp(Formula::True, Formula::True);
+        formula = Formula::imp(&Formula::True, &Formula::True);
         assert!(formula.eval_core(&empty, &qempty, &qempty));
 
-        formula = Formula::imp(Formula::False, Formula::True);
+        formula = Formula::imp(&Formula::False, &Formula::True);
         assert!(formula.eval_core(&empty, &qempty, &qempty));
 
-        formula = Formula::imp(Formula::True, Formula::False);
+        formula = Formula::imp(&Formula::True, &Formula::False);
         assert!(!formula.eval_core(&empty, &qempty, &qempty));
 
-        formula = Formula::imp(Formula::False, Formula::False);
+        formula = Formula::imp(&Formula::False, &Formula::False);
         assert!(formula.eval_core(&empty, &qempty, &qempty));
 
-        formula = Formula::iff(Formula::True, Formula::True);
+        formula = Formula::iff(&Formula::True, &Formula::True);
         assert!(formula.eval_core(&empty, &qempty, &qempty));
 
-        formula = Formula::iff(Formula::False, Formula::True);
+        formula = Formula::iff(&Formula::False, &Formula::True);
         assert!(!formula.eval_core(&empty, &qempty, &qempty));
 
-        formula = Formula::iff(Formula::True, Formula::False);
+        formula = Formula::iff(&Formula::True, &Formula::False);
         assert!(!formula.eval_core(&empty, &qempty, &qempty));
 
-        formula = Formula::iff(Formula::False, Formula::False);
+        formula = Formula::iff(&Formula::False, &Formula::False);
         assert!(formula.eval_core(&empty, &qempty, &qempty));
 
         fn atom_eval(x: &String) -> bool {
@@ -920,17 +933,17 @@ mod formula_tests {
             sub.eval_core(&atom_eval, &quantifier_eval, &quantifier_eval)
         }
 
-        formula = Formula::atom("A".to_string());
+        formula = Formula::atom(&"A".to_string());
         assert!(formula.eval_core(&atom_eval, &quantifier_eval, &quantifier_eval));
 
-        formula = Formula::atom("B".to_string());
+        formula = Formula::atom(&"B".to_string());
         assert!(!formula.eval_core(&atom_eval, &quantifier_eval, &quantifier_eval));
 
         formula = Formula::iff(
-            Formula::atom("C".to_string()),
-            Formula::and(
-                Formula::atom("A".to_string()),
-                Formula::atom("B".to_string()),
+            &Formula::atom(&"C".to_string()),
+            &Formula::and(
+                &Formula::atom(&"A".to_string()),
+                &Formula::atom(&"B".to_string()),
             ),
         );
         assert!(!formula.eval_core(&atom_eval, &quantifier_eval, &quantifier_eval));
@@ -938,9 +951,9 @@ mod formula_tests {
         // Should be equivalent to just And(B, C) since quantifier sub-eval ignores quantifiers.
         formula = Formula::exists(
             "X",
-            Formula::and(
-                Formula::atom("B".to_string()),
-                Formula::forall("Y", Formula::atom("C".to_string())),
+            &Formula::and(
+                &Formula::atom(&"B".to_string()),
+                &Formula::forall("Y", &Formula::atom(&"C".to_string())),
             ),
         );
         assert!(!formula.eval_core(&atom_eval, &quantifier_eval, &quantifier_eval),)
@@ -988,7 +1001,7 @@ fn parse_atomic_formula<'a, T: Clone + Debug + Hash + Eq + Ord>(
         }
         [head, rest @ ..] if head == "~" => {
             let (ast, rest1) = parse_atomic_formula(infix_parser, atom_parser, variables, rest);
-            (Formula::not(ast), rest1)
+            (Formula::not(&ast), rest1)
         }
         [head, var, rest @ ..] if head == "forall" => {
             let mut variables = variables.to_owned();
@@ -1022,7 +1035,7 @@ fn parse_quantified<'a, T: Clone + Debug + Hash + Eq + Ord>(
     infix_parser: for<'b> fn(&[String], &'b [String]) -> MaybePartialParseResult<'b, Formula<T>>,
     atom_parser: for<'b> fn(&[String], &'b [String]) -> PartialParseResult<'b, Formula<T>>,
     variables: &[String],
-    constructor: fn(&str, Formula<T>) -> Formula<T>,
+    constructor: fn(&str, &Formula<T>) -> Formula<T>,
     variable: &String,
     input: &'a [String],
 ) -> PartialParseResult<'a, Formula<T>> {
@@ -1046,7 +1059,7 @@ fn parse_quantified<'a, T: Clone + Debug + Hash + Eq + Ord>(
                     rest,
                 )
             };
-            (constructor(variable, head1), rest1)
+            (constructor(variable, &head1), rest1)
         }
         _ => {
             panic!("Body of quantified term unexpected");
@@ -1117,7 +1130,7 @@ mod generic_ast_parse_tests {
             input: &'a [String],
         ) -> PartialParseResult<'a, Formula<String>> {
             match input {
-                [p, rest @ ..] if p != "(" => (Formula::atom(String::from(p)), rest),
+                [p, rest @ ..] if p != "(" => (Formula::atom(&String::from(p)), rest),
                 _ => panic!("Failed to parse propvar."),
             }
         }
@@ -1133,11 +1146,11 @@ mod generic_ast_parse_tests {
             parse_formula(_tester_infix_parser, _tester_atom_parser, variables, input);
 
         let desired_ast = Formula::imp(
-            Formula::or(
-                Formula::atom(String::from("b")),
-                Formula::atom(String::from("c")),
+            &Formula::or(
+                &Formula::atom(&String::from("b")),
+                &Formula::atom(&String::from("c")),
             ),
-            Formula::atom(String::from("a")),
+            &Formula::atom(&String::from("a")),
         );
         let desired_rest: &[String] = &[];
         let desired = (desired_ast, desired_rest);
@@ -1348,24 +1361,21 @@ mod generic_ast_print_tests {
 
     #[test]
     fn test_strip_quant() {
-        let formula1 = Formula::atom("Hello");
+        let formula1 = Formula::atom(&String::from("Hello"));
         let result1 = strip_quant(&formula1);
-        let desired1 = (vec![], formula1.clone());
+        let desired1 = (vec![], formula1);
         assert_eq!(result1, desired1);
 
-        let inner = Formula::atom("Hello");
+        let inner = Formula::atom(&String::from("Hello"));
 
-        let formula2 = Formula::forall("var1", inner.clone());
+        let formula2 = Formula::forall("var1", &inner);
         let result2 = strip_quant(&formula2);
         let desired2 = (vec![String::from("var1")], inner.clone());
         assert_eq!(result2, desired2);
 
-        let formula3 = Formula::forall("var2", Formula::forall("var1", inner.clone()));
+        let formula3 = Formula::forall("var2", &Formula::forall("var1", &inner));
         let result3 = strip_quant(&formula3);
-        let desired3 = (
-            vec![String::from("var1"), String::from("var2")],
-            inner.clone(),
-        );
+        let desired3 = (vec![String::from("var1"), String::from("var2")], inner);
         assert_eq!(result3, desired3);
     }
 
@@ -1382,7 +1392,7 @@ mod generic_ast_print_tests {
 
     #[test]
     fn test_pprint_general_single_atom() {
-        let formula = Formula::atom(String::from("Hello"));
+        let formula = Formula::atom(&String::from("Hello"));
         let desired = "<<Hello>>";
         _test_pprint_general(formula, desired);
     }
@@ -1390,8 +1400,8 @@ mod generic_ast_print_tests {
     #[test]
     fn test_pprint_general_simple_conjunction() {
         let formula = Formula::and(
-            Formula::atom(String::from("Hello")),
-            Formula::atom(String::from("Goodbye")),
+            &Formula::atom(&String::from("Hello")),
+            &Formula::atom(&String::from("Goodbye")),
         );
         let desired = "<<Hello /\\ Goodbye>>";
         _test_pprint_general(formula, desired);
@@ -1401,11 +1411,11 @@ mod generic_ast_print_tests {
     fn test_pprint_general_nested_or_in_and_left() {
         // Make sure that parens are printed.
         let formula = Formula::and(
-            Formula::or(
-                Formula::atom(String::from("A")),
-                Formula::atom(String::from("B")),
+            &Formula::or(
+                &Formula::atom(&String::from("A")),
+                &Formula::atom(&String::from("B")),
             ),
-            Formula::atom(String::from("C")),
+            &Formula::atom(&String::from("C")),
         );
         let desired = "<<(A \\/ B) /\\ C>>";
         _test_pprint_general(formula, desired);
@@ -1415,10 +1425,10 @@ mod generic_ast_print_tests {
     fn test_pprint_general_nested_or_in_and_right() {
         // Make sure that parens are printed.
         let formula = Formula::and(
-            Formula::atom(String::from("C")),
-            Formula::or(
-                Formula::atom(String::from("A")),
-                Formula::atom(String::from("B")),
+            &Formula::atom(&String::from("C")),
+            &Formula::or(
+                &Formula::atom(&String::from("A")),
+                &Formula::atom(&String::from("B")),
             ),
         );
         let desired = "<<C /\\ (A \\/ B)>>";
@@ -1429,11 +1439,11 @@ mod generic_ast_print_tests {
     fn test_pprint_general_nested_and_in_or_left() {
         // Make sure that parens are not printed.
         let formula = Formula::or(
-            Formula::and(
-                Formula::atom(String::from("A")),
-                Formula::atom(String::from("B")),
+            &Formula::and(
+                &Formula::atom(&String::from("A")),
+                &Formula::atom(&String::from("B")),
             ),
-            Formula::atom(String::from("C")),
+            &Formula::atom(&String::from("C")),
         );
         let desired = "<<A /\\ B \\/ C>>";
         _test_pprint_general(formula, desired);
@@ -1443,10 +1453,10 @@ mod generic_ast_print_tests {
     fn test_pprint_general_nested_and_in_or_right() {
         // Make sure that parens are not printed.
         let formula = Formula::or(
-            Formula::atom(String::from("C")),
-            Formula::and(
-                Formula::atom(String::from("A")),
-                Formula::atom(String::from("B")),
+            &Formula::atom(&String::from("C")),
+            &Formula::and(
+                &Formula::atom(&String::from("A")),
+                &Formula::atom(&String::from("B")),
             ),
         );
         let desired = "<<C \\/ A /\\ B>>";
@@ -1456,11 +1466,11 @@ mod generic_ast_print_tests {
     #[test]
     fn test_pprint_general_nested_and_in_and_left() {
         let formula = Formula::and(
-            Formula::and(
-                Formula::atom(String::from("A")),
-                Formula::atom(String::from("B")),
+            &Formula::and(
+                &Formula::atom(&String::from("A")),
+                &Formula::atom(&String::from("B")),
             ),
-            Formula::atom(String::from("C")),
+            &Formula::atom(&String::from("C")),
         );
         let desired = "<<(A /\\ B) /\\ C>>";
         _test_pprint_general(formula, desired);
@@ -1469,10 +1479,10 @@ mod generic_ast_print_tests {
     #[test]
     fn test_pprint_general_nested_and_in_and_right() {
         let formula = Formula::and(
-            Formula::atom(String::from("C")),
-            Formula::and(
-                Formula::atom(String::from("A")),
-                Formula::atom(String::from("B")),
+            &Formula::atom(&String::from("C")),
+            &Formula::and(
+                &Formula::atom(&String::from("A")),
+                &Formula::atom(&String::from("B")),
             ),
         );
         let desired = "<<C /\\ A /\\ B>>";
@@ -1481,7 +1491,7 @@ mod generic_ast_print_tests {
 
     #[test]
     fn test_pprint_general_simple_quantified() {
-        let formula = Formula::forall("x", Formula::atom(String::from("Hello")));
+        let formula = Formula::forall("x", &Formula::atom(&String::from("Hello")));
         let desired = "<<forall x. Hello>>";
         _test_pprint_general(formula, desired);
     }
@@ -1490,9 +1500,9 @@ mod generic_ast_print_tests {
     fn test_pprint_general_quantified_conjunction() {
         let formula = Formula::forall(
             "x",
-            Formula::and(
-                Formula::atom(String::from("Hello")),
-                Formula::atom(String::from("Goodbye")),
+            &Formula::and(
+                &Formula::atom(&String::from("Hello")),
+                &Formula::atom(&String::from("Goodbye")),
             ),
         );
         let desired = "<<forall x. Hello /\\ Goodbye>>";
@@ -1503,7 +1513,7 @@ mod generic_ast_print_tests {
     fn test_pprint_general_quantified_multivar() {
         let formula = Formula::forall(
             "var1",
-            Formula::forall("var2", Formula::atom(String::from("Hello"))),
+            &Formula::forall("var2", &Formula::atom(&String::from("Hello"))),
         );
         let desired = "<<forall var1 var2. Hello>>";
         _test_pprint_general(formula, desired);
@@ -1512,8 +1522,8 @@ mod generic_ast_print_tests {
     #[test]
     fn test_pprint_general_quantified_in_binary() {
         let formula = Formula::iff(
-            Formula::atom(String::from("Goodbye")),
-            Formula::forall("var1", Formula::atom(String::from("Hello"))),
+            &Formula::atom(&String::from("Goodbye")),
+            &Formula::forall("var1", &Formula::atom(&String::from("Hello"))),
         );
         let desired = "<<Goodbye <=> (forall var1. Hello)>>";
         _test_pprint_general(formula, desired);
@@ -1521,21 +1531,24 @@ mod generic_ast_print_tests {
 
     #[test]
     fn test_pprint_general_negate_atom() {
-        let formula = Formula::not(Formula::atom(String::from("Hello")));
+        let formula = Formula::not(&Formula::atom(&String::from("Hello")));
         let desired = "<<~Hello>>";
         _test_pprint_general(formula, desired);
     }
 
     #[test]
     fn test_pprint_general_double_negation() {
-        let formula = Formula::not(Formula::not(Formula::atom(String::from("Hello"))));
+        let formula = Formula::not(&Formula::not(&Formula::atom(&String::from("Hello"))));
         let desired = "<<~~Hello>>";
         _test_pprint_general(formula, desired);
     }
 
     #[test]
     fn test_pprint_general_negate_quantified() {
-        let formula = Formula::not(Formula::forall("x", Formula::atom(String::from("Hello"))));
+        let formula = Formula::not(&Formula::forall(
+            "x",
+            &Formula::atom(&String::from("Hello")),
+        ));
         let desired = "<<~(forall x. Hello)>>";
         _test_pprint_general(formula, desired);
     }

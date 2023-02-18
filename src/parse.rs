@@ -127,7 +127,7 @@ fn parse_general_infix<'a, AST: Clone>(
 
 pub fn parse_right_infix<'a, AST: Clone>(
     op_symbol: &str,
-    op_constructor: fn(AST, AST) -> AST,
+    op_constructor: fn(&AST, &AST) -> AST,
     subparser: Subparser<AST>,
     input: &'a [String],
 ) -> PartialParseResult<'a, AST> {
@@ -135,7 +135,7 @@ pub fn parse_right_infix<'a, AST: Clone>(
     // op_constructor should be a constructor for ASTs of type corresponding
     // to `op_symbol`.
     let op_update = OpUpdate {
-        fun: &|f, ast1, ast2| f(op_constructor(ast1, ast2)),
+        fun: &|f, ast1, ast2| f(op_constructor(&ast1, &ast2)),
     };
     let agg = Agg { fun: &|ast| ast };
     parse_general_infix(op_symbol, op_update, agg, subparser, input)
@@ -143,7 +143,7 @@ pub fn parse_right_infix<'a, AST: Clone>(
 
 pub fn parse_left_infix<'a, AST: Clone>(
     op_symbol: &str,
-    op_constructor: fn(AST, AST) -> AST,
+    op_constructor: fn(&AST, &AST) -> AST,
     subparser: Subparser<AST>,
     input: &'a [String],
 ) -> PartialParseResult<'a, AST> {
@@ -151,7 +151,7 @@ pub fn parse_left_infix<'a, AST: Clone>(
     // op_constructor should be a constructor for ASTs of type corresponding
     // to `op_symbol`.
     let op_update = OpUpdate {
-        fun: &|f, ast1, ast2| op_constructor(f(ast1), ast2),
+        fun: &|f, ast1, ast2| op_constructor(&f(ast1), &ast2),
     };
     let agg = Agg { fun: &|ast| ast };
     parse_general_infix(op_symbol, op_update, agg, subparser, input)
@@ -298,7 +298,7 @@ mod generic_parsing_tests {
                 },
                 rest,
             ),
-            [head, rest @ ..] => (Formula::atom(head.to_string()), rest),
+            [head, rest @ ..] => (Formula::atom(&head.to_string()), rest),
             _ => {
                 panic!("got empty input");
             }
@@ -312,8 +312,8 @@ mod generic_parsing_tests {
         let empty: &[String] = &[];
         let desired = (
             Formula::and(
-                Formula::atom(String::from("P")),
-                Formula::atom(String::from("Q")),
+                &Formula::atom(&String::from("P")),
+                &Formula::atom(&String::from("Q")),
             ),
             empty,
         );
@@ -327,10 +327,10 @@ mod generic_parsing_tests {
         let empty: &[String] = &[];
         let desired = (
             Formula::and(
-                Formula::atom(String::from("P")),
-                Formula::and(
-                    Formula::atom(String::from("Q")),
-                    Formula::atom(String::from("S")),
+                &Formula::atom(&String::from("P")),
+                &Formula::and(
+                    &Formula::atom(&String::from("Q")),
+                    &Formula::atom(&String::from("S")),
                 ),
             ),
             empty,
@@ -344,8 +344,8 @@ mod generic_parsing_tests {
         let empty: &[String] = &[];
         let desired = (
             Formula::and(
-                Formula::atom(String::from("P")),
-                Formula::atom(String::from("Q")),
+                &Formula::atom(&String::from("P")),
+                &Formula::atom(&String::from("Q")),
             ),
             empty,
         );
@@ -359,11 +359,11 @@ mod generic_parsing_tests {
         let empty: &[String] = &[];
         let desired = (
             Formula::and(
-                Formula::and(
-                    Formula::atom(String::from("P")),
-                    Formula::atom(String::from("Q")),
+                &Formula::and(
+                    &Formula::atom(&String::from("P")),
+                    &Formula::atom(&String::from("Q")),
                 ),
-                Formula::atom(String::from("S")),
+                &Formula::atom(&String::from("S")),
             ),
             empty,
         );
@@ -384,15 +384,15 @@ mod generic_parsing_tests {
         let empty: &[String] = &[];
         let desired = (
             (Formula::and(
-                Formula::atom(String::from("P")),
-                Formula::and(
-                    Formula::atom(String::from("Q")),
-                    Formula::and(
-                        Formula::and(
-                            Formula::atom(String::from("S")),
-                            Formula::atom(String::from("T")),
+                &Formula::atom(&String::from("P")),
+                &Formula::and(
+                    &Formula::atom(&String::from("Q")),
+                    &Formula::and(
+                        &Formula::and(
+                            &Formula::atom(&String::from("S")),
+                            &Formula::atom(&String::from("T")),
                         ),
-                        Formula::atom(String::from("U")),
+                        &Formula::atom(&String::from("U")),
                     ),
                 ),
             )),
@@ -406,9 +406,9 @@ mod generic_parsing_tests {
         let input: Vec<String> = slice_to_vec_of_owned(&["A", ",", "B", ",", "C", "REST"]);
         let result = parse_list(",", Subparser { fun: &_parse_unit }, &input);
         let desired_list = vec![
-            Formula::atom(String::from("A")),
-            Formula::atom(String::from("B")),
-            Formula::atom(String::from("C")),
+            Formula::atom(&String::from("A")),
+            Formula::atom(&String::from("B")),
+            Formula::atom(&String::from("C")),
         ];
         let desired = (desired_list, &[String::from("REST")][..]);
         assert_eq!(result, desired);
@@ -426,8 +426,8 @@ mod generic_parsing_tests {
             &input,
         );
         let desired_list = vec![
-            Formula::atom(String::from("A")),
-            Formula::atom(String::from("B")),
+            Formula::atom(&String::from("A")),
+            Formula::atom(&String::from("B")),
         ];
         let desired = (desired_list, &[String::from("REST")][..]);
         assert_eq!(result, desired);

@@ -26,7 +26,6 @@ pub enum Term {
 }
 
 impl Term {
-    // Convenience builders for Terms.
     fn var(name: &str) -> Term {
         Term::Var(String::from(name))
     }
@@ -40,37 +39,37 @@ impl Term {
     }
 
     #[allow(clippy::should_implement_trait)]
-    pub fn add(t1: Term, t2: Term) -> Term {
-        Term::Fun(String::from("+"), vec![t1, t2])
+    pub fn add(t1: &Term, t2: &Term) -> Term {
+        Term::Fun(String::from("+"), vec![t1.to_owned(), t2.to_owned()])
     }
 
-    pub fn unary_minus(t: Term) -> Term {
-        Term::Fun(String::from("-"), vec![t])
-    }
-
-    #[allow(clippy::should_implement_trait)]
-    pub fn sub(t1: Term, t2: Term) -> Term {
-        Term::Fun(String::from("-"), vec![t1, t2])
+    pub fn unary_minus(t: &Term) -> Term {
+        Term::Fun(String::from("-"), vec![t.to_owned()])
     }
 
     #[allow(clippy::should_implement_trait)]
-    pub fn mul(t1: Term, t2: Term) -> Term {
-        Term::Fun(String::from("*"), vec![t1, t2])
+    pub fn sub(t1: &Term, t2: &Term) -> Term {
+        Term::Fun(String::from("-"), vec![t1.to_owned(), t2.to_owned()])
     }
 
     #[allow(clippy::should_implement_trait)]
-    pub fn div(t1: Term, t2: Term) -> Term {
-        Term::Fun(String::from("/"), vec![t1, t2])
+    pub fn mul(t1: &Term, t2: &Term) -> Term {
+        Term::Fun(String::from("*"), vec![t1.to_owned(), t2.to_owned()])
     }
 
-    pub fn exp(t1: Term, t2: Term) -> Term {
-        Term::Fun(String::from("^"), vec![t1, t2])
+    #[allow(clippy::should_implement_trait)]
+    pub fn div(t1: &Term, t2: &Term) -> Term {
+        Term::Fun(String::from("/"), vec![t1.to_owned(), t2.to_owned()])
+    }
+
+    pub fn exp(t1: &Term, t2: &Term) -> Term {
+        Term::Fun(String::from("^"), vec![t1.to_owned(), t2.to_owned()])
     }
     // The inclusion of infix list constructor is a bit
     // surprising and seems to imply that domains will often
     // be closed under cartesian products.
-    pub fn cons(t1: Term, t2: Term) -> Term {
-        Term::Fun(String::from("::"), vec![t1, t2])
+    pub fn cons(t1: &Term, t2: &Term) -> Term {
+        Term::Fun(String::from("::"), vec![t1.to_owned(), t2.to_owned()])
     }
 }
 
@@ -203,8 +202,8 @@ mod term_parse_tests {
         let desired_rest: &[String] = &[];
         let desired = (
             Term::div(
-                Term::add(Term::constant("13"), Term::var("x")),
-                Term::var("A"),
+                &Term::add(&Term::constant("13"), &Term::var("x")),
+                &Term::var("A"),
             ),
             desired_rest,
         );
@@ -220,8 +219,11 @@ mod term_parse_tests {
         let desired_rest: &[String] = &[];
         let desired = (
             Term::sub(
-                Term::mul(Term::var("apples"), Term::unary_minus(Term::var("oranges"))),
-                Term::constant("42"),
+                &Term::mul(
+                    &Term::var("apples"),
+                    &Term::unary_minus(&Term::var("oranges")),
+                ),
+                &Term::constant("42"),
             ),
             desired_rest,
         );
@@ -382,8 +384,8 @@ mod term_print_tests {
     #[test]
     fn test_print_term_simple_1() {
         let term = Term::div(
-            Term::add(Term::constant("13"), Term::var("x")),
-            Term::var("A"),
+            &Term::add(&Term::constant("13"), &Term::var("x")),
+            &Term::var("A"),
         );
 
         let mut output = Vec::new();
@@ -399,8 +401,11 @@ mod term_print_tests {
     #[test]
     fn test_print_term_simple_2() {
         let term = Term::sub(
-            Term::mul(Term::var("apples"), Term::unary_minus(Term::var("oranges"))),
-            Term::constant("42"),
+            &Term::mul(
+                &Term::var("apples"),
+                &Term::unary_minus(&Term::var("oranges")),
+            ),
+            &Term::constant("42"),
         );
         let mut output = Vec::new();
 
@@ -535,7 +540,10 @@ impl Formula<Pred> {
             return Err("Not infix.");
         }
         let (term2, newrest) = Term::parse_term(variables, &rest[1..]);
-        Ok((Formula::atom(Pred::new(&rest[0], &[term1, term2])), newrest))
+        Ok((
+            Formula::atom(&Pred::new(&rest[0], &[term1, term2])),
+            newrest,
+        ))
     }
 
     fn _atom_parser<'a>(
@@ -569,9 +577,9 @@ impl Formula<Pred> {
                     },
                     rest,
                 );
-                (Formula::atom(Pred::new(p, &terms)), newrest)
+                (Formula::atom(&Pred::new(p, &terms)), newrest)
             }
-            [p, rest @ ..] if p != "(" => (Formula::atom(Pred::new(p, &[])), rest),
+            [p, rest @ ..] if p != "(" => (Formula::atom(&Pred::new(p, &[])), rest),
             _ => panic!("parse_atom"),
         }
     }
@@ -599,7 +607,7 @@ mod parse_pred_formula_tests {
     fn test_parse_pred_basics() {
         let result = Formula::<Pred>::parse("bar(X, Z)");
         let pred = Pred::new("bar", &[Term::var("X"), Term::var("Z")]);
-        let desired = Formula::atom(pred);
+        let desired = Formula::atom(&pred);
         assert_eq!(result, desired);
     }
 
@@ -610,11 +618,11 @@ mod parse_pred_formula_tests {
         let result = Formula::<Pred>::parse(input);
 
         let desired = Formula::imp(
-            Formula::and(
-                Formula::atom(Pred::new("F", &[Term::var("x")])),
-                Formula::atom(Pred::new("G", &[Term::fun("d", &[Term::var("y")])])),
+            &Formula::and(
+                &Formula::atom(&Pred::new("F", &[Term::var("x")])),
+                &Formula::atom(&Pred::new("G", &[Term::fun("d", &[Term::var("y")])])),
             ),
-            Formula::atom(Pred::new("p", &[Term::constant("13"), Term::var("w")])),
+            &Formula::atom(&Pred::new("p", &[Term::constant("13"), Term::var("w")])),
         );
         assert_eq!(result, desired);
     }
@@ -626,8 +634,8 @@ mod parse_pred_formula_tests {
         let result = Formula::<Pred>::parse(input);
 
         let desired = Formula::and(
-            Formula::atom(Pred::new("R", &[Term::var("Y"), Term::var("X")])),
-            Formula::False,
+            &Formula::atom(&Pred::new("R", &[Term::var("Y"), Term::var("X")])),
+            &Formula::False,
         );
         assert_eq!(result, desired);
     }
@@ -636,7 +644,7 @@ mod parse_pred_formula_tests {
     fn test_parse_pred_formula_variables_3() {
         let input = "(Y = X)";
         let result = Formula::<Pred>::parse(input);
-        let desired = Formula::atom(Pred::new("=", &[Term::var("Y"), Term::var("X")]));
+        let desired = Formula::atom(&Pred::new("=", &[Term::var("Y"), Term::var("X")]));
         assert_eq!(result, desired);
     }
 
@@ -648,8 +656,8 @@ mod parse_pred_formula_tests {
         let result = Formula::<Pred>::parse(input);
 
         let desired = Formula::or(
-            Formula::atom(Pred::new("=", &[Term::var("Y"), Term::var("X")])),
-            Formula::False,
+            &Formula::atom(&Pred::new("=", &[Term::var("Y"), Term::var("X")])),
+            &Formula::False,
         );
         assert_eq!(result, desired);
     }
@@ -662,8 +670,8 @@ mod parse_pred_formula_tests {
         let result = Formula::<Pred>::parse(input);
 
         let desired = Formula::or(
-            Formula::atom(Pred::new("=", &[Term::var("Y"), Term::var("X")])),
-            Formula::False,
+            &Formula::atom(&Pred::new("=", &[Term::var("Y"), Term::var("X")])),
+            &Formula::False,
         );
         assert_eq!(result, desired);
     }
@@ -677,15 +685,15 @@ mod parse_pred_formula_tests {
 
         let desired = Formula::forall(
             "y",
-            Formula::forall(
+            &Formula::forall(
                 "w",
-                Formula::and(
-                    Formula::atom(Pred::new("F", &[Term::var("RED")])),
-                    Formula::exists(
+                &Formula::and(
+                    &Formula::atom(&Pred::new("F", &[Term::var("RED")])),
+                    &Formula::exists(
                         "RED",
-                        Formula::exists(
+                        &Formula::exists(
                             "BLUE",
-                            Formula::atom(Pred::new("G", &[Term::fun("d", &[Term::var("y")])])),
+                            &Formula::atom(&Pred::new("G", &[Term::fun("d", &[Term::var("y")])])),
                         ),
                     ),
                 ),
@@ -697,26 +705,26 @@ mod parse_pred_formula_tests {
 
     #[test]
     fn test_parse_ea_quantified() {
+        let result = Formula::<Pred>::parse("exists X. forall Y. bar(X, Y)");
         let desired = Formula::exists(
             "X",
-            Formula::forall(
+            &Formula::forall(
                 "Y",
-                Formula::atom(Pred::new("bar", &[Term::var("X"), Term::var("Y")])),
+                &Formula::atom(&Pred::new("bar", &[Term::var("X"), Term::var("Y")])),
             ),
         );
 
-        let result = Formula::<Pred>::parse("exists X. forall Y. bar(X, Y)");
         assert_eq!(result, desired);
     }
 
     #[test]
     fn test_simple_infix() {
         let input = "~(x = y)";
-        let desired = Formula::not(Formula::atom(Pred::new(
+        let result = Formula::<Pred>::parse(input);
+        let desired = Formula::not(&Formula::atom(&Pred::new(
             "=",
             &[Term::var("x"), Term::var("y")],
         )));
-        let result = Formula::<Pred>::parse(input);
         assert_eq!(result, desired);
     }
 
@@ -726,14 +734,14 @@ mod parse_pred_formula_tests {
 
         let desired = Formula::forall(
             "x",
-            Formula::imp(
-                Formula::not(Formula::atom(Pred::new(
+            &Formula::imp(
+                &Formula::not(&Formula::atom(&Pred::new(
                     "=",
                     &[Term::var("x"), Term::fun("0", &[])],
                 ))),
-                Formula::exists(
+                &Formula::exists(
                     "y",
-                    Formula::atom(Pred::new(
+                    &Formula::atom(&Pred::new(
                         "=",
                         &[
                             Term::fun("*", &[Term::var("x"), Term::var("y")]),
@@ -753,9 +761,9 @@ mod parse_pred_formula_tests {
         let result = Formula::<Pred>::parse("exists X. exists Y. foo(X, Y, Z) = W");
         let desired = Formula::exists(
             "X",
-            Formula::exists(
+            &Formula::exists(
                 "Y",
-                Formula::atom(Pred::new(
+                &Formula::atom(&Pred::new(
                     "=",
                     &[
                         Term::fun("foo", &[Term::var("X"), Term::var("Y"), Term::var("Z")]),
@@ -784,11 +792,11 @@ mod test_print_pred_formula {
     #[test]
     fn test_print_pred_formula_variables() {
         let input = Formula::imp(
-            Formula::and(
-                Formula::atom(Pred::new("F", &[Term::var("x")])),
-                Formula::atom(Pred::new("G", &[Term::fun("d", &[Term::var("y")])])),
+            &Formula::and(
+                &Formula::atom(&Pred::new("F", &[Term::var("x")])),
+                &Formula::atom(&Pred::new("G", &[Term::fun("d", &[Term::var("y")])])),
             ),
-            Formula::atom(Pred::new("p", &[Term::constant("13"), Term::var("w")])),
+            &Formula::atom(&Pred::new("p", &[Term::constant("13"), Term::var("w")])),
         );
 
         let mut output = Vec::new();
@@ -802,15 +810,15 @@ mod test_print_pred_formula {
     fn test_print_pred_formula_quantifiers() {
         let input = Formula::forall(
             "y",
-            Formula::forall(
+            &Formula::forall(
                 "w",
-                Formula::and(
-                    Formula::atom(Pred::new("F", &[Term::var("RED")])),
-                    Formula::exists(
+                &Formula::and(
+                    &Formula::atom(&Pred::new("F", &[Term::var("RED")])),
+                    &Formula::exists(
                         "RED",
-                        Formula::exists(
+                        &Formula::exists(
                             "BLUE",
-                            Formula::atom(Pred::new("G", &[Term::fun("d", &[Term::var("y")])])),
+                            &Formula::atom(&Pred::new("G", &[Term::fun("d", &[Term::var("y")])])),
                         ),
                     ),
                 ),
@@ -1410,8 +1418,8 @@ impl Formula<Pred> {
         let mut sorted: Vec<String> = self.free_variables().iter().cloned().collect();
         sorted.sort();
         sorted
-            .iter()
-            .fold(self.clone(), |formula, var| Formula::forall(var, formula))
+            .into_iter()
+            .fold(self.clone(), |formula, var| Formula::forall(&var, &formula))
     }
 
     fn _subst_quant(
@@ -1449,7 +1457,7 @@ impl Formula<Pred> {
 
         let mut new_inst = inst.clone();
         new_inst.insert(var.clone(), Term::var(&new_var));
-        quant_const(&new_var, formula.subst(&new_inst))
+        quant_const(&new_var, &formula.subst(&new_inst))
     }
 
     pub fn subst(&self, inst: &Instantiation) -> Formula<Pred> {
@@ -1468,13 +1476,13 @@ impl Formula<Pred> {
             Formula::False | Formula::True => self.clone(),
             Formula::Atom(Pred { name, terms }) => {
                 let new_args: Vec<Term> = terms.iter().map(|term| term.subst(inst)).collect();
-                Formula::atom(Pred::new(name, &new_args))
+                Formula::atom(&Pred::new(name, &new_args))
             }
-            Formula::Not(box p) => Formula::not(p.subst(inst)),
-            Formula::And(box p, box q) => Formula::and(p.subst(inst), q.subst(inst)),
-            Formula::Or(box p, box q) => Formula::or(p.subst(inst), q.subst(inst)),
-            Formula::Imp(box p, box q) => Formula::imp(p.subst(inst), q.subst(inst)),
-            Formula::Iff(box p, box q) => Formula::iff(p.subst(inst), q.subst(inst)),
+            Formula::Not(box p) => Formula::not(&p.subst(inst)),
+            Formula::And(box p, box q) => Formula::and(&p.subst(inst), &q.subst(inst)),
+            Formula::Or(box p, box q) => Formula::or(&p.subst(inst), &q.subst(inst)),
+            Formula::Imp(box p, box q) => Formula::imp(&p.subst(inst), &q.subst(inst)),
+            Formula::Iff(box p, box q) => Formula::iff(&p.subst(inst), &q.subst(inst)),
             Formula::Forall(x, box p) => Formula::_subst_quant(inst, &Formula::forall, x, p),
             Formula::Exists(x, box p) => Formula::_subst_quant(inst, &Formula::exists, x, p),
         }
@@ -1537,8 +1545,8 @@ mod test_formula_variables {
     }
 }
 
-type QuantConstructor = dyn Fn(&str, Formula<Pred>) -> Formula<Pred>;
-type BinopConstructor = dyn Fn(Formula<Pred>, Formula<Pred>) -> Formula<Pred>;
+type QuantConstructor = dyn Fn(&str, &Formula<Pred>) -> Formula<Pred>;
+type BinopConstructor = dyn Fn(&Formula<Pred>, &Formula<Pred>) -> Formula<Pred>;
 // Normal Forms
 impl Formula<Pred> {
     fn fo_simplify_step(formula: &Formula<Pred>) -> Formula<Pred> {
@@ -1704,7 +1712,7 @@ impl Formula<Pred> {
         p: &Formula<Pred>,
         q: &Formula<Pred>,
     ) -> Formula<Pred> {
-        // Mutually recursive helper function called by `pull_quantifiers`.  Handles
+        // Helper function mutually recursive with `pull_quantifiers`.  Handles
         // the move of a single quantifier (of type corresponding to `quant_const`)
         // occuring at the heads of one or both  sides of a binary operation
         // (corresponding to (binop_const)).  `formula` is the entire formula.
@@ -1726,19 +1734,19 @@ impl Formula<Pred> {
         } else {
             q.clone()
         };
-        quant_const(&z, Formula::pull_quantifiers(&binop_const(p_new, q_new)))
+        quant_const(&z, &Formula::pull_quantifiers(&binop_const(&p_new, &q_new)))
     }
 
     fn raw_prenex(&self) -> Formula<Pred> {
         // Assumes `formula` is in NNF.
         match self {
-            Formula::Forall(x, box p) => Formula::forall(x, p.raw_prenex()),
-            Formula::Exists(x, box p) => Formula::exists(x, p.raw_prenex()),
+            Formula::Forall(x, box p) => Formula::forall(x, &p.raw_prenex()),
+            Formula::Exists(x, box p) => Formula::exists(x, &p.raw_prenex()),
             Formula::And(box p, box q) => {
-                Formula::pull_quantifiers(&Formula::and(p.raw_prenex(), q.raw_prenex()))
+                Formula::pull_quantifiers(&Formula::and(&p.raw_prenex(), &q.raw_prenex()))
             }
             Formula::Or(box p, box q) => {
-                Formula::pull_quantifiers(&Formula::or(p.raw_prenex(), q.raw_prenex()))
+                Formula::pull_quantifiers(&Formula::or(&p.raw_prenex(), &q.raw_prenex()))
             }
             _ => self.clone(),
         }

@@ -52,15 +52,12 @@ pub fn parse_sudoku_dataset(path: &Path, maybe_limit: Option<usize>) -> Vec<Boar
 pub fn _exactly_one_prop(props: &[Prop]) -> FormulaSet {
     // Stating that exactly one of a collection of proposotions is true is
     // naturally expressed in CNF form.
-    let at_least_one: BTreeSet<Formula<Prop>> = props
-        .iter()
-        .map(|prop| Formula::atom(prop.clone()))
-        .collect();
+    let at_least_one: BTreeSet<Formula<Prop>> = props.iter().map(Formula::atom).collect();
     let mut clauses = BTreeSet::from([at_least_one]);
     for i in 0..props.len() - 1 {
         for j in i + 1..props.len() {
-            let not_i = Formula::not(Formula::atom(props[i].clone()));
-            let not_j = Formula::not(Formula::atom(props[j].clone()));
+            let not_i = Formula::not(&Formula::atom(&props[i]));
+            let not_j = Formula::not(&Formula::atom(&props[j]));
             let not_both = BTreeSet::from([not_i, not_j]);
             clauses.insert(not_both);
         }
@@ -206,7 +203,7 @@ fn get_start_constraints(props: &AllProps, board_size: usize, board: &Board) -> 
     }
     let start_constraint: FormulaSet = start_props
         .into_iter()
-        .map(|atom| BTreeSet::from([Formula::atom(atom)]))
+        .map(|atom| BTreeSet::from([Formula::atom(&atom)]))
         .collect();
     start_constraint
 }
@@ -246,21 +243,21 @@ mod sudoku_tests {
         let result = _exactly_one_prop(&props);
         let desired = BTreeSet::from([
             BTreeSet::from([
-                Formula::atom(Prop::new("P1")),
-                Formula::atom(Prop::new("P2")),
-                Formula::atom(Prop::new("P3")),
+                Formula::atom(&Prop::new("P1")),
+                Formula::atom(&Prop::new("P2")),
+                Formula::atom(&Prop::new("P3")),
             ]),
             BTreeSet::from([
-                Formula::not(Formula::atom(Prop::new("P1"))),
-                Formula::not(Formula::atom(Prop::new("P2"))),
+                Formula::not(&Formula::atom(&Prop::new("P1"))),
+                Formula::not(&Formula::atom(&Prop::new("P2"))),
             ]),
             BTreeSet::from([
-                Formula::not(Formula::atom(Prop::new("P1"))),
-                Formula::not(Formula::atom(Prop::new("P3"))),
+                Formula::not(&Formula::atom(&Prop::new("P1"))),
+                Formula::not(&Formula::atom(&Prop::new("P3"))),
             ]),
             BTreeSet::from([
-                Formula::not(Formula::atom(Prop::new("P2"))),
-                Formula::not(Formula::atom(Prop::new("P3"))),
+                Formula::not(&Formula::atom(&Prop::new("P2"))),
+                Formula::not(&Formula::atom(&Prop::new("P3"))),
             ]),
         ]);
         assert_eq!(result, desired);
@@ -268,7 +265,7 @@ mod sudoku_tests {
         // Trivial case
         let props: Vec<Prop> = vec![Prop::new("P1")];
         let result = _exactly_one_prop(&props);
-        let desired = BTreeSet::from([BTreeSet::from([Formula::atom(Prop::new("P1"))])]);
+        let desired = BTreeSet::from([BTreeSet::from([Formula::atom(&Prop::new("P1"))])]);
         assert_eq!(result, desired);
     }
 
@@ -280,23 +277,23 @@ mod sudoku_tests {
         let props = get_all_props(board_size);
         let result = get_start_constraints(&props, board_size, &board);
         let desired = BTreeSet::from([
-            BTreeSet::from([Formula::atom(Prop::new("1_1_4"))]),
-            BTreeSet::from([Formula::atom(Prop::new("1_7_8"))]),
-            BTreeSet::from([Formula::atom(Prop::new("1_9_5"))]),
-            BTreeSet::from([Formula::atom(Prop::new("2_2_3"))]),
-            BTreeSet::from([Formula::atom(Prop::new("3_4_7"))]),
-            BTreeSet::from([Formula::atom(Prop::new("4_2_2"))]),
-            BTreeSet::from([Formula::atom(Prop::new("4_8_6"))]),
-            BTreeSet::from([Formula::atom(Prop::new("5_5_8"))]),
-            BTreeSet::from([Formula::atom(Prop::new("5_7_4"))]),
-            BTreeSet::from([Formula::atom(Prop::new("6_5_1"))]),
-            BTreeSet::from([Formula::atom(Prop::new("7_4_6"))]),
-            BTreeSet::from([Formula::atom(Prop::new("7_6_3"))]),
-            BTreeSet::from([Formula::atom(Prop::new("7_8_7"))]),
-            BTreeSet::from([Formula::atom(Prop::new("8_1_5"))]),
-            BTreeSet::from([Formula::atom(Prop::new("8_4_2"))]),
-            BTreeSet::from([Formula::atom(Prop::new("9_1_1"))]),
-            BTreeSet::from([Formula::atom(Prop::new("9_3_4"))]),
+            BTreeSet::from([Formula::atom(&Prop::new("1_1_4"))]),
+            BTreeSet::from([Formula::atom(&Prop::new("1_7_8"))]),
+            BTreeSet::from([Formula::atom(&Prop::new("1_9_5"))]),
+            BTreeSet::from([Formula::atom(&Prop::new("2_2_3"))]),
+            BTreeSet::from([Formula::atom(&Prop::new("3_4_7"))]),
+            BTreeSet::from([Formula::atom(&Prop::new("4_2_2"))]),
+            BTreeSet::from([Formula::atom(&Prop::new("4_8_6"))]),
+            BTreeSet::from([Formula::atom(&Prop::new("5_5_8"))]),
+            BTreeSet::from([Formula::atom(&Prop::new("5_7_4"))]),
+            BTreeSet::from([Formula::atom(&Prop::new("6_5_1"))]),
+            BTreeSet::from([Formula::atom(&Prop::new("7_4_6"))]),
+            BTreeSet::from([Formula::atom(&Prop::new("7_6_3"))]),
+            BTreeSet::from([Formula::atom(&Prop::new("7_8_7"))]),
+            BTreeSet::from([Formula::atom(&Prop::new("8_1_5"))]),
+            BTreeSet::from([Formula::atom(&Prop::new("8_4_2"))]),
+            BTreeSet::from([Formula::atom(&Prop::new("9_1_1"))]),
+            BTreeSet::from([Formula::atom(&Prop::new("9_3_4"))]),
         ]);
         assert_eq!(result, desired);
     }
@@ -308,36 +305,36 @@ mod sudoku_tests {
         let result = get_row_constraints(&props, board_size);
         let desired = BTreeSet::from([
             BTreeSet::from([
-                Formula::atom(Prop::new("1_1_1")),
-                Formula::atom(Prop::new("1_2_1")),
+                Formula::atom(&Prop::new("1_1_1")),
+                Formula::atom(&Prop::new("1_2_1")),
             ]),
             BTreeSet::from([
-                Formula::atom(Prop::new("1_1_2")),
-                Formula::atom(Prop::new("1_2_2")),
+                Formula::atom(&Prop::new("1_1_2")),
+                Formula::atom(&Prop::new("1_2_2")),
             ]),
             BTreeSet::from([
-                Formula::atom(Prop::new("2_1_1")),
-                Formula::atom(Prop::new("2_2_1")),
+                Formula::atom(&Prop::new("2_1_1")),
+                Formula::atom(&Prop::new("2_2_1")),
             ]),
             BTreeSet::from([
-                Formula::atom(Prop::new("2_1_2")),
-                Formula::atom(Prop::new("2_2_2")),
+                Formula::atom(&Prop::new("2_1_2")),
+                Formula::atom(&Prop::new("2_2_2")),
             ]),
             BTreeSet::from([
-                Formula::not(Formula::atom(Prop::new("1_1_1"))),
-                Formula::not(Formula::atom(Prop::new("1_2_1"))),
+                Formula::not(&Formula::atom(&Prop::new("1_1_1"))),
+                Formula::not(&Formula::atom(&Prop::new("1_2_1"))),
             ]),
             BTreeSet::from([
-                Formula::not(Formula::atom(Prop::new("1_1_2"))),
-                Formula::not(Formula::atom(Prop::new("1_2_2"))),
+                Formula::not(&Formula::atom(&Prop::new("1_1_2"))),
+                Formula::not(&Formula::atom(&Prop::new("1_2_2"))),
             ]),
             BTreeSet::from([
-                Formula::not(Formula::atom(Prop::new("2_1_1"))),
-                Formula::not(Formula::atom(Prop::new("2_2_1"))),
+                Formula::not(&Formula::atom(&Prop::new("2_1_1"))),
+                Formula::not(&Formula::atom(&Prop::new("2_2_1"))),
             ]),
             BTreeSet::from([
-                Formula::not(Formula::atom(Prop::new("2_1_2"))),
-                Formula::not(Formula::atom(Prop::new("2_2_2"))),
+                Formula::not(&Formula::atom(&Prop::new("2_1_2"))),
+                Formula::not(&Formula::atom(&Prop::new("2_2_2"))),
             ]),
         ]);
         assert_eq!(result, desired);
@@ -350,36 +347,36 @@ mod sudoku_tests {
         let result = get_col_constraints(&props, board_size);
         let desired = BTreeSet::from([
             BTreeSet::from([
-                Formula::atom(Prop::new("1_1_1")),
-                Formula::atom(Prop::new("2_1_1")),
+                Formula::atom(&Prop::new("1_1_1")),
+                Formula::atom(&Prop::new("2_1_1")),
             ]),
             BTreeSet::from([
-                Formula::atom(Prop::new("1_1_2")),
-                Formula::atom(Prop::new("2_1_2")),
+                Formula::atom(&Prop::new("1_1_2")),
+                Formula::atom(&Prop::new("2_1_2")),
             ]),
             BTreeSet::from([
-                Formula::atom(Prop::new("1_2_1")),
-                Formula::atom(Prop::new("2_2_1")),
+                Formula::atom(&Prop::new("1_2_1")),
+                Formula::atom(&Prop::new("2_2_1")),
             ]),
             BTreeSet::from([
-                Formula::atom(Prop::new("1_2_2")),
-                Formula::atom(Prop::new("2_2_2")),
+                Formula::atom(&Prop::new("1_2_2")),
+                Formula::atom(&Prop::new("2_2_2")),
             ]),
             BTreeSet::from([
-                Formula::not(Formula::atom(Prop::new("1_1_1"))),
-                Formula::not(Formula::atom(Prop::new("2_1_1"))),
+                Formula::not(&Formula::atom(&Prop::new("1_1_1"))),
+                Formula::not(&Formula::atom(&Prop::new("2_1_1"))),
             ]),
             BTreeSet::from([
-                Formula::not(Formula::atom(Prop::new("1_1_2"))),
-                Formula::not(Formula::atom(Prop::new("2_1_2"))),
+                Formula::not(&Formula::atom(&Prop::new("1_1_2"))),
+                Formula::not(&Formula::atom(&Prop::new("2_1_2"))),
             ]),
             BTreeSet::from([
-                Formula::not(Formula::atom(Prop::new("1_2_1"))),
-                Formula::not(Formula::atom(Prop::new("2_2_1"))),
+                Formula::not(&Formula::atom(&Prop::new("1_2_1"))),
+                Formula::not(&Formula::atom(&Prop::new("2_2_1"))),
             ]),
             BTreeSet::from([
-                Formula::not(Formula::atom(Prop::new("1_2_2"))),
-                Formula::not(Formula::atom(Prop::new("2_2_2"))),
+                Formula::not(&Formula::atom(&Prop::new("1_2_2"))),
+                Formula::not(&Formula::atom(&Prop::new("2_2_2"))),
             ]),
         ]);
         assert_eq!(result, desired);
@@ -447,14 +444,14 @@ mod sudoku_tests {
         let result = get_subboard_constraints(&props, board_size, subboard_size);
 
         let desired = BTreeSet::from([
-            BTreeSet::from([Formula::atom(Prop::new("1_1_1"))]),
-            BTreeSet::from([Formula::atom(Prop::new("1_1_2"))]),
-            BTreeSet::from([Formula::atom(Prop::new("1_2_1"))]),
-            BTreeSet::from([Formula::atom(Prop::new("1_2_2"))]),
-            BTreeSet::from([Formula::atom(Prop::new("2_1_1"))]),
-            BTreeSet::from([Formula::atom(Prop::new("2_1_2"))]),
-            BTreeSet::from([Formula::atom(Prop::new("2_2_1"))]),
-            BTreeSet::from([Formula::atom(Prop::new("2_2_2"))]),
+            BTreeSet::from([Formula::atom(&Prop::new("1_1_1"))]),
+            BTreeSet::from([Formula::atom(&Prop::new("1_1_2"))]),
+            BTreeSet::from([Formula::atom(&Prop::new("1_2_1"))]),
+            BTreeSet::from([Formula::atom(&Prop::new("1_2_2"))]),
+            BTreeSet::from([Formula::atom(&Prop::new("2_1_1"))]),
+            BTreeSet::from([Formula::atom(&Prop::new("2_1_2"))]),
+            BTreeSet::from([Formula::atom(&Prop::new("2_2_1"))]),
+            BTreeSet::from([Formula::atom(&Prop::new("2_2_2"))]),
         ]);
 
         assert_eq!(result, desired);
@@ -467,36 +464,36 @@ mod sudoku_tests {
         let result = get_numerical_constraints(&props, board_size);
         let desired = BTreeSet::from([
             BTreeSet::from([
-                Formula::atom(Prop::new("1_1_1")),
-                Formula::atom(Prop::new("1_1_2")),
+                Formula::atom(&Prop::new("1_1_1")),
+                Formula::atom(&Prop::new("1_1_2")),
             ]),
             BTreeSet::from([
-                Formula::atom(Prop::new("1_2_1")),
-                Formula::atom(Prop::new("1_2_2")),
+                Formula::atom(&Prop::new("1_2_1")),
+                Formula::atom(&Prop::new("1_2_2")),
             ]),
             BTreeSet::from([
-                Formula::atom(Prop::new("2_1_1")),
-                Formula::atom(Prop::new("2_1_2")),
+                Formula::atom(&Prop::new("2_1_1")),
+                Formula::atom(&Prop::new("2_1_2")),
             ]),
             BTreeSet::from([
-                Formula::atom(Prop::new("2_2_1")),
-                Formula::atom(Prop::new("2_2_2")),
+                Formula::atom(&Prop::new("2_2_1")),
+                Formula::atom(&Prop::new("2_2_2")),
             ]),
             BTreeSet::from([
-                Formula::not(Formula::atom(Prop::new("1_1_1"))),
-                Formula::not(Formula::atom(Prop::new("1_1_2"))),
+                Formula::not(&Formula::atom(&Prop::new("1_1_1"))),
+                Formula::not(&Formula::atom(&Prop::new("1_1_2"))),
             ]),
             BTreeSet::from([
-                Formula::not(Formula::atom(Prop::new("1_2_1"))),
-                Formula::not(Formula::atom(Prop::new("1_2_2"))),
+                Formula::not(&Formula::atom(&Prop::new("1_2_1"))),
+                Formula::not(&Formula::atom(&Prop::new("1_2_2"))),
             ]),
             BTreeSet::from([
-                Formula::not(Formula::atom(Prop::new("2_1_1"))),
-                Formula::not(Formula::atom(Prop::new("2_1_2"))),
+                Formula::not(&Formula::atom(&Prop::new("2_1_1"))),
+                Formula::not(&Formula::atom(&Prop::new("2_1_2"))),
             ]),
             BTreeSet::from([
-                Formula::not(Formula::atom(Prop::new("2_2_1"))),
-                Formula::not(Formula::atom(Prop::new("2_2_2"))),
+                Formula::not(&Formula::atom(&Prop::new("2_2_1"))),
+                Formula::not(&Formula::atom(&Prop::new("2_2_2"))),
             ]),
         ]);
         assert_eq!(result, desired);

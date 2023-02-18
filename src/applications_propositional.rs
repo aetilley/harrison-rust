@@ -26,17 +26,10 @@ fn adder(
     c: &Formula<Prop>,
 ) -> Formula<Prop> {
     // Exactly one or exactly three.
-    let sum = Formula::iff(
-        Formula::iff(x.clone(), Formula::not(y.clone())),
-        Formula::not(z.clone()),
-    );
+    let sum = Formula::iff(&Formula::iff(x, &Formula::not(y)), &Formula::not(z));
     // Equiv to at least two
-    let carry = Formula::list_disj(&[
-        Formula::and(x.clone(), y.clone()),
-        Formula::and(x.clone(), z.clone()),
-        Formula::and(y.clone(), z.clone()),
-    ]);
-    let result = Formula::and(Formula::iff(s.clone(), sum), Formula::iff(c.clone(), carry));
+    let carry = Formula::list_disj(&[Formula::and(x, y), Formula::and(x, z), Formula::and(y, z)]);
+    let result = Formula::and(&Formula::iff(s, &sum), &Formula::iff(c, &carry));
     result.psimplify()
 }
 
@@ -66,8 +59,8 @@ pub fn ripplecarry(
             .map(|idx| adder(&x[idx], &y[idx], &carry[idx], &out[idx], &carry[idx + 1]))
             .collect::<Vec<Formula<Prop>>>(),
     );
-    let final_carry_is_final_out = Formula::iff(out[n].clone(), carry[n].clone());
-    let result = Formula::and(adders, final_carry_is_final_out);
+    let final_carry_is_final_out = Formula::iff(&out[n], &carry[n]);
+    let result = Formula::and(&adders, &final_carry_is_final_out);
     result.psimplify()
 }
 
@@ -195,10 +188,10 @@ mod adder_tests {
     fn test_adder_prop_variables() {
         let formula = adder(
             &Formula::True,
-            &Formula::atom(Prop::new("Y")),
+            &Formula::atom(&Prop::new("Y")),
             &Formula::True,
-            &Formula::atom(Prop::new("Sum")),
-            &Formula::atom(Prop::new("Carry")),
+            &Formula::atom(&Prop::new("Sum")),
+            &Formula::atom(&Prop::new("Carry")),
         );
         assert!(!formula.brute_tautology());
         assert!(formula.brute_satisfiable());
@@ -214,9 +207,9 @@ mod adder_tests {
         // 5 = (bin) [1 0 1] =
         let y = vec![Formula::True, Formula::False, Formula::True];
         let symbolic_carry = vec![
-            Formula::atom(Prop::new("C1")),
-            Formula::atom(Prop::new("C2")),
-            Formula::atom(Prop::new("C3")),
+            Formula::atom(&Prop::new("C1")),
+            Formula::atom(&Prop::new("C2")),
+            Formula::atom(&Prop::new("C3")),
         ];
         let out_correct = vec![
             Formula::False,
