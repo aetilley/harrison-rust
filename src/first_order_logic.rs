@@ -1152,6 +1152,8 @@ mod test_pred_eval {
     }
 }
 
+type RawPredValuation = HashMap<Pred, bool>;
+
 // ### Formula Evaluation ###
 impl Formula<Pred> {
     pub fn eval<DomainType: Hash + Clone + Eq + Debug>(
@@ -1274,6 +1276,20 @@ impl Term {
         }
     }
 
+    fn functions(&self) -> HashSet<String> {
+        // Note that Harrison returns tuples where the second element is the arity
+        // on the claim that an interpretation may have two distinct functions
+        // of the same name but different arities.
+        // I'm going to see how far we can get w/o this since I think allowing
+        // disctinct functions of the same name is pretty rare.
+        match self {
+            Term::Var(_) => HashSet::new(),
+            Term::Fun(name, args) => args.iter().fold(HashSet::from([name.clone()]), |acc, arg| {
+                &acc | &arg.functions()
+            }),
+        }
+    }
+
     pub fn subst(&self, inst: &Instantiation) -> Term {
         // Substitute Terms for Vars throughout according to `inst`.
         //
@@ -1316,19 +1332,23 @@ mod test_term_variables {
         let input = vec![term1, term2, term3];
 
         let result = Term::get_variables_for_termlist(&input);
-        assert_eq!(
-            result,
-            HashSet::from(["A".to_string(), "B".to_string(), "C".to_string()])
-        );
+        assert_eq!(result, slice_to_set_of_owned(&["A", "B", "C"]),);
     }
 
     #[test]
     fn test_variables() {
         let input = Term::parset("F1(foo(A), B, bar(B, baz(C)))");
         let result = input.variables();
+        assert_eq!(result, slice_to_set_of_owned(&["A", "B", "C"]),);
+    }
+
+    #[test]
+    fn test_functions() {
+        let input = Term::parset("F1(foo(A), B, bar(13, baz(C)))");
+        let result = input.functions();
         assert_eq!(
             result,
-            HashSet::from(["A".to_string(), "B".to_string(), "C".to_string()])
+            slice_to_set_of_owned(&["F1", "foo", "bar", "baz", "13"]),
         );
     }
 
@@ -1364,6 +1384,12 @@ mod test_term_variables {
 impl Pred {
     fn variables(&self) -> HashSet<String> {
         Term::get_variables_for_termlist(&self.terms)
+    }
+
+    fn functions(&self) -> HashSet<String> {
+        self.terms
+            .iter()
+            .fold(HashSet::new(), |acc, term| &acc | &term.functions())
     }
 }
 
@@ -1410,6 +1436,12 @@ impl Formula<Pred> {
                 vars
             }
         }
+    }
+
+    fn functions(&self) -> HashSet<String> {
+        let combine =
+            |pred: &Pred, agg: HashSet<String>| -> HashSet<String> { &pred.functions() | &agg };
+        self.over_atoms(&combine, HashSet::new())
     }
 
     fn generalize(&self) -> Formula<Pred> {
@@ -1509,6 +1541,24 @@ mod test_formula_variables {
         let result_free = formula.free_variables();
         let desired_free = slice_to_set_of_owned(&["U", "W", "Z"]);
         assert_eq!(result_free, desired_free);
+    }
+
+    #[test]
+    fn test_formula_functions() {
+        let formula =
+            Formula::<Pred>::parse("forall X. f(X) = W ==> exists W. foo(X, bar(13), Z) = U");
+        let result_all = formula.functions();
+        let desired_all = slice_to_set_of_owned(&["f", "foo", "bar", "13"]);
+        assert_eq!(result_all, desired_all);
+    }
+
+    #[test]
+    fn test_formula_functions_2() {
+        let formula_string = "R(F(y)) \\/ (exists x. P(f_w(x))) /\\ exists n. forall r. forall y. exists w. M(G(y, w)) \\/ exists z. ~M(F(z, w))";
+        let formula = Formula::<Pred>::parse(formula_string);
+        let result = formula.functions();
+        let desired = slice_to_set_of_owned(&["F", "f_w", "G"]);
+        assert_eq!(result, desired);
     }
 
     #[test]
@@ -1752,7 +1802,7 @@ impl Formula<Pred> {
         }
     }
 
-    fn prenex(&self) -> Formula<Pred> {
+    fn pnf(&self) -> Formula<Pred> {
         // Result should be of the form `Q_1 x_1 ... Q_n x_n. p`
         // where `p` is a quantifier-free formula in negation normal form.
         self.fo_simplify().nnf().raw_prenex()
@@ -1814,12 +1864,134 @@ mod normal_form_tests {
     }
 
     #[test]
-    fn test_prenex() {
+    fn test_pnf() {
         let formula_string = "(exists x. F(x, z)) ==> (exists w. forall z. ~G(z, x))";
         let formula = Formula::<Pred>::parse(formula_string);
-        let result = formula.prenex();
+        let result = formula.pnf();
         let desired_string = "forall x'. forall z'. ~F(x', z) \\/ ~G(z', x)";
         let desired = Formula::<Pred>::parse(desired_string);
         assert_eq!(result, desired);
+    }
+}
+
+// Skolemization
+
+impl Formula<Pred> {
+    fn _skolem(
+        formula: &Formula<Pred>,
+        functions: &HashSet<String>,
+    ) -> (Formula<Pred>, HashSet<String>) {
+        match formula {
+            Formula::Exists(y, box p) => {
+                let free = formula.free_variables();
+                let func_name_candidate = if free.is_empty() {
+                    format!("c_{y}")
+                } else {
+                    format!("f_{y}")
+                };
+                let func_name = Term::variant(&func_name_candidate, functions);
+                let mut new_functions = functions.clone();
+                new_functions.insert(func_name.clone());
+                let mut sorted = Vec::from_iter(free);
+                sorted.sort();
+                let vars: Vec<Term> = sorted.iter().map(|name| Term::var(name)).collect();
+                let function_term = Term::fun(&func_name, &vars);
+                let substituted = p.subst(&Instantiation::from([(y.to_owned(), function_term)]));
+                Formula::_skolem(&substituted, &new_functions)
+            }
+            Formula::Forall(y, box p) => {
+                let (inner, new_functions) = Formula::_skolem(p, functions);
+                (Formula::forall(y, &inner), new_functions)
+            }
+            Formula::And(box p, box q) => Formula::_skolem_2(&Formula::and, p, q, functions),
+            Formula::Or(box p, box q) => Formula::_skolem_2(&Formula::or, p, q, functions),
+            _ => (formula.clone(), functions.clone()),
+        }
+    }
+
+    fn _skolem_2(
+        op: &BinopConstructor,
+        p: &Formula<Pred>,
+        q: &Formula<Pred>,
+        functions_0: &HashSet<String>,
+    ) -> (Formula<Pred>, HashSet<String>) {
+        let (p_new, functions_1) = Formula::_skolem(p, functions_0);
+        let (q_new, functions_2) = Formula::_skolem(q, &functions_1);
+        (op(&p_new, &q_new), functions_2)
+    }
+
+    fn askolemize(&self) -> Formula<Pred> {
+        Formula::_skolem(&self.fo_simplify().nnf(), &self.functions()).0
+    }
+
+    fn specialize(&self) -> Formula<Pred> {
+        match self {
+            Formula::Forall(_, box p) => p.specialize(),
+            _ => self.clone(),
+        }
+    }
+
+    fn skolemize(&self) -> Formula<Pred> {
+        self.askolemize().pnf().specialize()
+    }
+}
+
+#[cfg(test)]
+mod skolemize_tests {
+
+    use super::*;
+    use crate::utils::slice_to_set_of_owned;
+
+    #[test]
+    fn test_skolem() {
+        let formula_string = "R(F(n)) \\/ (exists x. P(f_w(x))) /\\ exists n. forall r. forall y. exists w. M(G(y, w)) \\/ exists z. ~M(F(z, w))";
+        let formula = Formula::<Pred>::parse(formula_string);
+        let result = Formula::_skolem(&formula, &slice_to_set_of_owned(&["f_w", "F", "G"]));
+        let desired_formula_string =
+            "R(F(n)) \\/ P(f_w(c_x())) /\\ forall r. forall y. (M(G(y, f_w'(y))) \\/ ~M(F(f_z(y), f_w'(y))))";
+        let desired_formula = Formula::<Pred>::parse(desired_formula_string);
+        // Note that "c_n" is added to the functions even though it appears zero times
+        // in the result.  This is because `n` does not appear in within the scope of
+        // the quantifier `exists n`.
+        let desired_functions =
+            slice_to_set_of_owned(&["c_x", "f_w", "G", "F", "f_w'", "f_z", "c_n"]);
+        assert_eq!(result, (desired_formula, desired_functions));
+    }
+
+    #[test]
+    fn test_skolemize() {
+        let formula_string = "R(F(y)) \\/ (exists x. P(f_w(x))) /\\ exists n. forall r. forall y. exists w. M(G(y, w)) \\/ exists z. ~M(F(z, w))";
+        let formula = Formula::<Pred>::parse(formula_string);
+        let result = formula.skolemize();
+        let desired_formula_string =
+            "R(F(y)) \\/ P(f_w(c_x())) /\\ (M(G(y', f_w'(y'))) \\/ ~M(F(f_z(y'), f_w'(y'))))";
+        let desired_formula = Formula::<Pred>::parse(desired_formula_string);
+        assert_eq!(result, desired_formula);
+    }
+}
+
+// Canonical Models
+//
+type PredInstanceValuation = HashMap<Pred, bool>;
+
+impl Formula<Pred> {
+    pub fn peval(&self, d: &PredInstanceValuation) -> bool {
+        // For evaluating quantifier free formulas without evaluating Predicates
+        // but just looking up predicate instances in a table (RawPredValuation).
+        //
+        // TODO (test)
+        let pred_atom_eval = |pred: &Pred| -> bool {
+            d.get(pred)
+                .expect("Pred {pred:?} not found in PredInstanceValuation {d:?}")
+                .to_owned()
+        };
+
+        let forall_eval = |_var: &str, _subformula: &Formula<Pred>| -> bool {
+            panic!("peval recieved quantifier");
+        };
+        let exists_eval = |_var: &str, _subformula: &Formula<Pred>| -> bool {
+            panic!("peval recieved quantifier");
+        };
+        self.eval_core(&pred_atom_eval, &forall_eval, &exists_eval)
     }
 }

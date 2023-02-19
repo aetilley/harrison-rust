@@ -19,6 +19,7 @@ For predicate (first-order) logic:
 1) datatypes/parsing/printing operations
 1) `eval`
 1) Prenex form
+1) Skolemization
 
 NOTE:  Currently this project RELIES ON NIGHTLY RUST for exactly one feature `box_patterns`.
 For more info, see
