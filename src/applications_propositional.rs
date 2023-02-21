@@ -30,7 +30,7 @@ fn adder(
     // Equiv to at least two
     let carry = Formula::list_disj(&[Formula::and(x, y), Formula::and(x, z), Formula::and(y, z)]);
     let result = Formula::and(&Formula::iff(s, &sum), &Formula::iff(c, &carry));
-    result.psimplify()
+    result.simplify()
 }
 
 pub fn ripplecarry(
@@ -61,7 +61,7 @@ pub fn ripplecarry(
     );
     let final_carry_is_final_out = Formula::iff(&out[n], &carry[n]);
     let result = Formula::and(&adders, &final_carry_is_final_out);
-    result.psimplify()
+    result.simplify()
 }
 
 #[cfg(test)]

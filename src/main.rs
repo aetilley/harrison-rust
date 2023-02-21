@@ -1,12 +1,14 @@
 #![feature(box_patterns)]
 
-use harrison_rust::first_order_logic::{Interpretation, Language, Pred, Valuation};
-use harrison_rust::formula::Formula;
-use harrison_rust::propositional_logic::{DPLBSolver, Prop};
-
 use std::collections::{HashMap, HashSet};
-
 use std::io::stdout;
+use std::path::Path;
+
+use harrison_rust::first_order_logic::{FOValuation, Interpretation, Language, Pred};
+use harrison_rust::formula::{DPLBSolver, Formula};
+use harrison_rust::propositional_logic::Prop;
+use harrison_rust::sudoku::{get_board_formulas, parse_sudoku_dataset, Board};
+use harrison_rust::utils::run_repeatedly_and_average;
 
 fn main() {
     let mut stdout = stdout();
@@ -51,7 +53,17 @@ fn main() {
     let formula = Formula::<Prop>::parse("((true ==> (x <=> false)) ==> ~(y \\/ (false /\\ z)))");
     formula.pprint(&mut stdout);
     println!("...simplifies to...");
-    let simplified = formula.psimplify();
+    let simplified = formula.simplify();
+
+    simplified.pprint(&mut stdout);
+
+    let formula = Formula::<Pred>::parse(
+        "forall x. (true ==> (R(x) <=> false)) ==> exists z exists y. ~(K(y) \\/ false)",
+    );
+    formula.pprint(&mut stdout);
+    println!("...simplifies to...");
+    let simplified = formula.simplify();
+
     simplified.pprint(&mut stdout);
 
     println!("\nExample 5: Arithmetic mod n (n >= 2)\n");
@@ -102,7 +114,7 @@ fn main() {
     println!("Definition of multiplicative inverses:");
     mult_inverse_formula.pprint(&mut stdout);
 
-    let empty_valuation = Valuation::new();
+    let empty_valuation = FOValuation::new();
     println!("Model:         |  Is a field?");
     for n in 2..20 {
         let interpretation = integers_mod_n(n);
@@ -110,11 +122,44 @@ fn main() {
         println!("Integers mod {n}:  {sat}");
     }
 
-    println!("\nExample 6: Solve a hard sudoku board");
+    println!("\nExample 6: Prenex Normal Form");
+    let formula = Formula::<Pred>::parse("(exists x. F(x, z)) ==> (exists w. forall z. ~G(z, x))");
+    formula.pprint(&mut stdout);
+    let result = formula.pnf();
+    result.pprint(&mut stdout);
 
-    use harrison_rust::sudoku::{get_board_formulas, parse_sudoku_dataset, Board};
-    use harrison_rust::utils::run_repeatedly_and_average;
-    use std::path::Path;
+    println!("\nExample 7: Skolemization");
+    let formula = Formula::<Pred>::parse(
+        "R(F(y)) \\/ (exists x. P(f_w(x))) /\\ exists n. forall r. forall y. exists w. M(G(y, w)) 
+        \\/ exists z. ~M(F(z, w))",
+    );
+    formula.pprint(&mut stdout);
+    let result = formula.skolemize();
+    result.pprint(&mut stdout);
+
+    println!("\nExample 8: Test a first order formula for validity.");
+
+    let string = "(forall x y. exists z. forall w. P(x) /\\ Q(y) ==> R(z) /\\ U(w)) 
+        ==> (exists x y. P(x) /\\ Q(y)) ==> (exists z. R(z))";
+    let formula = Formula::<Pred>::parse(string);
+    formula.pprint(&mut stdout);
+    let compute_unsat_core = true;
+    // Note that this will run forever if `formula` is *not* a validity.
+    let run = || {
+        Formula::davis_putnam(&formula, compute_unsat_core);
+    };
+    run_repeatedly_and_average(run, 1);
+    let negation = formula.negate().skolemize();
+    let mut free_variables = Vec::from_iter(negation.free_variables());
+    free_variables.sort();
+    println!(
+        "Fun Fact:  These vectors of terms are a minimal set of incompatible 
+        instantiations (so call \"ground instances\") of the free variables {free_variables:?} in 
+        the (skolemization of) the negation of the formula we desired to check for validity:"
+    );
+    negation.pprint(&mut stdout);
+
+    println!("\nExample 9: Solve a hard sudoku board (You should be in release mode for this.)");
 
     let path_str: &str = "./data/sudoku.txt";
     let path: &Path = Path::new(path_str);
@@ -127,12 +172,9 @@ fn main() {
     println!("Is satisfiable?: {is_sat}");
     assert!(is_sat);
     let formula = Formula::formulaset_to_formula(clauses);
-    // Check that the resulting valuation does indeed satisfy the
-    // initial formula:
     let check = formula.eval(&solver.get_valuation().unwrap());
     println!("Check: Solution satisfies original constraints?: {check}");
     println!("Let's use the same solver to run several times and take the average time...");
-    // Run ten times and take average run time:
     run_repeatedly_and_average(
         || {
             solver.solve();

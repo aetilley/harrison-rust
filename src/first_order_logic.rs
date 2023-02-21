@@ -2,13 +2,13 @@
 // Order Logic ###
 // AST specific parsing/printing functions for first-order (aka predicate) logic.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::io::Write;
 // use std::rc::Rc;
 
-use crate::formula::{close_box, open_box, parse_formula, print_break, write, Formula};
+use crate::formula::{close_box, open_box, parse_formula, print_break, write, Formula, Valuation};
 use crate::parse::{
     generic_parser, parse_bracketed, parse_bracketed_list, parse_left_infix, parse_list,
     parse_right_infix, ErrInner, ListSubparser, PartialParseResult, Subparser,
@@ -1018,40 +1018,40 @@ mod interpretation_tests {
 // Partial Map from variable names to domain elements
 // implemented as linked frames to allow for less
 // copying.
-pub struct Valuation<'a, DomainType: Hash + Clone + Eq + Debug> {
+pub struct FOValuation<'a, DomainType: Hash + Clone + Eq + Debug> {
     // Any new assignments for this frame
     frame: HashMap<String, DomainType>,
     // Pointer to the next frame
-    next: Option<&'a Valuation<'a, DomainType>>,
+    next: Option<&'a FOValuation<'a, DomainType>>,
 }
 
-impl<'a, DomainType: Hash + Clone + Eq + Debug> Valuation<'a, DomainType> {
+impl<'a, DomainType: Hash + Clone + Eq + Debug> FOValuation<'a, DomainType> {
     // Maybe implement this later.
     #[allow(clippy::new_without_default)]
-    pub fn new() -> Valuation<'a, DomainType> {
-        Valuation {
+    pub fn new() -> FOValuation<'a, DomainType> {
+        FOValuation {
             frame: HashMap::new(),
             next: None,
         }
     }
 
-    pub fn from(data: &HashMap<String, DomainType>) -> Valuation<'a, DomainType> {
+    pub fn from(data: &HashMap<String, DomainType>) -> FOValuation<'a, DomainType> {
         // Todo, implement coming from general iter.
-        Valuation {
+        FOValuation {
             frame: data.clone(),
             next: None,
         }
     }
 
-    fn set(&self, name: String, val: DomainType) -> Valuation<'_, DomainType> {
+    fn set(&self, name: String, val: DomainType) -> FOValuation<'_, DomainType> {
         let frame = HashMap::from([(name, val)]);
         let next = Some(self);
-        Valuation { frame, next }
+        FOValuation { frame, next }
     }
 
     fn get(&self, name: &str) -> Option<DomainType> {
         // First try local frame, and failing that, defer
-        // to `next` Valuation (if any).
+        // to `next` FOValuation (if any).
         if let Some(value) = self.frame.get(name) {
             let cloned: DomainType = value.clone();
             return Some(cloned);
@@ -1068,12 +1068,12 @@ impl Term {
     pub fn eval<DomainType: Hash + Clone + Eq + Debug>(
         &self,
         m: &Interpretation<DomainType>,
-        v: &Valuation<DomainType>,
+        v: &FOValuation<DomainType>,
     ) -> DomainType {
         match self {
             Term::Var(name) => match v.get(&name.to_string()) {
                 Some(val) => val,
-                None => panic!("Valuation not defined on variable {name:?}."),
+                None => panic!("FOValuation not defined on variable {name:?}."),
             },
             Term::Fun(name, args) => {
                 let func_box: &FuncType<DomainType> = &m.func[&name.to_string()];
@@ -1097,7 +1097,7 @@ mod test_term_eval {
             ("Y".to_string(), 1),
             ("Z".to_string(), 2),
         ]);
-        let v = Valuation::from(&map);
+        let v = FOValuation::from(&map);
 
         let var_x = Term::var("X");
         let var_z = Term::var("Z");
@@ -1114,7 +1114,7 @@ impl Pred {
     pub fn eval<DomainType: Hash + Clone + Eq + Debug>(
         &self,
         m: &Interpretation<DomainType>,
-        v: &Valuation<DomainType>,
+        v: &FOValuation<DomainType>,
     ) -> bool {
         let rel_box: &RelType<DomainType> = &m.rel[&self.name];
         let vals: Vec<DomainType> = self.terms.iter().map(|term| term.eval(m, v)).collect();
@@ -1137,7 +1137,7 @@ mod test_pred_eval {
             ("Z".to_string(), 2),
             ("W".to_string(), 14),
         ]);
-        let v = Valuation::from(&map);
+        let v = FOValuation::from(&map);
 
         let t = Term::parset("foo(X, the_meaning(), Z)");
 
@@ -1152,14 +1152,12 @@ mod test_pred_eval {
     }
 }
 
-type RawPredValuation = HashMap<Pred, bool>;
-
 // ### Formula Evaluation ###
 impl Formula<Pred> {
     pub fn eval<DomainType: Hash + Clone + Eq + Debug>(
         &self,
         m: &Interpretation<DomainType>,
-        v: &Valuation<DomainType>,
+        v: &FOValuation<DomainType>,
     ) -> bool {
         let pred_atom_eval = |pred: &Pred| -> bool { pred.eval(m, v) };
 
@@ -1204,7 +1202,7 @@ mod test_formula_eval {
             ("Y".to_string(), 1),
             ("Z".to_string(), 2),
         ]);
-        let v = Valuation::from(&map);
+        let v = FOValuation::from(&map);
 
         let formula_1 = Formula::<Pred>::parse("bar(X, Z)");
         assert!(formula_1.eval(&m, &v));
@@ -1215,7 +1213,7 @@ mod test_formula_eval {
         let m = test_utils::get_test_interpretation();
 
         let map = HashMap::from([("Z".to_string(), 2)]);
-        let v = Valuation::from(&map);
+        let v = FOValuation::from(&map);
 
         let formula_1 = Formula::<Pred>::parse("exists X. bar(X, Z)");
 
@@ -1231,7 +1229,7 @@ mod test_formula_eval {
             ("Z".to_string(), 42),
             ("W".to_string(), 58),
         ]);
-        let v = Valuation::from(&map);
+        let v = FOValuation::from(&map);
 
         let formula_1 = Formula::<Pred>::parse("exists X. exists Y. foo(X, Y, Z) = W");
 
@@ -1246,7 +1244,7 @@ mod test_formula_eval {
     #[test]
     fn test_formula_eval_quantified_3() {
         let m = test_utils::get_test_interpretation();
-        let v = Valuation::new();
+        let v = FOValuation::new();
 
         let formula_ae = Formula::<Pred>::parse("forall X. exists Y. bar(X, Y)");
         assert!(formula_ae.eval(&m, &v));
@@ -1267,7 +1265,7 @@ impl Term {
 
     fn variables(&self) -> HashSet<String> {
         // Theorem (Harrison 3.1)
-        // if `t: Term` and if `v, v': Valuation` such that
+        // if `t: Term` and if `v, v': FOValuation` such that
         // for all x in t.variables() we have v(x) == v'(x), then
         // t.eval(M, v) == t.eval(M, v') for any `M: Interpretation`.
         match self {
@@ -1276,17 +1274,15 @@ impl Term {
         }
     }
 
-    fn functions(&self) -> HashSet<String> {
-        // Note that Harrison returns tuples where the second element is the arity
-        // on the claim that an interpretation may have two distinct functions
-        // of the same name but different arities.
-        // I'm going to see how far we can get w/o this since I think allowing
-        // disctinct functions of the same name is pretty rare.
+    fn functions(&self) -> HashSet<(String, usize)> {
+        // Return functions with arities.
         match self {
             Term::Var(_) => HashSet::new(),
-            Term::Fun(name, args) => args.iter().fold(HashSet::from([name.clone()]), |acc, arg| {
-                &acc | &arg.functions()
-            }),
+            Term::Fun(name, args) => args
+                .iter()
+                .fold(HashSet::from([(name.clone(), args.len())]), |acc, arg| {
+                    &acc | &arg.functions()
+                }),
         }
     }
 
@@ -1295,7 +1291,7 @@ impl Term {
         //
         // Lemma (Harrison 3.5)
         // For any `t: Term`, `inst: Instatiation`, `M: Interpretation`
-        // `v: Valuation`, we have
+        // `v: FOValuation`, we have
         // t.subst(inst).eval(M, v) = t.eval(M, {x |-> inst(x).eval(M, v)})
         match self {
             Term::Var(x) => inst.get(x).unwrap_or(&Term::var(x)).clone(),
@@ -1320,7 +1316,7 @@ impl Term {
 #[cfg(test)]
 mod test_term_variables {
 
-    use crate::utils::slice_to_set_of_owned;
+    use crate::utils::{slice_to_set_of_owned, slice_to_vec_of_owned};
 
     use super::*;
 
@@ -1346,10 +1342,13 @@ mod test_term_variables {
     fn test_functions() {
         let input = Term::parset("F1(foo(A), B, bar(13, baz(C)))");
         let result = input.functions();
-        assert_eq!(
-            result,
-            slice_to_set_of_owned(&["F1", "foo", "bar", "baz", "13"]),
-        );
+        let desired_names = slice_to_vec_of_owned(&["F1", "foo", "bar", "baz", "13"]);
+        let desired_arities = vec![3, 1, 2, 1, 0];
+        let desired: HashSet<(String, usize)> = desired_names
+            .into_iter()
+            .zip(desired_arities.into_iter())
+            .collect();
+        assert_eq!(result, desired);
     }
 
     #[test]
@@ -1386,7 +1385,7 @@ impl Pred {
         Term::get_variables_for_termlist(&self.terms)
     }
 
-    fn functions(&self) -> HashSet<String> {
+    fn functions(&self) -> HashSet<(String, usize)> {
         self.terms
             .iter()
             .fold(HashSet::new(), |acc, term| &acc | &term.functions())
@@ -1412,16 +1411,16 @@ impl Formula<Pred> {
         }
     }
 
-    fn free_variables(&self) -> HashSet<String> {
+    pub fn free_variables(&self) -> HashSet<String> {
         // Theorem (Harrison 3.2)
-        // If `p: Formula<Pred>` and if `v, v': Valuation` such that
+        // If `p: Formula<Pred>` and if `v, v': FOValuation` such that
         // for all x in p.free_variables()  we have v(x) == v'(x), then
         // p.eval(M, v) == p.eval(M, v') for any `M: Interpretation.
         //
         // Corollary (Harrision 3.3)
         // If `p: Formula<Pred>` and p.free_variables() == {}, then
         // p.eval(M, v) == p.eval(M, v') for any `M: Interpretation`
-        // and any `v, v': Valuation`.
+        // and any `v, v': FOValuation`.
         match self {
             Formula::True | Formula::False => HashSet::new(),
             Formula::Atom(pred) => pred.variables(),
@@ -1438,9 +1437,10 @@ impl Formula<Pred> {
         }
     }
 
-    fn functions(&self) -> HashSet<String> {
-        let combine =
-            |pred: &Pred, agg: HashSet<String>| -> HashSet<String> { &pred.functions() | &agg };
+    fn functions(&self) -> HashSet<(String, usize)> {
+        let combine = |pred: &Pred, agg: HashSet<(String, usize)>| -> HashSet<(String, usize)> {
+            &pred.functions() | &agg
+        };
         self.over_atoms(&combine, HashSet::new())
     }
 
@@ -1499,7 +1499,7 @@ impl Formula<Pred> {
         //
         // Theorem (Harrision 3.7)
         // For any `p: Formula<Pred>`, `inst: Instatiation`, `M: Interpretation`
-        // `v: Valuation`, we have
+        // `v: FOValuation`, we have
         // p.subst(inst).eval(M, v) = p.eval(M, {x |-> inst(x).eval(M, v)})
         //
         // Corollary (Harrison 3.8)
@@ -1526,6 +1526,7 @@ mod test_formula_variables {
 
     use super::*;
     use crate::utils::slice_to_set_of_owned;
+    use crate::utils::slice_to_vec_of_owned;
 
     #[test]
     fn test_formula_variables() {
@@ -1547,17 +1548,27 @@ mod test_formula_variables {
     fn test_formula_functions() {
         let formula =
             Formula::<Pred>::parse("forall X. f(X) = W ==> exists W. foo(X, bar(13), Z) = U");
-        let result_all = formula.functions();
-        let desired_all = slice_to_set_of_owned(&["f", "foo", "bar", "13"]);
-        assert_eq!(result_all, desired_all);
+        let result = formula.functions();
+        let desired_names = slice_to_vec_of_owned(&["f", "foo", "bar", "13"]);
+        let desired_arities = vec![1, 3, 1, 0];
+        let desired: HashSet<(String, usize)> = desired_names
+            .into_iter()
+            .zip(desired_arities.into_iter())
+            .collect();
+        assert_eq!(result, desired);
     }
 
     #[test]
     fn test_formula_functions_2() {
-        let formula_string = "R(F(y)) \\/ (exists x. P(f_w(x))) /\\ exists n. forall r. forall y. exists w. M(G(y, w)) \\/ exists z. ~M(F(z, w))";
+        let formula_string = "R(F(y, r)) \\/ (exists x. P(f_w(x))) /\\ exists n. forall r. forall y. exists w. M(G(y, w)) \\/ exists z. ~M(F(z, w))";
         let formula = Formula::<Pred>::parse(formula_string);
         let result = formula.functions();
-        let desired = slice_to_set_of_owned(&["F", "f_w", "G"]);
+        let desired_names = slice_to_vec_of_owned(&["F", "f_w", "G"]);
+        let desired_arities = vec![2, 1, 2];
+        let desired: HashSet<(String, usize)> = desired_names
+            .into_iter()
+            .zip(desired_arities.into_iter())
+            .collect();
         assert_eq!(result, desired);
     }
 
@@ -1615,7 +1626,7 @@ impl Formula<Pred> {
         }
     }
 
-    fn fo_simplify(self: &Formula<Pred>) -> Formula<Pred> {
+    pub fn simplify(self: &Formula<Pred>) -> Formula<Pred> {
         self.simplify_recursive(&Formula::fo_simplify_step)
     }
 
@@ -1623,7 +1634,7 @@ impl Formula<Pred> {
         // Negation normal form
         // NOTE:  Harrison actually doesn't simplify first (but makes
         // sure to simplify in the final definition of prenex form.
-        self.fo_simplify().raw_nnf()
+        self.simplify().raw_nnf()
     }
 
     fn pull_quantifiers(formula: &Formula<Pred>) -> Formula<Pred> {
@@ -1802,10 +1813,10 @@ impl Formula<Pred> {
         }
     }
 
-    fn pnf(&self) -> Formula<Pred> {
+    pub fn pnf(&self) -> Formula<Pred> {
         // Result should be of the form `Q_1 x_1 ... Q_n x_n. p`
         // where `p` is a quantifier-free formula in negation normal form.
-        self.fo_simplify().nnf().raw_prenex()
+        self.simplify().nnf().raw_prenex()
     }
 }
 
@@ -1815,7 +1826,7 @@ mod normal_form_tests {
     use super::*;
 
     #[test]
-    fn test_fo_simplify_step() {
+    fn test_simplify_step() {
         let formula_string = "exists w. forall z. G(z)";
         let formula = Formula::<Pred>::parse(formula_string);
         let result = Formula::fo_simplify_step(&formula);
@@ -1825,24 +1836,24 @@ mod normal_form_tests {
     }
 
     #[test]
-    fn test_fo_simplify() {
+    fn test_simplify() {
         let formula_string = "Y = X /\\ false \\/ (false ==> R(Z))";
         let formula = Formula::<Pred>::parse(formula_string);
         let desired = Formula::True;
-        assert_eq!(formula.fo_simplify(), desired);
+        assert_eq!(formula.simplify(), desired);
 
         let formula_string =
             "forall x. (true ==> (R(x) <=> false)) ==> exists z exists y. ~(K(y) \\/ false)";
         let formula = Formula::<Pred>::parse(formula_string);
         let desired_string = "forall x. (~R(x) ==> exists y. ~K(y))";
         let desired = Formula::<Pred>::parse(desired_string);
-        assert_eq!(formula.fo_simplify(), desired);
+        assert_eq!(formula.simplify(), desired);
 
         let formula_string = "exists w. forall z. G(z)";
         let formula = Formula::<Pred>::parse(formula_string);
         let desired_string = "forall z. G(z)";
         let desired = Formula::<Pred>::parse(desired_string);
-        assert_eq!(formula.fo_simplify(), desired);
+        assert_eq!(formula.simplify(), desired);
     }
 
     #[test]
@@ -1921,7 +1932,13 @@ impl Formula<Pred> {
     }
 
     fn askolemize(&self) -> Formula<Pred> {
-        Formula::_skolem(&self.fo_simplify().nnf(), &self.functions()).0
+        // Harrison actually keeps the arities since he allows for distinct
+        // functions of the same name (but different arities).
+        // I'm going to see how far we can get w/o this since I think allowing
+        // disctinct functions of the same name is pretty rare.
+        let functions: HashSet<String> = self.functions().into_iter().map(|pair| pair.0).collect();
+
+        Formula::_skolem(&self.simplify().nnf(), &functions).0
     }
 
     fn specialize(&self) -> Formula<Pred> {
@@ -1931,7 +1948,7 @@ impl Formula<Pred> {
         }
     }
 
-    fn skolemize(&self) -> Formula<Pred> {
+    pub fn skolemize(&self) -> Formula<Pred> {
         self.askolemize().pnf().specialize()
     }
 }
@@ -1972,17 +1989,16 @@ mod skolemize_tests {
 
 // Canonical Models
 //
-type PredInstanceValuation = HashMap<Pred, bool>;
 
 impl Formula<Pred> {
-    pub fn peval(&self, d: &PredInstanceValuation) -> bool {
+    pub fn peval(&self, d: &Valuation<Pred>) -> bool {
         // For evaluating quantifier free formulas without evaluating Predicates
-        // but just looking up predicate instances in a table (RawPredValuation).
+        // but just looking up predicate instances in a table (FOValuation<Pred>).
         //
         // TODO (test)
         let pred_atom_eval = |pred: &Pred| -> bool {
             d.get(pred)
-                .expect("Pred {pred:?} not found in PredInstanceValuation {d:?}")
+                .expect("Pred {pred:?} not found in Valuation {d:?}")
                 .to_owned()
         };
 
@@ -1993,5 +2009,731 @@ impl Formula<Pred> {
             panic!("peval recieved quantifier");
         };
         self.eval_core(&pred_atom_eval, &forall_eval, &exists_eval)
+    }
+}
+
+// Herbrand methods
+//
+type GroundInstancesAugmenter =
+    dyn Fn(&FormulaSet<Pred>, &Instantiation, &FormulaSet<Pred>) -> FormulaSet<Pred>;
+type SatTester = dyn Fn(&FormulaSet<Pred>) -> bool;
+
+use crate::formula::FormulaSet;
+
+impl Formula<Pred> {
+    #[allow(clippy::type_complexity)]
+    fn _herbrand_functions(
+        formula: &Formula<Pred>,
+    ) -> (HashSet<(String, usize)>, HashSet<(String, usize)>) {
+        let (mut constants, functions): (HashSet<(String, usize)>, HashSet<(String, usize)>) =
+            formula
+                .functions()
+                .into_iter()
+                .partition(|pair| pair.1 == 0);
+
+        if constants.is_empty() {
+            constants = HashSet::from([("c".to_string(), 0)]);
+        }
+        (constants, functions)
+    }
+    fn _ground_terms(
+        constants: &HashSet<(String, usize)>,
+        functions: &HashSet<(String, usize)>,
+        level: usize,
+    ) -> HashSet<Term> {
+        if level == 0 {
+            return constants
+                .iter()
+                .map(|(name, _arity)| Term::fun(name, &[]))
+                .collect();
+        }
+        functions
+            .iter()
+            .map(|(name, arity)| {
+                // Get set of all applications of this function to args of the
+                // apprpriate level and length.
+                Formula::_ground_tuples(constants, functions, level - 1, arity.to_owned())
+                    .iter()
+                    .map(|tuple| Term::fun(name, tuple))
+                    .collect::<HashSet<Term>>()
+            })
+            .fold(HashSet::new(), |x, y| &x | &y)
+    }
+
+    fn _get_all_appends(
+        vectors: &BTreeSet<Vec<Term>>,
+        elements: &HashSet<Term>,
+    ) -> BTreeSet<Vec<Term>> {
+        // Return all vectors that result in prepending an element from `elements`
+        // to a vector from `vectors`.
+        elements
+            .iter()
+            .map(|element| {
+                vectors
+                    .iter()
+                    .map(|vector| {
+                        let mut clone = vector.clone();
+                        clone.push(element.clone());
+                        clone
+                    })
+                    .collect::<BTreeSet<Vec<Term>>>()
+            })
+            .fold(BTreeSet::new(), |x, y| &x | &y)
+    }
+
+    fn _ground_tuples(
+        constants: &HashSet<(String, usize)>,
+        functions: &HashSet<(String, usize)>,
+        level: usize,
+        size: usize,
+    ) -> BTreeSet<Vec<Term>> {
+        if size == 0 {
+            return if level == 0 {
+                BTreeSet::from([Vec::new()])
+            } else {
+                BTreeSet::from([])
+            };
+        }
+        (0..=level)
+            .map(|k| {
+                let last_element_options = Formula::_ground_terms(constants, functions, k);
+                let up_to_last_element_options =
+                    Formula::_ground_tuples(constants, functions, level - k, size - 1);
+                // Note we append instead of prepend since it seems cheaper.
+                Formula::_get_all_appends(&up_to_last_element_options, &last_element_options)
+            })
+            .fold(BTreeSet::new(), |x, y| &x | &y)
+    }
+
+    fn make_instantiation(free_variables: &[String], terms: &[Term]) -> Instantiation {
+        // Map corresponding `free_variables` to `terms`.
+        assert_eq!(free_variables.len(), terms.len());
+        free_variables
+            .iter()
+            .enumerate()
+            .map(|(idx, var)| (var.to_owned(), terms[idx].clone()))
+            .collect()
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn _herbloop(
+        // NOTE could put the first 6 of these parameters into a struct `HerbloopContext`
+        // since they don't change...
+        augment_ground_instances: &GroundInstancesAugmenter,
+        sat_test: &SatTester,
+        formula: &FormulaSet<Pred>,
+        constants: &HashSet<(String, usize)>,
+        functions: &HashSet<(String, usize)>,
+        free_variables: &Vec<String>,
+        next_level: usize,
+        ground_instances_so_far: &FormulaSet<Pred>,
+        mut tuples_tried: HashSet<Vec<Term>>,
+        mut tuples_left_at_level: BTreeSet<Vec<Term>>,
+    ) -> HashSet<Vec<Term>> {
+        // `augment_ground_instances`:  Updates ground_instances_so_far for a given tuple
+        // of ground terms. Note that this will depend on whether a FormulaSet<Pred> is a
+        // DNF vs CNF representation.
+        //
+        // `sat_test`: test for whether a `FormulaSet<Pred>` is satisfiable. Note that this will
+        // depend on whether a FormulaSet<Pred> is a DNF vs CNF representation.
+        //
+        // `formula`: A `FormulaSet<Pred>` representation of the target formula to be tested for
+        // satisfiability.
+        //
+        // `constants`/`functions`; all constants/functions in the Herbrand universe for
+        // `formula`.
+        //
+        // `free_variables`: all free variables in `formula`.
+        //
+        // `next_level`: the next level of ground tuples to consider
+        // after `tuples_left_at_level` is depleated.
+        //
+        // `ground_instances_so_far`:   A FormulaSet<Pred> representation of the set of
+        // all ground instances that we are checking for joint satisfiability.
+        //
+        // `tuple_tried`: Tuples of terms that we have so far converted to ground instances
+        // (`FormulaSet<Pred>`s specifically) and added to the `ground_instances_so_far`.
+        //
+        // `tuples_left_at_level`: Remaining tuples for the last `next_level` computed
+        // which we have yet to convert and incorporate into `ground_instances_so_far`.
+        println!("Ground instances tried: {}", tuples_tried.len());
+        println!(
+            "Size of the Ground instance FormulaSet: {}",
+            ground_instances_so_far.len()
+        );
+        println!();
+
+        if tuples_left_at_level.is_empty() {
+            let new_tuples =
+                Formula::_ground_tuples(constants, functions, next_level, free_variables.len());
+            Formula::_herbloop(
+                augment_ground_instances,
+                sat_test,
+                formula,
+                constants,
+                functions,
+                free_variables,
+                next_level + 1,
+                ground_instances_so_far,
+                tuples_tried,
+                new_tuples,
+            )
+        } else {
+            let next_tuple: Vec<Term> = tuples_left_at_level.pop_first().unwrap();
+            let instantiation: Instantiation =
+                Formula::make_instantiation(free_variables, &next_tuple);
+            // NOTE could have this function take ownership of `ground_instances_so_far`
+            // and mutate it.
+            let augmented_instances =
+                augment_ground_instances(formula, &instantiation, ground_instances_so_far);
+            tuples_tried.insert(next_tuple);
+            if !sat_test(&augmented_instances) {
+                tuples_tried
+            } else {
+                Formula::_herbloop(
+                    augment_ground_instances,
+                    sat_test,
+                    formula,
+                    constants,
+                    functions,
+                    free_variables,
+                    next_level,
+                    &augmented_instances,
+                    tuples_tried,
+                    tuples_left_at_level,
+                )
+            }
+        }
+    }
+
+    fn _subst_in_formulaset(
+        formula: &FormulaSet<Pred>,
+        instantiation: &Instantiation,
+    ) -> FormulaSet<Pred> {
+        formula
+            .iter()
+            .map(|clause| {
+                clause
+                    .iter()
+                    .map(|literal| literal.subst(instantiation))
+                    .collect()
+            })
+            .collect()
+    }
+
+    fn augement_dnf_formulaset(
+        template_formula: &FormulaSet<Pred>,
+        instantiation: &Instantiation,
+        ground_instances_so_far: &FormulaSet<Pred>,
+    ) -> FormulaSet<Pred> {
+        // First substitute in the ground instances for `instantiation`.
+        let subst_result: FormulaSet<Pred> =
+            Formula::_subst_in_formulaset(template_formula, instantiation);
+
+        // Combine with existing ground instances
+        let aggregate = Formula::_set_distrib_and_over_or(&subst_result, ground_instances_so_far);
+
+        Formula::_strip_contradictory(&aggregate)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn gilmore_loop(
+        formula: &FormulaSet<Pred>,
+        constants: &HashSet<(String, usize)>,
+        functions: &HashSet<(String, usize)>,
+        free_variables: &Vec<String>,
+        next_level: usize,
+        ground_instances_so_far: &FormulaSet<Pred>,
+        tuples_tried: HashSet<Vec<Term>>,
+        tuples_left_at_level: BTreeSet<Vec<Term>>,
+    ) -> HashSet<Vec<Term>> {
+        // USES DNF FormulaSet representations throughout.
+        //
+        fn sat_test(formula: &FormulaSet<Pred>) -> bool {
+            !formula.is_empty()
+        }
+
+        Formula::_herbloop(
+            &Formula::augement_dnf_formulaset,
+            &|formula| !formula.is_empty(),
+            formula,
+            constants,
+            functions,
+            free_variables,
+            next_level,
+            ground_instances_so_far,
+            tuples_tried,
+            tuples_left_at_level,
+        )
+    }
+
+    pub fn gilmore(formula: &Formula<Pred>) -> usize {
+        // Tautology test by checking whether the negation is unsatisfiable.
+        // USES DNF FormulaSet representations throughout.
+        let negation_skolemized = formula.generalize().negate().skolemize();
+        let (constants, functions) = Formula::_herbrand_functions(&negation_skolemized);
+        let mut free_variables = Vec::from_iter(negation_skolemized.free_variables());
+        free_variables.sort();
+        let dnf_formula = negation_skolemized.dnf_formulaset();
+        let result = Formula::gilmore_loop(
+            &dnf_formula,
+            &constants,
+            &functions,
+            &free_variables,
+            0,
+            &FormulaSet::from([BTreeSet::new()]),
+            HashSet::new(),
+            BTreeSet::new(),
+        );
+        println!("Formula is valid.");
+        result.len()
+    }
+
+    // Davis-Putnam approach
+    //
+    fn augment_cnf_formulaset(
+        template_formula: &FormulaSet<Pred>,
+        instantiation: &Instantiation,
+        ground_instances_so_far: &FormulaSet<Pred>,
+    ) -> FormulaSet<Pred> {
+        // First substitute in the ground instances for `instantiation`.
+        let subst_result: FormulaSet<Pred> =
+            Formula::_subst_in_formulaset(template_formula, instantiation);
+
+        // Combine with existing ground instances
+        &subst_result | ground_instances_so_far
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn dp_loop(
+        formula: &FormulaSet<Pred>,
+        constants: &HashSet<(String, usize)>,
+        functions: &HashSet<(String, usize)>,
+        free_variables: &Vec<String>,
+        next_level: usize,
+        ground_instances_so_far: &FormulaSet<Pred>,
+        tuples_tried: HashSet<Vec<Term>>,
+        tuples_left_at_level: BTreeSet<Vec<Term>>,
+    ) -> HashSet<Vec<Term>> {
+        // USES CNF FormulaSet representations throughout.
+
+        Formula::_herbloop(
+            &Formula::augment_cnf_formulaset,
+            &Formula::dpll,
+            formula,
+            constants,
+            functions,
+            free_variables,
+            next_level,
+            ground_instances_so_far,
+            tuples_tried,
+            tuples_left_at_level,
+        )
+    }
+
+    fn _get_dp_unsat_core(
+        formula: &FormulaSet<Pred>,
+        free_variables: &Vec<String>,
+        mut unknown: BTreeSet<Vec<Term>>,
+        mut needed: BTreeSet<Vec<Term>>,
+    ) -> HashSet<Vec<Term>> {
+        // Find a minimal subset of tuples whose corresponding set of formulas are
+        // inconsistent.
+        // Note the following recursive invariant: The set of formulas corresponding to
+        // `unknown U needed` is unsat.
+        //
+        if unknown.is_empty() {
+            return HashSet::from_iter(needed);
+        }
+        let next = unknown.pop_first().unwrap();
+        // If formulas for unknown U needed are still inconsistent, discard `next`,
+        // and else add next to needed.
+
+        // NOTE: Could pass this as an additional parameter to keep from having to build
+        // it from scratch each time.
+        let new_union = needed
+            .union(&unknown)
+            .map(|tuple| Formula::make_instantiation(free_variables, tuple))
+            .fold(FormulaSet::new(), |acc, inst| {
+                Formula::augment_cnf_formulaset(formula, &inst, &acc)
+            });
+
+        if Formula::dpll(&new_union) {
+            needed.insert(next);
+        }
+        Formula::_get_dp_unsat_core(formula, free_variables, unknown, needed)
+    }
+
+    pub fn davis_putnam(formula: &Formula<Pred>, get_unsat_core: bool) -> usize {
+        // Tautology test by checking whether the negation is unsatisfiable.
+        // USES CNF FormulaSet representations throughout.
+        let negation_skolemized = formula.generalize().negate().skolemize();
+        let (constants, functions) = Formula::_herbrand_functions(&negation_skolemized);
+        let mut free_variables = Vec::from_iter(negation_skolemized.free_variables());
+        free_variables.sort();
+        let cnf_formula = negation_skolemized.cnf_formulaset();
+        let mut result = Formula::dp_loop(
+            &cnf_formula,
+            &constants,
+            &functions,
+            &free_variables,
+            0,
+            &FormulaSet::new(),
+            HashSet::new(),
+            BTreeSet::new(),
+        );
+        if get_unsat_core {
+            result = Formula::_get_dp_unsat_core(
+                &cnf_formula,
+                &free_variables,
+                BTreeSet::from_iter(result),
+                BTreeSet::new(),
+            )
+        }
+        println!(
+            "Found {} inconsistent tuples of skolemized negation: {:?}",
+            result.len(),
+            result
+        );
+        println!("Formula is valid.");
+        result.len()
+    }
+}
+
+#[cfg(test)]
+mod herbrand_tests {
+
+    use super::*;
+
+    #[test]
+    fn test_herbrand_functions() {
+        let formula = Formula::<Pred>::parse("P(g(f(42, x)))");
+        let result = Formula::_herbrand_functions(&formula);
+        let desired_constants = HashSet::from([(String::from("42"), 0)]);
+        let desired_functions = HashSet::from([(String::from("f"), 2), (String::from("g"), 1)]);
+        assert_eq!(result, (desired_constants, desired_functions));
+
+        let formula = Formula::<Pred>::parse("P(f(x))");
+        let result = Formula::_herbrand_functions(&formula);
+        let desired_constants = HashSet::from([(String::from("c"), 0)]);
+        let desired_functions = HashSet::from([(String::from("f"), 1)]);
+        assert_eq!(result, (desired_constants, desired_functions));
+    }
+
+    #[test]
+    fn test_ground_terms() {
+        let constants = HashSet::from([(String::from("42"), 0)]);
+        let functions = HashSet::from([(String::from("f"), 2), (String::from("g"), 1)]);
+
+        let level = 0;
+        let result = Formula::_ground_terms(&constants, &functions, level);
+        let desired = HashSet::from([Term::constant("42")]);
+        assert_eq!(result, desired);
+
+        let level = 1;
+        let result = Formula::_ground_terms(&constants, &functions, level);
+        let desired = HashSet::from([Term::parset("g(42)"), Term::parset("f(42, 42)")]);
+        assert_eq!(result, desired);
+
+        let level = 2;
+        let result = Formula::_ground_terms(&constants, &functions, level);
+        let desired = HashSet::from([
+            Term::parset("g(g(42))"),
+            Term::parset("g(f(42, 42))"),
+            Term::parset("f(g(42), 42)"),
+            Term::parset("f(42, g(42))"),
+            Term::parset("f(f(42, 42), 42)"),
+            Term::parset("f(42, f(42, 42))"),
+        ]);
+
+        assert_eq!(result, desired);
+    }
+
+    #[test]
+    fn test_get_all_appends() {
+        let vectors: BTreeSet<Vec<Term>> = BTreeSet::from([
+            vec![Term::parset("A"), Term::parset("B")],
+            vec![Term::parset("C"), Term::parset("D")],
+        ]);
+        let elements: HashSet<Term> = HashSet::from([Term::parset("X"), Term::parset("Y")]);
+
+        let result = Formula::_get_all_appends(&vectors, &elements);
+
+        let desired: BTreeSet<Vec<Term>> = BTreeSet::from([
+            vec![Term::parset("A"), Term::parset("B"), Term::parset("X")],
+            vec![Term::parset("C"), Term::parset("D"), Term::parset("X")],
+            vec![Term::parset("A"), Term::parset("B"), Term::parset("Y")],
+            vec![Term::parset("C"), Term::parset("D"), Term::parset("Y")],
+        ]);
+
+        assert_eq!(result, desired);
+    }
+
+    #[test]
+    fn test_ground_tuples() {
+        let constants = HashSet::from([(String::from("42"), 0)]);
+        let functions = HashSet::from([(String::from("f"), 2), (String::from("g"), 1)]);
+
+        let level = 0;
+        let size = 0;
+        let result: BTreeSet<Vec<Term>> =
+            Formula::_ground_tuples(&constants, &functions, level, size);
+        let desired = BTreeSet::from([Vec::new()]);
+        assert_eq!(result, desired);
+
+        let level = 1;
+        let size = 0;
+        let result: BTreeSet<Vec<Term>> =
+            Formula::_ground_tuples(&constants, &functions, level, size);
+        let desired = BTreeSet::from([]);
+        assert_eq!(result, desired);
+
+        let level = 0;
+        let size = 2;
+        let result: BTreeSet<Vec<Term>> =
+            Formula::_ground_tuples(&constants, &functions, level, size);
+        let desired = BTreeSet::from([vec![Term::parset("42"), Term::parset("42")]]);
+        assert_eq!(result, desired);
+
+        let level = 2;
+        let size = 1;
+        let result: BTreeSet<Vec<Term>> =
+            Formula::_ground_tuples(&constants, &functions, level, size);
+        let desired = BTreeSet::from([
+            vec![Term::parset("f(g(42), 42)")],
+            vec![Term::parset("f(42, g(42))")],
+            vec![Term::parset("g(g(42))")],
+            vec![Term::parset("g(f(42, 42))")],
+            vec![Term::parset("f(f(42, 42), 42)")],
+            vec![Term::parset("f(42, f(42, 42))")],
+        ]);
+        assert_eq!(result, desired);
+
+        let level = 1;
+        let size = 2;
+        let result: BTreeSet<Vec<Term>> =
+            Formula::_ground_tuples(&constants, &functions, level, size);
+        let desired = BTreeSet::from([
+            vec![Term::parset("42"), Term::parset("g(42)")],
+            vec![Term::parset("g(42)"), Term::parset("42")],
+            vec![Term::parset("42"), Term::parset("f(42, 42)")],
+            vec![Term::parset("f(42, 42)"), Term::parset("42")],
+        ]);
+        assert_eq!(result, desired);
+
+        let level = 2;
+        let size = 2;
+        let result: BTreeSet<Vec<Term>> =
+            Formula::_ground_tuples(&constants, &functions, level, size);
+        let desired = BTreeSet::from([
+            // 0 and 2
+            vec![Term::parset("42"), Term::parset("f(g(42), 42)")],
+            vec![Term::parset("42"), Term::parset("f(42, g(42))")],
+            vec![Term::parset("42"), Term::parset("g(g(42))")],
+            vec![Term::parset("42"), Term::parset("g(f(42, 42))")],
+            vec![Term::parset("42"), Term::parset("f(f(42, 42), 42)")],
+            vec![Term::parset("42"), Term::parset("f(42, f(42, 42))")],
+            // 1 and 1
+            vec![Term::parset("g(42)"), Term::parset("g(42)")],
+            vec![Term::parset("f(42, 42)"), Term::parset("f(42, 42)")],
+            vec![Term::parset("g(42)"), Term::parset("f(42, 42)")],
+            vec![Term::parset("f(42, 42)"), Term::parset("g(42)")],
+            // 2 and 0
+            vec![Term::parset("f(g(42), 42)"), Term::parset("42")],
+            vec![Term::parset("f(42, g(42))"), Term::parset("42")],
+            vec![Term::parset("g(g(42))"), Term::parset("42")],
+            vec![Term::parset("g(f(42, 42))"), Term::parset("42")],
+            vec![Term::parset("f(f(42, 42), 42)"), Term::parset("42")],
+            vec![Term::parset("f(42, f(42, 42))"), Term::parset("42")],
+        ]);
+        assert_eq!(result, desired);
+    }
+
+    #[test]
+    fn test_herbloop() {
+        fn augment_ground_instances(
+            template: &FormulaSet<Pred>,
+            instantiation: &Instantiation,
+            accum: &FormulaSet<Pred>,
+        ) -> FormulaSet<Pred> {
+            // Just add the new substituted clauses to the ground instances so far.
+            accum | &Formula::_subst_in_formulaset(template, instantiation)
+        }
+
+        fn sat_test(formula: &FormulaSet<Pred>) -> bool {
+            // Just check for a random singleton clause.
+            let target_clause = Formula::<Pred>::parse("~P(g(f(42, 42))) \\/  F(g(42))")
+                .cnf_formulaset()
+                .pop_first()
+                .unwrap();
+            !formula.contains(&target_clause)
+        }
+
+        // We will use CNF formulaset representations.
+        let formula = Formula::<Pred>::parse("~P(g(x)) \\/ F(y)").cnf_formulaset();
+
+        let constants = HashSet::from([("42".to_string(), 0)]);
+        let functions = HashSet::from([("f".to_string(), 2), ("g".to_string(), 1)]);
+
+        let free_variables = vec!["x".to_string(), "y".to_string()];
+        let next_level = 0;
+        // CNF representation of True
+        let ground_instances_so_far: FormulaSet<Pred> = BTreeSet::new();
+        let tuples_tried: HashSet<Vec<Term>> = HashSet::new();
+        let tuples_left_at_level: BTreeSet<Vec<Term>> = BTreeSet::new();
+
+        let result = Formula::_herbloop(
+            &augment_ground_instances,
+            &sat_test,
+            &formula,
+            &constants,
+            &functions,
+            &free_variables,
+            next_level,
+            &ground_instances_so_far,
+            tuples_tried.clone(),
+            tuples_left_at_level.clone(),
+        );
+
+        let level_0_size_2 =
+            HashSet::from_iter(Formula::_ground_tuples(&constants, &functions, 0, 2));
+        let level_1_size_2 =
+            HashSet::from_iter(Formula::_ground_tuples(&constants, &functions, 1, 2));
+        let level_2_size_2 =
+            HashSet::from_iter(Formula::_ground_tuples(&constants, &functions, 2, 2));
+        let all_size_2 = &(&level_0_size_2 | &level_1_size_2) | &level_2_size_2;
+
+        assert!(result.is_subset(&all_size_2));
+        assert!(level_0_size_2.is_subset(&result));
+        assert!(level_1_size_2.is_subset(&result));
+
+        // Start at level 2:
+        let result_2 = Formula::_herbloop(
+            &augment_ground_instances,
+            &sat_test,
+            &formula,
+            &constants,
+            &functions,
+            &free_variables,
+            2,
+            &ground_instances_so_far,
+            tuples_tried,
+            tuples_left_at_level,
+        );
+
+        assert!(result_2.is_subset(&level_2_size_2));
+    }
+
+    #[test]
+    fn test_gilmore_loop() {
+        // We will use DNF formulaset representations.
+        let formula = Formula::<Pred>::parse("~P(g(x)) /\\ P(y)").dnf_formulaset();
+
+        let constants = HashSet::from([("42".to_string(), 0)]);
+        let functions = HashSet::from([("f".to_string(), 2), ("g".to_string(), 1)]);
+
+        let free_variables = vec!["x".to_string(), "y".to_string()];
+        let next_level = 0;
+        // DNF representation of True
+        let ground_instances_so_far: FormulaSet<Pred> = BTreeSet::from([BTreeSet::new()]);
+        let tuples_tried: HashSet<Vec<Term>> = HashSet::new();
+        let tuples_left_at_level: BTreeSet<Vec<Term>> = BTreeSet::new();
+
+        let result = Formula::gilmore_loop(
+            &formula,
+            &constants,
+            &functions,
+            &free_variables,
+            next_level,
+            &ground_instances_so_far,
+            tuples_tried,
+            tuples_left_at_level,
+        );
+        assert!(result.contains(&vec![Term::parset("42"), Term::parset("g(42)")]));
+    }
+
+    #[test]
+    fn test_gilmore() {
+        // We will use DNF formulaset representations.
+        let formula = Formula::<Pred>::parse("exists x. forall y. P(x) ==> P(y)");
+        let result = Formula::gilmore(&formula);
+        assert!((2..=3).contains(&result));
+    }
+
+    #[test]
+    fn test_dp_loop() {
+        // We will use DNF formulaset representations.
+        let formula = Formula::<Pred>::parse("~P(g(x)) /\\ P(y)").cnf_formulaset();
+
+        let constants = HashSet::from([("42".to_string(), 0)]);
+        let functions = HashSet::from([("f".to_string(), 2), ("g".to_string(), 1)]);
+
+        let free_variables = vec!["x".to_string(), "y".to_string()];
+        let next_level = 0;
+        // CNF representation of True
+        let ground_instances_so_far: FormulaSet<Pred> = BTreeSet::new();
+        let tuples_tried: HashSet<Vec<Term>> = HashSet::new();
+        let tuples_left_at_level: BTreeSet<Vec<Term>> = BTreeSet::new();
+
+        let result = Formula::dp_loop(
+            &formula,
+            &constants,
+            &functions,
+            &free_variables,
+            next_level,
+            &ground_instances_so_far,
+            tuples_tried,
+            tuples_left_at_level,
+        );
+        assert!(result.contains(&vec![Term::parset("42"), Term::parset("g(42)")]));
+    }
+
+    #[test]
+    fn test_get_dp_unsat_core() {
+        let formula = Formula::<Pred>::parse("P(x) /\\ ~P(f_y(x))").cnf_formulaset();
+        let free_variables = vec!["x".to_string()];
+        let unknown = BTreeSet::from([
+            vec![Term::parset("f_y(c)")],
+            vec![Term::parset("g(f_y(c))")],
+            vec![Term::parset("g(c)")],
+            vec![Term::parset("(c)")],
+            vec![Term::parset("d")],
+        ]);
+        let needed = BTreeSet::new();
+
+        let result: HashSet<Vec<Term>> =
+            Formula::_get_dp_unsat_core(&formula, &free_variables, unknown, needed);
+
+        let desired = HashSet::from([vec![Term::parset("f_y(c)")], vec![Term::parset("c")]]);
+
+        assert_eq!(result, desired);
+    }
+
+    #[test]
+    fn test_davis_putnam_simple() {
+        // We will use DNF formulaset representations.
+        let formula = Formula::<Pred>::parse("exists x. forall y. P(x) ==> P(y)");
+        let result = Formula::davis_putnam(&formula, false);
+        assert!((2..=3).contains(&result));
+    }
+
+    #[test]
+    fn test_davis_putnam_longer() {
+        // We will use DNF formulaset representations.
+        let string = "(forall x y. exists z. forall w. P(x) /\\ Q(y) ==> R(z) /\\ U(w)) ==> 
+            (exists x y. P(x) /\\ Q(y)) ==> (exists z. R(z))";
+        let formula = Formula::<Pred>::parse(string);
+        let result = Formula::davis_putnam(&formula, false);
+        println!("result: {result}");
+    }
+
+    #[test]
+    fn test_davis_putnam_longer_unsat_core() {
+        // We will use DNF formulaset representations.
+        let string = "(forall x y. exists z. forall w. P(x) /\\ Q(y) ==> R(z) /\\ U(w)) ==> 
+            (exists x y. P(x) /\\ Q(y)) ==> (exists z. R(z))";
+        let formula = Formula::<Pred>::parse(string);
+        let result = Formula::davis_putnam(&formula, true);
+        assert_eq!(result, 2);
     }
 }

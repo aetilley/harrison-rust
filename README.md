@@ -7,41 +7,37 @@ John Harrison's text on Automated Theorem Proving.
 
 This package is a work in progress, but the following are supported:
 
-For propositional logic:
 1) datatypes/parsing/printing operations
 1) `eval`
 1) standard DNF/CNF algorithms,
-1) Definitional CNF (preserving equisatisfiability)
+1) Definitional CNF (preserving equisatisfiability) for propositional logic.
 1) the DP and "naive" DPLL algorithms for testing satisfiability
 1) Basic Iterative DPLL as well as Backjumping/Conflict clause learning solvers DPLI and DPLU respectively.
-
-For predicate (first-order) logic:
-1) datatypes/parsing/printing operations
-1) `eval`
-1) Prenex form
+1) Prenex normal form
 1) Skolemization
+1) Herbrand methods of first-order validity checking (Gilmore and Davis-Putnam)
 
 NOTE:  Currently this project RELIES ON NIGHTLY RUST for exactly one feature `box_patterns`.
 For more info, see
 https://doc.rust-lang.org/beta/unstable-book/language-features/box-patterns.html
 
-There is lots of room for improvement.  More to come.
-
-
 ###
 
-The following example usage is copied from `main.rs`.  Probably best to run with the `--release` flag.
+The following example usage is copied from `main.rs`.
+Make sure to `cargo run --release` from the top level (`harrison-rust`) directory.
 
 ```
 #![feature(box_patterns)]
 
-use harrison_rust::first_order_logic::{Interpretation, Language, Pred, Valuation};
-use harrison_rust::formula::Formula;
-use harrison_rust::propositional_logic::{DPLBSolver, Prop};
-
 use std::collections::{HashMap, HashSet};
-
 use std::io::stdout;
+use std::path::Path;
+
+use harrison_rust::first_order_logic::{FOValuation, Interpretation, Language, Pred};
+use harrison_rust::formula::{DPLBSolver, Formula};
+use harrison_rust::propositional_logic::Prop;
+use harrison_rust::sudoku::{get_board_formulas, parse_sudoku_dataset, Board};
+use harrison_rust::utils::run_repeatedly_and_average;
 
 fn main() {
     let mut stdout = stdout();
@@ -79,14 +75,24 @@ fn main() {
     dnf.pprint(&mut stdout);
     println!("Is satisfiable?: {}", formula.dpll_sat());
     println!("Is tautology?: {}", formula.dpll_taut());
-    println!("Is contradiction?: {}", Formula::not(formula).dpll_taut());
+    println!("Is contradiction?: {}", Formula::not(&formula).dpll_taut());
 
     println!("\nExample 4: Formula simplification");
 
     let formula = Formula::<Prop>::parse("((true ==> (x <=> false)) ==> ~(y \\/ (false /\\ z)))");
     formula.pprint(&mut stdout);
     println!("...simplifies to...");
-    let simplified = formula.psimplify();
+    let simplified = formula.simplify();
+
+    simplified.pprint(&mut stdout);
+
+    let formula = Formula::<Pred>::parse(
+        "forall x. (true ==> (R(x) <=> false)) ==> exists z exists y. ~(K(y) \\/ false)",
+    );
+    formula.pprint(&mut stdout);
+    println!("...simplifies to...");
+    let simplified = formula.simplify();
+
     simplified.pprint(&mut stdout);
 
     println!("\nExample 5: Arithmetic mod n (n >= 2)\n");
@@ -137,7 +143,7 @@ fn main() {
     println!("Definition of multiplicative inverses:");
     mult_inverse_formula.pprint(&mut stdout);
 
-    let empty_valuation = Valuation::new();
+    let empty_valuation = FOValuation::new();
     println!("Model:         |  Is a field?");
     for n in 2..20 {
         let interpretation = integers_mod_n(n);
@@ -145,13 +151,45 @@ fn main() {
         println!("Integers mod {n}:  {sat}");
     }
 
-    println!("\nExample 6: Solve a hard sudoku board");
+    println!("\nExample 6: Prenex Normal Form");
+    let formula = Formula::<Pred>::parse("(exists x. F(x, z)) ==> (exists w. forall z. ~G(z, x))");
+    formula.pprint(&mut stdout);
+    let result = formula.pnf();
+    result.pprint(&mut stdout);
 
-    use harrison_rust::sudoku::{get_board_formulas, parse_sudoku_dataset, Board};
-    use harrison_rust::utils::run_repeatedly_and_average;
-    use std::path::Path;
+    println!("\nExample 7: Skolemization");
+    let formula = Formula::<Pred>::parse(
+        "R(F(y)) \\/ (exists x. P(f_w(x))) /\\ exists n. forall r. forall y. exists w. M(G(y, w)) 
+        \\/ exists z. ~M(F(z, w))",
+    );
+    formula.pprint(&mut stdout);
+    let result = formula.skolemize();
+    result.pprint(&mut stdout);
 
-    let path_str: &str = "../data/sudoku.txt";
+    println!("\nExample 8: Test a first order formula for validity.");
+
+    let string = "(forall x y. exists z. forall w. P(x) /\\ Q(y) ==> R(z) /\\ U(w)) 
+        ==> (exists x y. P(x) /\\ Q(y)) ==> (exists z. R(z))";
+    let formula = Formula::<Pred>::parse(string);
+    formula.pprint(&mut stdout);
+    let compute_unsat_core = true;
+    // Note that this will run forever if `formula` is *not* a validity.
+    let run = || {
+        Formula::davis_putnam(&formula, compute_unsat_core);
+    };
+    run_repeatedly_and_average(run, 1);
+    let negation = formula.negate().skolemize();
+    let free_variables = Vec::from_iter(negation.free_variables());
+    println!(
+        "Fun Fact:  These vectors of terms are a minimal set of incompatible 
+        instantiations (so call \"ground instances\") of the free variables {free_variables:?} in 
+        the (skolemization of) the negation of the formula we desired to check for validity:"
+    );
+    negation.pprint(&mut stdout);
+
+    println!("\nExample 9: Solve a hard sudoku board (You should be in release mode for this.)");
+
+    let path_str: &str = "./data/sudoku.txt";
     let path: &Path = Path::new(path_str);
     let boards: Vec<Board> = parse_sudoku_dataset(path, Some(1));
     let clauses = get_board_formulas(&boards, 9, 3)[0].clone();
@@ -162,12 +200,9 @@ fn main() {
     println!("Is satisfiable?: {is_sat}");
     assert!(is_sat);
     let formula = Formula::formulaset_to_formula(clauses);
-    // Check that the resulting valuation does indeed satisfy the
-    // initial formula:
     let check = formula.eval(&solver.get_valuation().unwrap());
     println!("Check: Solution satisfies original constraints?: {check}");
     println!("Let's use the same solver to run several times and take the average time...");
-    // Run ten times and take average run time:
     run_repeatedly_and_average(
         || {
             solver.solve();
@@ -176,12 +211,12 @@ fn main() {
     );
 }
 
-```
+Output:
 
-The output is as follow:
+   Compiling harrison_rust v0.1.0 
+    Finished release [optimized + debuginfo] target(s) in 3.85s
+     Running `target/release/harrison_rust`
 
-
-```
 Example 1: Simple formula
 <<C \/ D <=> ~A /\ B>>
 A     B     C     D     | formula
@@ -234,6 +269,9 @@ Example 4: Formula simplification
 <<(true ==> (x <=> false)) ==> ~(y \/ false /\ z)>>
 ...simplifies to...
 <<~x ==> ~y>>
+<<forall x. (true ==> (R(x) <=> false)) ==> (exists z exists y. ~(K(y) \/ false))>>
+...simplifies to...
+<<forall x. ~R(x) ==> (exists y. ~K(y))>>
 
 Example 5: Arithmetic mod n (n >= 2)
 
@@ -259,12 +297,42 @@ Integers mod 17:  true
 Integers mod 18:  false
 Integers mod 19:  true
 
-Example 6: Solve a hard sudoku board
+Example 6: Prenex Normal Form
+<<(exists x. F(x, z)) ==> (exists w. forall z. ~G(z, x))>>
+<<forall x' z'. ~F(x', z) \/ ~G(z', x)>>
+
+Example 7: Skolemization
+<<R(F(y)) \/ (exists x. P(f_w(x))) /\ (exists n. forall r y. exists w. M(G(y, w)) \/ (exists z. ~M(F(z, w))))>>
+<<R(F(y)) \/ P(f_w(c_x)) /\ (M(G(y', f_w'(y'))) \/ ~M(F(f_z(y'), f_w'(y'))))>>
+
+Example 8: Test a first order formula for validity.
+<<(forall x y. exists z. forall w. P(x) /\ Q(y) ==> R(z) /\ U(w)) ==> (exists x y. P(x) /\ Q(y)) ==> (exists z. R(z))>>
+Ground instances tried: 0
+Size of the Ground instance FormulaSet: 0
+
+...
+<snip>
+...
+
+Ground instances tried: 9
+Size of the Ground instance FormulaSet: 19
+
+Found 2 inconsistent tuples of skolemized negation: {[Fun("c_y", []), Fun("c_y", []), Fun("c_x", [])], [Fun("c_x", []), Fun("c_x", []), Fun("f_z", [Fun("c_x", []), Fun("c_y", [])])]}
+Formula is valid.
+Average time over a total of 1 runs is 2.080583ms.
+
+Fun Fact:  These vectors of terms are a minimal set of incompatible 
+        instantiations (so call "ground instances") of the free variables ["w", "y", "x"] in 
+        the (skolemization of) the negation of the formula we desired to check for validity:
+<<((~P(x) \/ ~Q(y)) \/ R(f_z(x, y)) /\ U(w)) /\ (P(c_x) /\ Q(c_y)) /\ ~R(x)>>
+
+Example 9: Solve a hard sudoku board (You should be in release mode for this.)
 (A sentence in 729 propositional variables)
 Is satisfiable?: true
 Check: Solution satisfies original constraints?: true
 Let's use the same solver to run several times and take the average time...
-Average time over a total of 10 runs is 207.100379ms.
+Average time over a total of 10 runs is 202.937433ms. 
+
 ```
 
 For suggestions or questions please contact tilley@fastmail.com

@@ -3,8 +3,8 @@ use std::fs;
 use std::ops::RangeInclusive;
 use std::path::Path;
 
-use crate::formula::Formula;
-use crate::propositional_logic::{FormulaSet, Prop};
+use crate::formula::{Formula, FormulaSet};
+use crate::propositional_logic::Prop;
 
 use itertools::iproduct;
 
@@ -49,7 +49,7 @@ pub fn parse_sudoku_dataset(path: &Path, maybe_limit: Option<usize>) -> Vec<Boar
     boards
 }
 
-pub fn _exactly_one_prop(props: &[Prop]) -> FormulaSet {
+pub fn _exactly_one_prop(props: &[Prop]) -> FormulaSet<Prop> {
     // Stating that exactly one of a collection of proposotions is true is
     // naturally expressed in CNF form.
     let at_least_one: BTreeSet<Formula<Prop>> = props.iter().map(Formula::atom).collect();
@@ -84,9 +84,9 @@ fn get_all_props(board_size: usize) -> AllProps {
     props
 }
 
-fn get_row_constraints(props: &AllProps, board_size: usize) -> FormulaSet {
+fn get_row_constraints(props: &AllProps, board_size: usize) -> FormulaSet<Prop> {
     let range: RangeInclusive<usize> = 1..=board_size;
-    let mut row_constraints: HashSet<FormulaSet> = HashSet::new();
+    let mut row_constraints: HashSet<FormulaSet<Prop>> = HashSet::new();
     for row in range.clone() {
         for val in range.clone() {
             // State that "exactly one column has the 1, exactly
@@ -95,7 +95,7 @@ fn get_row_constraints(props: &AllProps, board_size: usize) -> FormulaSet {
                 .clone()
                 .map(|col| props[&(row, col, val)].clone())
                 .collect();
-            let constraint: FormulaSet = _exactly_one_prop(&props);
+            let constraint: FormulaSet<Prop> = _exactly_one_prop(&props);
             row_constraints.insert(constraint);
         }
     }
@@ -105,9 +105,9 @@ fn get_row_constraints(props: &AllProps, board_size: usize) -> FormulaSet {
         .fold(FormulaSet::new(), |x, y| &x | &y)
 }
 
-fn get_col_constraints(props: &AllProps, board_size: usize) -> FormulaSet {
+fn get_col_constraints(props: &AllProps, board_size: usize) -> FormulaSet<Prop> {
     let range: RangeInclusive<usize> = 1..=board_size;
-    let mut col_constraints: HashSet<FormulaSet> = HashSet::new();
+    let mut col_constraints: HashSet<FormulaSet<Prop>> = HashSet::new();
     for col in range.clone() {
         for val in range.clone() {
             // State that "exactly one row has the 1, exactly
@@ -116,7 +116,7 @@ fn get_col_constraints(props: &AllProps, board_size: usize) -> FormulaSet {
                 .clone()
                 .map(|row| props[&(row, col, val)].clone())
                 .collect();
-            let constraint: FormulaSet = _exactly_one_prop(&props);
+            let constraint: FormulaSet<Prop> = _exactly_one_prop(&props);
             col_constraints.insert(constraint);
         }
     }
@@ -147,11 +147,11 @@ fn get_subboard_constraints(
     props: &AllProps,
     board_size: usize,
     subboard_size: usize,
-) -> FormulaSet {
+) -> FormulaSet<Prop> {
     let range: RangeInclusive<usize> = 1..=board_size;
     let (first_subboard_indices, subboard_offsets) =
         _get_subboard_indices_and_offsets(board_size, subboard_size);
-    let mut subboard_constraints: HashSet<FormulaSet> = HashSet::new();
+    let mut subboard_constraints: HashSet<FormulaSet<Prop>> = HashSet::new();
     for (row_offset, col_offset) in subboard_offsets {
         for val in range.clone() {
             // State that "exactly one square has the 1, exactly
@@ -160,7 +160,7 @@ fn get_subboard_constraints(
                 .iter()
                 .map(|(row, col)| props[&(row + row_offset, col + col_offset, val)].clone())
                 .collect();
-            let constraint: FormulaSet = _exactly_one_prop(&props);
+            let constraint: FormulaSet<Prop> = _exactly_one_prop(&props);
             subboard_constraints.insert(constraint);
         }
     }
@@ -170,17 +170,17 @@ fn get_subboard_constraints(
         .fold(FormulaSet::new(), |x, y| &x | &y)
 }
 
-fn get_numerical_constraints(props: &AllProps, board_size: usize) -> FormulaSet {
+fn get_numerical_constraints(props: &AllProps, board_size: usize) -> FormulaSet<Prop> {
     // Constraints that exactly one value holds at any given square.
     let range: RangeInclusive<usize> = 1..=board_size;
-    let mut numerical_constraints: HashSet<FormulaSet> = HashSet::new();
+    let mut numerical_constraints: HashSet<FormulaSet<Prop>> = HashSet::new();
     for row in range.clone() {
         for col in range.clone() {
             let props: Vec<Prop> = range
                 .clone()
                 .map(|val| props[&(row, col, val)].clone())
                 .collect();
-            let constraint: FormulaSet = _exactly_one_prop(&props);
+            let constraint: FormulaSet<Prop> = _exactly_one_prop(&props);
             numerical_constraints.insert(constraint);
         }
     }
@@ -190,7 +190,7 @@ fn get_numerical_constraints(props: &AllProps, board_size: usize) -> FormulaSet 
         .fold(FormulaSet::new(), |x, y| &x | &y)
 }
 
-fn get_start_constraints(props: &AllProps, board_size: usize, board: &Board) -> FormulaSet {
+fn get_start_constraints(props: &AllProps, board_size: usize, board: &Board) -> FormulaSet<Prop> {
     // Props for squares that have values to start must match those values.
     let range: RangeInclusive<usize> = 1..=board_size;
     let mut start_props: HashSet<Prop> = HashSet::new();
@@ -201,7 +201,7 @@ fn get_start_constraints(props: &AllProps, board_size: usize, board: &Board) -> 
             }
         }
     }
-    let start_constraint: FormulaSet = start_props
+    let start_constraint: FormulaSet<Prop> = start_props
         .into_iter()
         .map(|atom| BTreeSet::from([Formula::atom(&atom)]))
         .collect();
@@ -212,10 +212,10 @@ pub fn get_board_formulas(
     boards: &[Board],
     board_size: usize,
     subboard_size: usize,
-) -> Vec<FormulaSet> {
+) -> Vec<FormulaSet<Prop>> {
     let props = get_all_props(board_size);
 
-    let constant_constraints: FormulaSet = [
+    let constant_constraints: FormulaSet<Prop> = [
         get_row_constraints(&props, board_size),
         get_col_constraints(&props, board_size),
         get_subboard_constraints(&props, board_size, subboard_size),
@@ -234,7 +234,7 @@ pub fn get_board_formulas(
 mod sudoku_tests {
 
     use super::*;
-    use crate::propositional_logic::{DPLBSolver, DPLISolver};
+    use crate::formula::{DPLBSolver, DPLISolver};
     use crate::utils::run_repeatedly_and_average;
 
     #[test]
