@@ -125,6 +125,7 @@ fn main() {
     println!("\nExample 6: Prenex Normal Form");
     let formula = Formula::<Pred>::parse("(exists x. F(x, z)) ==> (exists w. forall z. ~G(z, x))");
     formula.pprint(&mut stdout);
+    println!("In prenex normal form:");
     let result = formula.pnf();
     result.pprint(&mut stdout);
 
@@ -134,6 +135,7 @@ fn main() {
         \\/ exists z. ~M(F(z, w))",
     );
     formula.pprint(&mut stdout);
+    println!("Skolemized:");
     let result = formula.skolemize();
     result.pprint(&mut stdout);
 
