@@ -1,0 +1,78 @@
+// build.rs uses this language specification to generate a parser
+// ('propositional_logic_grammar.rs') for propositional logic.
+
+use crate::token::{Token, LexicalError};
+use crate::formula::Formula;
+use crate::propositional_logic::Prop;
+
+grammar;
+
+extern {
+  type Location = usize;
+  type Error = LexicalError;
+
+  enum Token {
+    "forall" => Token::Forall,
+    "exists" => Token::Exists,
+    "alphanum" => Token::Alphanumeric(<String>),
+    "true" => Token::True,
+    "false" => Token::False,
+    "(" => Token::LParen,
+    ")" => Token::RParen,
+    "~" => Token::Negation,
+    "/\\" => Token::And,
+    "\\/" => Token::Or,
+    "==>" => Token::Imp,
+    "<=>" => Token::Iff,
+    "." => Token::Period,
+  }
+}
+
+pub Prop: Prop = {
+  <prop: "alphanum"> => Prop::new(&prop),
+}
+
+// NOTE: We differ from Harrison in that our quantifiers bind tighter
+// than any binary connective.
+pub QuantifiedFormula: Formula<Prop> = {
+  "forall" <varlist: (<"alphanum">)+> "." <inner: NonBinopFormula> => {
+    let mut result = inner;
+    for var in varlist.iter().rev() {
+      result = Formula::forall(var, &result);
+    }
+    result
+  },
+  "exists" <varlist: (<"alphanum">)+> "." <inner: NonBinopFormula> => {
+    let mut result = inner;
+    for var in varlist.iter().rev() {
+      result = Formula::exists(var, &result);
+    }
+    result
+  },
+}
+
+pub NonBinopFormula: Formula<Prop> = {
+  "true" => Formula::True,
+  "false" => Formula::False,
+  "(" <value: PropFormula> ")" => value,
+  "~" <value: NonBinopFormula>  => Formula::not(&value),
+  <quantified: QuantifiedFormula>  => quantified,
+  <prop: Prop> => Formula::atom(&prop),
+}
+
+pub PropFormula: Formula<Prop> = {
+  #[precedence(level="0")]
+  <value: NonBinopFormula> => value,
+
+  #[precedence(level="1")] #[assoc(side="right")]
+  <lhs: PropFormula> "/\\" <rhs: PropFormula> => Formula::and(&lhs, &rhs),
+
+  #[precedence(level="2")] #[assoc(side="right")]
+  <lhs: PropFormula> "\\/" <rhs: PropFormula> => Formula::or(&lhs, &rhs),
+
+  #[precedence(level="3")] #[assoc(side="right")]
+  <lhs: PropFormula> "==>" <rhs: PropFormula> => Formula::imp(&lhs, &rhs),
+
+  #[precedence(level="4")] #[assoc(side="right")]
+  <lhs: PropFormula> "<=>" <rhs: PropFormula> => Formula::iff(&lhs, &rhs),
+}

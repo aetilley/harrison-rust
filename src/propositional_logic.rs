@@ -8,10 +8,11 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Debug;
 use std::io::Write;
 
-use crate::formula::{parse_formula, write, Formula, Valuation};
-use crate::parse::{generic_parser, ErrInner, PartialParseResult};
+use crate::formula::{write, Formula, Valuation};
+use crate::propositional_logic_grammar::PropFormulaParser;
+use crate::token::{Lexer, LexicalError, Token};
 
-use log::debug;
+use lalrpop_util::ParseError;
 use regex::Regex;
 
 // A propositional variable.
@@ -61,43 +62,10 @@ mod prop_basic_tests {
 // PARSING
 
 impl Formula<Prop> {
-    fn _atom_parser<'a>(
-        variables: &[String],
-        input: &'a [String],
-    ) -> PartialParseResult<'a, Formula<Prop>> {
-        debug!(
-            "(prop)_atom_parser called on variables {:?}, input {:?}",
-            variables, input
-        );
-        match input {
-            // The conditional here seems unnecessary given how this is used in parse_formula.
-            [p, rest @ ..] if p != "(" => (Formula::atom(&Prop::new(p)), rest),
-            _ => panic!("Failed to parse propvar."),
-        }
-    }
-
-    fn _infix_parser<'a>(
-        variables: &[String],
-        input: &'a [String],
-    ) -> Result<PartialParseResult<'a, Formula<Prop>>, ErrInner> {
-        debug!(
-            "(prop)_infix_parser called on variables {:?}, input {:?}",
-            variables, input
-        );
-        Err("Infix operations not supported.")
-    }
-
-    fn _parse_prop_formula_inner(input: &[String]) -> PartialParseResult<'_, Formula<Prop>> {
-        parse_formula(
-            Formula::_infix_parser,
-            Formula::_atom_parser,
-            &[], // Bound Variables
-            input,
-        )
-    }
-
-    pub fn parse(input: &str) -> Formula<Prop> {
-        generic_parser(Formula::_parse_prop_formula_inner, input)
+    pub fn parse(input: &str) -> Result<Formula<Prop>, ParseError<usize, Token, LexicalError>> {
+        let lexer = Lexer::new(input);
+        let parser = PropFormulaParser::new();
+        parser.parse(lexer)
     }
 }
 
@@ -115,34 +83,49 @@ mod prop_parse_tests {
     }
 
     #[test]
-    fn test_parse() {
-        let result = Formula::<Prop>::parse("true");
+    fn test_parse_true() {
+        let result = Formula::<Prop>::parse("true").unwrap();
         let desired = Formula::True;
         assert_eq!(result, desired);
+    }
 
-        let result = Formula::<Prop>::parse("false");
+    #[test]
+    fn test_parse_false() {
+        let result = Formula::<Prop>::parse("false").unwrap();
         let desired = Formula::False;
         assert_eq!(result, desired);
+    }
 
-        let result = Formula::<Prop>::parse("A \\/ B");
+    #[test]
+    fn test_parse_or() {
+        let result = Formula::<Prop>::parse("A \\/ B").unwrap();
         let desired = Formula::or(&Formula::atom(&prop("A")), &Formula::atom(&prop("B")));
         assert_eq!(result, desired);
+    }
 
-        let result = Formula::<Prop>::parse("A \\/ ~A");
+    #[test]
+    fn test_parse_or2() {
+        let result = Formula::<Prop>::parse("A \\/ ~A").unwrap();
         let desired = Formula::or(
             &Formula::atom(&prop("A")),
             &Formula::not(&Formula::atom(&prop("A"))),
         );
         assert_eq!(result, desired);
+    }
 
-        let result = Formula::<Prop>::parse("(A /\\ ~A)");
+    #[test]
+    fn test_parse_and() {
+        let result = Formula::<Prop>::parse("(A /\\ ~A)").unwrap();
         let desired = Formula::and(
             &Formula::atom(&prop("A")),
             &Formula::not(&Formula::atom(&prop("A"))),
         );
         assert_eq!(result, desired);
+    }
 
-        let result = Formula::<Prop>::parse("p /\\ q /\\ p /\\ q");
+    #[test]
+    fn test_parse_and_assoc() {
+        let result = Formula::<Prop>::parse("p /\\ q /\\ p /\\ q").unwrap();
         let desired = Formula::and(
             &Formula::atom(&prop("p")),
             &Formula::and(
@@ -151,8 +134,11 @@ mod prop_parse_tests {
             ),
         );
         assert_eq!(result, desired);
+    }
 
-        let result = Formula::<Prop>::parse("a <=> (b /\\ c)");
+    #[test]
+    fn test_parse_comp() {
+        let result = Formula::<Prop>::parse("a <=> (b /\\ c)").unwrap();
         let desired = Formula::iff(
             &Formula::atom(&Prop::new("a")),
             &Formula::and(
@@ -161,15 +147,21 @@ mod prop_parse_tests {
             ),
         );
         assert_eq!(result, desired);
+    }
 
-        let result = Formula::<Prop>::parse("(a /\\ false) \\/ (false ==> d)");
+    #[test]
+    fn test_parse_comp2() {
+        let result = Formula::<Prop>::parse("(a /\\ false) \\/ (false ==> d)").unwrap();
         let desired = Formula::or(
             &Formula::and(&Formula::atom(&Prop::new("a")), &Formula::False),
             &Formula::imp(&Formula::False, &Formula::atom(&Prop::new("d"))),
         );
         assert_eq!(result, desired);
+    }
 
-        let result = Formula::<Prop>::parse("(p /\\ q) /\\ q ==> (p /\\ q) /\\ q");
+    #[test]
+    fn test_parse_comp3() {
+        let result = Formula::<Prop>::parse("(p /\\ q) /\\ q ==> (p /\\ q) /\\ q").unwrap();
         let desired = Formula::imp(
             &Formula::and(
                 &Formula::and(&Formula::atom(&prop("p")), &Formula::atom(&prop("q"))),
@@ -181,8 +173,11 @@ mod prop_parse_tests {
             ),
         );
         assert_eq!(result, desired);
+    }
 
-        let result = Formula::<Prop>::parse("a /\\ ~b \\/ (~c \\/ d)");
+    #[test]
+    fn test_parse_comp4() {
+        let result = Formula::<Prop>::parse("a /\\ ~b \\/ (~c \\/ d)").unwrap();
         let desired = Formula::or(
             &Formula::and(
                 &Formula::atom(&prop("a")),
@@ -194,19 +189,21 @@ mod prop_parse_tests {
             ),
         );
         assert_eq!(result, desired);
+    }
 
-        let result = Formula::<Prop>::parse("~(~A)");
-        let desired = Formula::not(&Formula::not(&Formula::atom(&prop("A"))));
-        assert_eq!(result, desired);
-
-        let result = Formula::<Prop>::parse("A /\\ (false \\/ B)");
+    #[test]
+    fn test_parse_comp6() {
+        let result = Formula::<Prop>::parse("A /\\ (false \\/ B)").unwrap();
         let desired = Formula::and(
             &Formula::atom(&prop("A")),
             &Formula::or(&Formula::False, &Formula::atom(&prop("B"))),
         );
         assert_eq!(result, desired);
+    }
 
-        let result = Formula::<Prop>::parse("~(A ==> (B <=> C))");
+    #[test]
+    fn test_parse_comp7() {
+        let result = Formula::<Prop>::parse("~(A ==> (B <=> C))").unwrap();
         let desired = Formula::not(&Formula::imp(
             &Formula::atom(&prop("A")),
             &Formula::iff(&Formula::atom(&prop("B")), &Formula::atom(&prop("C"))),
@@ -214,15 +211,48 @@ mod prop_parse_tests {
         assert_eq!(result, desired);
     }
 
-    // TODO Currently can't handle double (consecutive w/o parens) negation
-    // since tokenizer groups "~~" as one token.
-    // #[test]
-    // fn double_neg() {
-    //     env_logger::init();
-    //     let result = Formula::<Prop>::parse("~~A");
-    //     let desired = Formula::not(Formula::not(Formula::atom(prop("A"))));
-    //     assert_eq!(result, desired);
-    // }
+    #[test]
+    fn test_parse_quantifier() {
+        let result = Formula::<Prop>::parse("forall x y. (A /\\ (false \\/ B))").unwrap();
+        let desired = Formula::forall(
+            "x",
+            &Formula::forall(
+                "y",
+                &Formula::and(
+                    &Formula::atom(&prop("A")),
+                    &Formula::or(&Formula::False, &Formula::atom(&prop("B"))),
+                ),
+            ),
+        );
+        assert_eq!(result, desired);
+    }
+
+    #[test]
+    fn test_parse_quantifier_2() {
+        let result = Formula::<Prop>::parse("A /\\ exists z. (false \\/ B)").unwrap();
+        let desired = Formula::and(
+            &Formula::atom(&prop("A")),
+            &Formula::exists(
+                "z",
+                &Formula::or(&Formula::False, &Formula::atom(&prop("B"))),
+            ),
+        );
+        assert_eq!(result, desired);
+    }
+
+    #[test]
+    fn test_parse_double_neg_parens() {
+        let result = Formula::<Prop>::parse("~(~A)").unwrap();
+        let desired = Formula::not(&Formula::not(&Formula::atom(&prop("A"))));
+        assert_eq!(result, desired);
+    }
+
+    #[test]
+    fn test_double_neg_no_parens() {
+        let result = Formula::<Prop>::parse("~~A").unwrap();
+        let desired = Formula::not(&Formula::not(&Formula::atom(&prop("A"))));
+        assert_eq!(result, desired);
+    }
 }
 
 // PRINTING
@@ -310,13 +340,13 @@ mod eval_tests {
         let mut formula;
         let val = Valuation::from([(prop("A"), true), (prop("B"), false), (prop("C"), true)]);
 
-        formula = Formula::<Prop>::parse("A");
+        formula = Formula::<Prop>::parse("A").unwrap();
         assert!(formula.eval(&val));
 
-        formula = Formula::<Prop>::parse("B");
+        formula = Formula::<Prop>::parse("B").unwrap();
         assert!(!formula.eval(&val));
 
-        formula = Formula::<Prop>::parse("C <=> A /\\ B");
+        formula = Formula::<Prop>::parse("C <=> A /\\ B").unwrap();
         assert!(!formula.eval(&val));
     }
 }
@@ -393,8 +423,7 @@ impl Formula<Prop> {
         // (Event `True` has the empty valuation.)
         Formula::get_all_valuations(&self.atoms())
             .iter()
-            .map(|x| self.eval(x))
-            .all(|y| y)
+            .all(|x| self.eval(x))
     }
 
     pub fn brute_equivalent(&self, formula: &Formula<Prop>) -> bool {
@@ -442,7 +471,7 @@ mod core_sat_definitions_tests {
 
     #[test]
     fn test_print_truthtable() {
-        let formula = Formula::<Prop>::parse("C <=> A /\\ B");
+        let formula = Formula::<Prop>::parse("C <=> A /\\ B").unwrap();
         let mut output = Vec::new();
         formula.print_truthtable(&mut output);
         let output = String::from_utf8(output).expect("Not UTF-8");
@@ -465,22 +494,22 @@ false false false | true
 
     #[test]
     fn test_brute_tautology_and_satisfiable() {
-        let form1 = Formula::<Prop>::parse("true");
+        let form1 = Formula::<Prop>::parse("true").unwrap();
         assert!(form1.brute_tautology());
         assert!(!form1.brute_unsatisfiable());
         assert!(form1.brute_satisfiable());
 
-        let form2 = Formula::<Prop>::parse("A \\/ B");
+        let form2 = Formula::<Prop>::parse("A \\/ B").unwrap();
         assert!(!form2.brute_tautology());
         assert!(!form2.brute_unsatisfiable());
         assert!(form2.brute_satisfiable());
 
-        let form3 = Formula::<Prop>::parse("A \\/ ~A");
+        let form3 = Formula::<Prop>::parse("A \\/ ~A").unwrap();
         assert!(form3.brute_tautology());
         assert!(!form3.brute_unsatisfiable());
         assert!(form3.brute_satisfiable());
 
-        let form4 = Formula::<Prop>::parse("A /\\ ~A");
+        let form4 = Formula::<Prop>::parse("A /\\ ~A").unwrap();
         assert!(!form4.brute_tautology());
         assert!(form4.brute_unsatisfiable());
         assert!(!form4.brute_satisfiable());
@@ -572,30 +601,30 @@ mod normal_form_tests {
 
     #[test]
     fn test_psubst() {
-        let map = HashMap::from([(prop("p"), Formula::<Prop>::parse("p /\\ q"))]);
-        let formula = Formula::<Prop>::parse("p /\\ q ==> p /\\ q");
+        let map = HashMap::from([(prop("p"), Formula::<Prop>::parse("p /\\ q").unwrap())]);
+        let formula = Formula::<Prop>::parse("p /\\ q ==> p /\\ q").unwrap();
         let result = formula.psubst(&map);
-        let desired = Formula::<Prop>::parse("(p /\\ q) /\\ q ==> (p /\\ q) /\\ q");
+        let desired = Formula::<Prop>::parse("(p /\\ q) /\\ q ==> (p /\\ q) /\\ q").unwrap();
         assert_eq!(result, desired)
     }
 
     #[test]
     fn test_dual() {
-        let formula = Formula::<Prop>::parse("(a /\\ ~b) \\/ (~c \\/ d)");
-        let desired = Formula::<Prop>::parse("(a \\/ ~b ) /\\ (~c /\\ d)");
+        let formula = Formula::<Prop>::parse("(a /\\ ~b) \\/ (~c \\/ d)").unwrap();
+        let desired = Formula::<Prop>::parse("(a \\/ ~b ) /\\ (~c /\\ d)").unwrap();
         assert_eq!(formula.dual(), desired);
     }
     #[test]
     fn test_nnf() {
-        let formula = Formula::<Prop>::parse("~(~A) /\\ (false \\/ B)");
-        let desired = Formula::<Prop>::parse("A /\\ B");
+        let formula = Formula::<Prop>::parse("~(~A) /\\ (false \\/ B)").unwrap();
+        let desired = Formula::<Prop>::parse("A /\\ B").unwrap();
         assert_eq!(formula.nnf(), desired);
     }
 
     #[test]
     fn test_nenf() {
-        let formula = Formula::<Prop>::parse("~(~A) /\\ (false \\/ B)");
-        let desired = Formula::<Prop>::parse("A /\\ B");
+        let formula = Formula::<Prop>::parse("~(~A) /\\ (false \\/ B)").unwrap();
+        let desired = Formula::<Prop>::parse("A /\\ B").unwrap();
         assert_eq!(formula.nnf(), desired);
     }
 }
@@ -775,38 +804,38 @@ mod def_cnf_tests {
         let sentence = format!(
             "
         ((oranges /\\ (true \\/ {})) /\\ (B ==> apples)) /\\
-        ((~A \\/ (false <=> {})) \\/ (D /\\ 11))
+        ((~A \\/ (false <=> {})) \\/ (D /\\ A11))
         ",
             Formula::_mkprop_name(3),
             Formula::_mkprop_name(5)
         );
 
-        let formula = Formula::<Prop>::parse(&sentence);
+        let formula = Formula::<Prop>::parse(&sentence).unwrap();
         let result = Formula::_max_taken_index(&formula);
         assert_eq!(result, 5);
     }
 
     #[test]
     fn test_def_cnf_full_trivial() {
-        let formula = Formula::<Prop>::parse("A");
+        let formula = Formula::<Prop>::parse("A").unwrap();
         let result = formula.def_cnf_full();
         assert_eq!(result, formula);
     }
 
     #[test]
     fn test_def_cnf_opt_trivial() {
-        let formula = Formula::<Prop>::parse("A");
+        let formula = Formula::<Prop>::parse("A").unwrap();
         let result = formula.def_cnf_opt();
         assert_eq!(result, formula);
     }
 
     #[test]
     fn test_def_cnf_full_nontrivial() {
-        let formula = Formula::<Prop>::parse("A /\\ B");
+        let formula = Formula::<Prop>::parse("A /\\ B").unwrap();
         let result = formula.def_cnf_full();
         let p = Formula::_mkprop_name(0);
         let desired_equiv_str = format!("{p} /\\ ({p} <=> A /\\ B)");
-        let desired_equiv = Formula::<Prop>::parse(&desired_equiv_str);
+        let desired_equiv = Formula::<Prop>::parse(&desired_equiv_str).unwrap();
         // Since we know that `desired_equiv` is equisatisfiable with the input `formula`
         // the following shows that the result is equisatisfiable with the input `formula`.
         assert!(result.brute_equivalent(&desired_equiv));
@@ -815,14 +844,14 @@ mod def_cnf_tests {
 
     #[test]
     fn test_def_cnf_opt_nontrivial() {
-        let formula = Formula::<Prop>::parse("A /\\ B");
+        let formula = Formula::<Prop>::parse("A /\\ B").unwrap();
         let result = formula.def_cnf_opt();
         assert_eq!(result, formula);
     }
 
     #[test]
     fn test_def_cnf_full_lesstrivial() {
-        let formula = Formula::<Prop>::parse("(A ==> B) \\/ (C /\\ D)");
+        let formula = Formula::<Prop>::parse("(A ==> B) \\/ (C /\\ D)").unwrap();
         let result = formula.def_cnf_full();
         let mp0 = Formula::_mkprop_name(0);
         let mp1 = Formula::_mkprop_name(1);
@@ -835,7 +864,7 @@ mod def_cnf_tests {
         {mp2}",
         );
 
-        let desired_equiv = Formula::<Prop>::parse(&desired_equiv_sentence);
+        let desired_equiv = Formula::<Prop>::parse(&desired_equiv_sentence).unwrap();
 
         // Since we know that `desired_equiv` is equisatisfiable with the input `formula`
         // the following shows that the result is equisatisfiable with the input `formula`.
@@ -846,10 +875,10 @@ mod def_cnf_tests {
 
     #[test]
     fn test_def_cnf_opt_lesstrivial() {
-        let formula = Formula::<Prop>::parse("A \\/ B /\\ C");
+        let formula = Formula::<Prop>::parse("A \\/ B /\\ C").unwrap();
         let result = formula.def_cnf_opt();
         // Note the top nodes of the tree are preserved.
-        let desired = Formula::<Prop>::parse("(A \\/ B) /\\ (A \\/ C)");
+        let desired = Formula::<Prop>::parse("(A \\/ B) /\\ (A \\/ C)").unwrap();
         assert_eq!(result, desired);
     }
 }

@@ -1,0 +1,174 @@
+// build.rs uses this language specification to generate a parser 
+// ('first_order_logic_grammar.rs') for first-order logic.
+
+use crate::token::{Token, LexicalError};
+use crate::formula::Formula;
+use crate::first_order_logic::{Term, Pred};
+use crate::propositional_logic::Prop;
+
+grammar;
+
+extern {
+  type Location = usize;
+  type Error = LexicalError;
+
+  enum Token {
+    "alphanum" => Token::Alphanumeric(<String>),
+    "cnst" => Token::Constant(<String>),
+    "variable" => Token::Alphanumeric(<String>),
+    "infix_relation" => Token::InfixRelation(<String>),
+    "true" => Token::True,
+    "false" => Token::False,
+    "forall" => Token::Forall,
+    "exists" => Token::Exists,
+    "(" => Token::LParen,
+    ")" => Token::RParen,
+    "~" => Token::Negation,
+    "/\\" => Token::And,
+    "\\/" => Token::Or,
+    "==>" => Token::Imp,
+    "<=>" => Token::Iff,
+    "+" => Token::Plus,
+    "-" => Token::Minus,
+    "*" => Token::Times,
+    "/" => Token::Divide,
+    "^" => Token::Exp,
+    "::" => Token::Cons,
+    "," => Token::Comma,
+    "." => Token::Period,
+  }
+}
+
+// A (possibly empty) comma separated list of terms
+pub TermList: Vec<Term> = {
+  <mut list: (<Term> ",")*> <tail: Term?> => match tail {
+    None => list,
+    Some(tail) => {
+      list.push(tail);
+      list
+    }
+  },
+}
+
+// TODO:  Use e.g. #[precedence(level="1")] #[assoc(side="left")]
+// Unfortunately we must include the extra production clauses below
+// since otherwise we run into a ambiguity for, e.g. "(" "alphanum" ")"
+// since "alphanum" could be either a variable or a predicate.
+
+pub AtomicTerm: Term = {
+  "(" <term: BinopTerm> ")" => term,
+  "-" <atomic: AtomicTerm> => Term::unary_minus(&atomic),
+  <func: "alphanum"> "(" <list: TermList> ")" => Term::fun(&func, &list),
+  <cnst: "cnst"> => Term::constant(&cnst),
+  <var: "alphanum"> => Term::var(&var),
+}
+
+pub ExpTerm: Term = {
+  // To Avoid ambiguity..
+  //<term: AtomicTerm> => term,
+  <lhs: AtomicTerm> "^" <rhs: ExpTerm> => Term::exp(&lhs, &rhs),
+  <lhs: AtomicTerm> "^" <rhs: AtomicTerm> => Term::exp(&lhs, &rhs),
+}
+
+pub DivTerm: Term = {
+  <term: ExpTerm> => term,
+  // Note that Div associates to the left.
+  <lhs: DivTerm> "/" <rhs: ExpTerm> => Term::div(&lhs, &rhs),
+  <lhs: AtomicTerm> "/" <rhs: ExpTerm> => Term::div(&lhs, &rhs),
+  <lhs: DivTerm> "/" <rhs: AtomicTerm> => Term::div(&lhs, &rhs),
+  <lhs: AtomicTerm> "/" <rhs: AtomicTerm> => Term::div(&lhs, &rhs),
+}
+
+pub MultTerm: Term = {
+  <term: DivTerm> => term,
+  <lhs: DivTerm> "*" <rhs: MultTerm> => Term::mul(&lhs, &rhs),
+  <lhs: AtomicTerm> "*" <rhs: MultTerm> => Term::mul(&lhs, &rhs),
+  <lhs: DivTerm> "*" <rhs: AtomicTerm> => Term::mul(&lhs, &rhs),
+  <lhs: AtomicTerm> "*" <rhs: AtomicTerm> => Term::mul(&lhs, &rhs),
+}
+
+pub MinusTerm: Term = {
+  <term: MultTerm> => term,
+  // Note that Minus associates to the left.
+  <lhs: MinusTerm> "-" <rhs: MultTerm> => Term::sub(&lhs, &rhs),
+  <lhs: AtomicTerm> "-" <rhs: MultTerm> => Term::sub(&lhs, &rhs),
+  <lhs: MinusTerm> "-" <rhs: AtomicTerm> => Term::sub(&lhs, &rhs),
+  <lhs: AtomicTerm> "-" <rhs: AtomicTerm> => Term::sub(&lhs, &rhs),
+}
+
+pub PlusTerm: Term = {
+  <term: MinusTerm> => term,
+  <lhs: MinusTerm> "+" <rhs: PlusTerm> => Term::add(&lhs, &rhs),
+  <lhs: AtomicTerm> "+" <rhs: PlusTerm> => Term::add(&lhs, &rhs),
+  <lhs: MinusTerm> "+" <rhs: AtomicTerm> => Term::add(&lhs, &rhs),
+  <lhs: AtomicTerm> "+" <rhs: AtomicTerm> => Term::add(&lhs, &rhs),
+}
+
+pub ConsTerm: Term = {
+  <term: PlusTerm> => term,
+  <lhs: PlusTerm> "::" <rhs: ConsTerm> => Term::cons(&lhs, &rhs),
+  <lhs: AtomicTerm> "::" <rhs: ConsTerm> => Term::cons(&lhs, &rhs),
+  <lhs: PlusTerm> "::" <rhs: AtomicTerm> => Term::cons(&lhs, &rhs),
+  <lhs: AtomicTerm> "::" <rhs: AtomicTerm> => Term::cons(&lhs, &rhs),
+}
+
+pub BinopTerm: Term = {
+  <term: ConsTerm> => term,
+}
+
+pub Term: Term = {
+  <binop: BinopTerm> => binop,
+  <atomic: AtomicTerm> => atomic,
+}
+
+pub Predication: Pred = {
+  <pred: "alphanum"> "(" <terms: TermList> ")" => Pred::new(&pred, &terms),
+  <pred: "alphanum">  => Pred::new(&pred, &[]),
+  <lhs: Term> <infix: "infix_relation"> <rhs: Term> => Pred::new(&infix, &[lhs, rhs]),
+}
+
+// NOTE: We differ from Harrison in that our quantifiers bind tighter 
+// than any binary connective.
+pub QuantifiedFormula: Formula<Pred> = {
+  "forall" <varlist: (<"alphanum">)+> "." <inner: NonBinopFormula> => {
+    let mut result = inner;
+    for var in varlist.iter().rev() {
+      result = Formula::forall(var, &result);
+    }
+    result
+  },
+  "exists" <varlist: (<"alphanum">)+> "." <inner: NonBinopFormula> => {
+    let mut result = inner;
+    for var in varlist.iter().rev() {
+      result = Formula::exists(var, &result);
+    }
+    result
+  },
+}
+
+pub NonBinopFormula: Formula<Pred> = {
+  "true" => Formula::True,
+  "false" => Formula::False,
+  "(" <value: PredFormula> ")" => value,
+  "~" <value: NonBinopFormula>  => Formula::not(&value),
+  <quantified: QuantifiedFormula>  => quantified,
+  <pred: Predication> => Formula::atom(&pred),
+}
+
+pub PredFormula: Formula<Pred> = {
+  #[precedence(level="0")] // Highest precedence
+  <formula: NonBinopFormula> => formula,
+
+  #[precedence(level="1")] #[assoc(side="right")]
+  <lhs: PredFormula> "/\\" <rhs: PredFormula> => Formula::and(&lhs, &rhs),
+
+  #[precedence(level="2")] #[assoc(side="right")]
+  <lhs: PredFormula> "\\/" <rhs: PredFormula> => Formula::or(&lhs, &rhs),
+
+  #[precedence(level="3")] #[assoc(side="right")]
+  <lhs: PredFormula> "==>" <rhs: PredFormula> => Formula::imp(&lhs, &rhs),
+
+  #[precedence(level="4")] #[assoc(side="right")]
+  <lhs: PredFormula> "<=>" <rhs: PredFormula> => Formula::iff(&lhs, &rhs),
+    
+}

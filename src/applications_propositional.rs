@@ -34,10 +34,10 @@ fn adder(
 }
 
 pub fn ripplecarry(
-    x: &Vec<Formula<Prop>>,
-    y: &Vec<Formula<Prop>>,
-    carry: &Vec<Formula<Prop>>,
-    out: &Vec<Formula<Prop>>,
+    x: &[Formula<Prop>],
+    y: &[Formula<Prop>],
+    carry: &[Formula<Prop>],
+    out: &[Formula<Prop>],
     n: usize,
 ) -> Formula<Prop> {
     /* Assumes that bits with greater indices in  x, y, etc correspond to
@@ -50,7 +50,7 @@ pub fn ripplecarry(
     assert_eq!(out.len(), n + 1);
 
     // Set initial carry bit to zero.
-    let mut carry = carry.clone();
+    let mut carry = Vec::from(carry);
     carry.insert(0, Formula::False);
 
     // conjoin that out[n] <==> carry[n]

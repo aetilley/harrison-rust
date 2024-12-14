@@ -8,12 +8,6 @@ use std::fmt::Debug;
 use std::hash::Hash;
 use std::io::Write;
 
-use crate::parse::{
-    maybe_parse_bracketed, parse_bracketed, parse_right_infix, ErrInner, MaybePartialParseResult,
-    MaybeSubparser, PartialParseResult, Subparser, SubparserFuncType,
-};
-
-use log::debug;
 use priority_queue::PriorityQueue;
 
 //### Formula AST ###
@@ -465,203 +459,6 @@ mod formula_tests_general {
         );
     }
 }
-// ### Formula Parsing ###
-
-fn parse_atomic_formula<'a, T: Clone + Debug + Hash + Eq + Ord>(
-    // A better name may be "parse_unary" or "parse_all_but_binary_connectives".
-    infix_parser: for<'b> fn(&[String], &'b [String]) -> MaybePartialParseResult<'b, Formula<T>>,
-    atom_parser: for<'b> fn(&[String], &'b [String]) -> PartialParseResult<'b, Formula<T>>,
-    variables: &[String],
-    input: &'a [String],
-) -> PartialParseResult<'a, Formula<T>> {
-    debug!(
-        "parse_atomic_formula called on variables {:?}, input {:?}",
-        variables, input
-    );
-    match input {
-        [] => {
-            panic!("Formula expected.");
-        }
-        [head, rest @ ..] if head == "false" => (Formula::False, rest),
-        [head, rest @ ..] if head == "true" => (Formula::True, rest),
-        [head, rest @ ..] if head == "(" => {
-            // First try infix and if fail, fall back to parse_formula.
-            let r = maybe_parse_bracketed(
-                MaybeSubparser {
-                    fun: &|sub_input| infix_parser(variables, sub_input),
-                },
-                rest,
-            );
-            match r {
-                Ok(result) => result,
-                Err(_) => parse_bracketed(
-                    Subparser {
-                        fun: &|sub_input| {
-                            parse_formula(infix_parser, atom_parser, variables, sub_input)
-                        },
-                    },
-                    rest,
-                ),
-            }
-        }
-        [head, rest @ ..] if head == "~" => {
-            let (ast, rest1) = parse_atomic_formula(infix_parser, atom_parser, variables, rest);
-            (Formula::not(&ast), rest1)
-        }
-        [head, var, rest @ ..] if head == "forall" => {
-            let mut variables = variables.to_owned();
-            variables.push(String::from(var));
-            parse_quantified(
-                infix_parser,
-                atom_parser,
-                &variables,
-                Formula::forall,
-                var,
-                rest,
-            )
-        }
-        [head, var, rest @ ..] if head == "exists" => {
-            let mut variables = variables.to_owned();
-            variables.push(String::from(var));
-            parse_quantified(
-                infix_parser,
-                atom_parser,
-                &variables,
-                Formula::exists,
-                var,
-                rest,
-            )
-        }
-        _ => atom_parser(variables, input),
-    }
-}
-
-fn parse_quantified<'a, T: Clone + Debug + Hash + Eq + Ord>(
-    infix_parser: for<'b> fn(&[String], &'b [String]) -> MaybePartialParseResult<'b, Formula<T>>,
-    atom_parser: for<'b> fn(&[String], &'b [String]) -> PartialParseResult<'b, Formula<T>>,
-    variables: &[String],
-    constructor: fn(&str, &Formula<T>) -> Formula<T>,
-    variable: &String,
-    input: &'a [String],
-) -> PartialParseResult<'a, Formula<T>> {
-    debug!(
-        "parse_quantified called on variables {:?}, variable {:?}, input {:?}",
-        variables, variable, input
-    );
-    match input {
-        [head, rest @ ..] => {
-            let (head1, rest1) = if head == "." {
-                parse_formula(infix_parser, atom_parser, variables, rest)
-            } else {
-                let mut variables = variables.to_owned();
-                variables.push(String::from(head));
-                parse_quantified(
-                    infix_parser,
-                    atom_parser,
-                    &variables,
-                    constructor,
-                    head,
-                    rest,
-                )
-            };
-            (constructor(variable, &head1), rest1)
-        }
-        _ => {
-            panic!("Body of quantified term unexpected");
-        }
-    }
-}
-
-pub fn parse_formula<'a, T: Clone + Debug + Hash + Eq + Ord>(
-    infix_parser: for<'b> fn(&[String], &'b [String]) -> MaybePartialParseResult<'b, Formula<T>>,
-    atom_parser: for<'b> fn(&[String], &'b [String]) -> PartialParseResult<'b, Formula<T>>,
-    variables: &[String],
-    input: &'a [String],
-) -> PartialParseResult<'a, Formula<T>> {
-    debug!(
-        "parse_formula called on variables {:?}, input {:?}",
-        variables, input
-    );
-    // A better name might be "parse_binary_connectives".
-    let atomic_subparser: SubparserFuncType<Formula<T>> =
-        &|input| parse_atomic_formula(infix_parser, atom_parser, variables, input);
-    let and_subparser: SubparserFuncType<Formula<T>> = &|input| {
-        parse_right_infix(
-            "/\\",
-            Formula::and,
-            Subparser {
-                fun: atomic_subparser,
-            },
-            input,
-        )
-    };
-    let or_subparser: SubparserFuncType<Formula<T>> = &|input| {
-        let (result, rest) =
-            parse_right_infix("\\/", Formula::or, Subparser { fun: and_subparser }, input);
-        (result, rest)
-    };
-    let imp_subparser: SubparserFuncType<Formula<T>> =
-        &|input| parse_right_infix("==>", Formula::imp, Subparser { fun: or_subparser }, input);
-    let iff_subparser: SubparserFuncType<Formula<T>> =
-        &|input| parse_right_infix("<=>", Formula::iff, Subparser { fun: imp_subparser }, input);
-    let parser = iff_subparser;
-    parser(input)
-}
-
-#[cfg(test)]
-mod generic_ast_parse_tests {
-    // We let T = String for testing purposes.
-
-    // TODO(arthur) MORE TESTS (try to cover all that is generic yet not covered
-    // by the tests in parse.rs. (Move some from propositional parsing tests?).
-    use super::*;
-    use crate::utils::slice_to_vec_of_owned;
-
-    fn init() {
-        let _ = env_logger::builder().is_test(true).try_init();
-    }
-
-    #[test]
-    fn test_parse_formula_basic() {
-        fn _tester_infix_parser<'a>(
-            _variables: &[String],
-            _input: &'a [String],
-        ) -> Result<PartialParseResult<'a, Formula<String>>, &'static str> {
-            Err("Infix operations not supported.")
-        }
-
-        fn _tester_atom_parser<'a>(
-            _variables: &[String],
-            input: &'a [String],
-        ) -> PartialParseResult<'a, Formula<String>> {
-            match input {
-                [p, rest @ ..] if p != "(" => (Formula::atom(&String::from(p)), rest),
-                _ => panic!("Failed to parse propvar."),
-            }
-        }
-
-        let variables = &vec![];
-
-        let input_vec: Vec<String> =
-            slice_to_vec_of_owned(&["(", "b", "\\/", "c", ")", "==>", "a"]);
-
-        let input: &[String] = &input_vec[..];
-
-        let result: PartialParseResult<Formula<String>> =
-            parse_formula(_tester_infix_parser, _tester_atom_parser, variables, input);
-
-        let desired_ast = Formula::imp(
-            &Formula::or(
-                &Formula::atom(&String::from("b")),
-                &Formula::atom(&String::from("c")),
-            ),
-            &Formula::atom(&String::from("a")),
-        );
-        let desired_rest: &[String] = &[];
-        let desired = (desired_ast, desired_rest);
-        assert_eq!(result, desired);
-    }
-}
 
 // ### Formula Printing ###
 
@@ -781,7 +578,9 @@ fn print_quant<T: Clone + Debug + Hash + Eq + Ord, W: Write>(
     });
     write(dest, ". ");
     open_box(0);
-    print_formula(dest, pfn, 0, &body);
+    // Recall that, unlike Harrison, we make quantifiers bind tighter than
+    // all binops, hence the precidence of 9 here.
+    print_formula(dest, pfn, 9, &body);
     close_box();
 }
 
@@ -1010,7 +809,7 @@ mod generic_ast_print_tests {
                 &Formula::atom(&String::from("Goodbye")),
             ),
         );
-        let desired = "<<forall x. Hello /\\ Goodbye>>";
+        let desired = "<<forall x. (Hello /\\ Goodbye)>>";
         _test_pprint_general(formula, desired);
     }
 
@@ -1570,7 +1369,6 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
                     // This must be proper containment.
                     keep = false;
                     break;
-                } else {
                 }
             }
             if keep {
@@ -2098,6 +1896,8 @@ mod normal_form_tests {
         assert!(formula.is_cnf());
     }
 }
+
+pub type ErrInner = &'static str;
 
 // SAT
 //
