@@ -3,7 +3,7 @@ name: harrison-rust build, check, test, and lint
 on: 
   push:
     branches:    
-    - main
+    - '*'
 
 jobs:
   build-and-check:
