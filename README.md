@@ -334,7 +334,7 @@ Size of the Ground instance FormulaSet: 37
 
 Found 2 inconsistent tuples of skolemized negation: {[Fun("c_x", []), Fun("f_z", [Fun("c_x", []), Fun("c_y", [])]), Fun("c_x", [])], [Fun("c_y", []), Fun("c_x", []), Fun("c_y", [])]}
 Formula is valid.
-Average time over a total of 1 runs is 21.675417ms.
+Average time over a total of 1 runs is 22.421292ms.
 
 Fun Fact:  These vectors of terms are a minimal set of incompatible 
         instantiations (so call "ground instances") of the free variables ["w", "x", "y"] in 
@@ -368,6 +368,6 @@ Example 9: Solve a hard sudoku board (You should be in release mode for this.)
 Is satisfiable?: true
 Check: Solution satisfies original constraints?: true
 Let's use the same solver to run several times and take the average time...
-Average time over a total of 10 runs is 268.272737ms.
+Average time over a total of 10 runs is 189.11505ms.
 
 ```
