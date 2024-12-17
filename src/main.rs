@@ -94,8 +94,8 @@ fn main() {
     let cnf = Formula::cnf(&formula);
     cnf.pprint(&mut stdout);
 
-    // Satisfiable
-    // Not a tautology
+    println!("Is satisfiable?: {}", formula.dpll_sat());
+    println!("Is tautology?: {}", formula.dpll_taut());
 
     println!("\nExample 3: A Contradiction");
 
