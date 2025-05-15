@@ -2,3 +2,4 @@
 *.swo
 *.lock
 target
+.ipynb_checkpoints
