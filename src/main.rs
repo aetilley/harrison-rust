@@ -1,4 +1,3 @@
-#![feature(box_patterns)]
 #![allow(clippy::print_literal)]
 use std::collections::{HashMap, HashSet};
 use std::io::stdout;
@@ -33,10 +32,6 @@ fn main() {
     1) Skolemization
     1) Herbrand methods of first-order validity checking (Gilmore and Davis-Putnam)
 
-    NOTE:  Currently this project RELIES ON NIGHTLY RUST for exactly one feature `box_patterns`.
-    For more info, see 
-    https://doc.rust-lang.org/beta/unstable-book/language-features/box-patterns.html
-    
     This README is the direct print output of `main.rs` (`cargo run --release > README.md`)
     (Make sure to include the release flag and run from the top level directory.)
     
@@ -333,9 +328,10 @@ fn main() {
         ==> (exists x y. (P(x) /\\ Q(y))) ==> (exists z. R(z))";
     let formula = Formula::<Pred>::parse(string);
     let compute_unsat_core = true;
+    let max_depth = 100;
     // Note that this will run forever if `formula` is *not* a validity.
     let run = || {
-        Formula::davis_putnam(&formula, compute_unsat_core);
+        Formula::davis_putnam(&formula, compute_unsat_core, max_depth);
     };
     run_repeatedly_and_average(run, 1);
     let negation = formula.negate().skolemize();
@@ -354,9 +350,10 @@ fn main() {
         ==> (exists x y. (P(x) /\\ Q(y))) ==> (exists z. R(z))";
     let formula = Formula::<Pred>::parse(string).unwrap();
     let compute_unsat_core = true;
+    let max_depth = 100;
     // Note that this will run forever if `formula` is *not* a validity.
     let run = || {
-        Formula::davis_putnam(&formula, compute_unsat_core);
+        Formula::davis_putnam(&formula, compute_unsat_core, max_depth);
     };
     run_repeatedly_and_average(run, 1);
     let negation = formula.negate().skolemize();

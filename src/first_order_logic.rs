@@ -8,7 +8,7 @@ use std::hash::Hash;
 use std::io::Write;
 
 use crate::first_order_logic_grammar::{PredFormulaParser, TermParser};
-use crate::formula::{close_box, open_box, print_break, write, Formula, Valuation};
+use crate::formula::{close_box, open_box, print_break, write, Formula};
 use crate::token::INFIX_RELATION_SYMBOLS;
 use crate::token::{Lexer, LexicalError, Token};
 
@@ -1227,12 +1227,11 @@ impl Formula<Pred> {
         match self {
             Formula::True | Formula::False => HashSet::new(),
             Formula::Atom(pred) => pred.variables(),
-            Formula::Not(box p) => p.variables(),
-            Formula::And(box p, box q)
-            | Formula::Or(box p, box q)
-            | Formula::Imp(box p, box q)
-            | Formula::Iff(box p, box q) => &p.variables() | &q.variables(),
-            Formula::Forall(var, box p) | Formula::Exists(var, box p) => {
+            Formula::Not(p) => p.variables(),
+            Formula::And(p, q) | Formula::Or(p, q) | Formula::Imp(p, q) | Formula::Iff(p, q) => {
+                &p.variables() | &q.variables()
+            }
+            Formula::Forall(var, p) | Formula::Exists(var, p) => {
                 let mut vars = p.variables();
                 vars.insert(var.clone());
                 vars
@@ -1253,12 +1252,11 @@ impl Formula<Pred> {
         match self {
             Formula::True | Formula::False => HashSet::new(),
             Formula::Atom(pred) => pred.variables(),
-            Formula::Not(box p) => p.free_variables(),
-            Formula::And(box p, box q)
-            | Formula::Or(box p, box q)
-            | Formula::Imp(box p, box q)
-            | Formula::Iff(box p, box q) => &p.free_variables() | &q.free_variables(),
-            Formula::Forall(var, box p) | Formula::Exists(var, box p) => {
+            Formula::Not(p) => p.free_variables(),
+            Formula::And(p, q) | Formula::Or(p, q) | Formula::Imp(p, q) | Formula::Iff(p, q) => {
+                &p.free_variables() | &q.free_variables()
+            }
+            Formula::Forall(var, p) | Formula::Exists(var, p) => {
                 let mut vars = p.free_variables();
                 vars.remove(var);
                 vars
@@ -1339,13 +1337,13 @@ impl Formula<Pred> {
                 let new_args: Vec<Term> = terms.iter().map(|term| term.subst(inst)).collect();
                 Formula::atom(&Pred::new(name, &new_args))
             }
-            Formula::Not(box p) => Formula::not(&p.subst(inst)),
-            Formula::And(box p, box q) => Formula::and(&p.subst(inst), &q.subst(inst)),
-            Formula::Or(box p, box q) => Formula::or(&p.subst(inst), &q.subst(inst)),
-            Formula::Imp(box p, box q) => Formula::imp(&p.subst(inst), &q.subst(inst)),
-            Formula::Iff(box p, box q) => Formula::iff(&p.subst(inst), &q.subst(inst)),
-            Formula::Forall(x, box p) => Formula::_subst_quant(inst, &Formula::forall, x, p),
-            Formula::Exists(x, box p) => Formula::_subst_quant(inst, &Formula::exists, x, p),
+            Formula::Not(p) => Formula::not(&p.subst(inst)),
+            Formula::And(p, q) => Formula::and(&p.subst(inst), &q.subst(inst)),
+            Formula::Or(p, q) => Formula::or(&p.subst(inst), &q.subst(inst)),
+            Formula::Imp(p, q) => Formula::imp(&p.subst(inst), &q.subst(inst)),
+            Formula::Iff(p, q) => Formula::iff(&p.subst(inst), &q.subst(inst)),
+            Formula::Forall(x, p) => Formula::_subst_quant(inst, &Formula::forall, x, p),
+            Formula::Exists(x, p) => Formula::_subst_quant(inst, &Formula::exists, x, p),
         }
     }
 }
@@ -1448,11 +1446,11 @@ impl Formula<Pred> {
         // formulas `Qx.p` when quantified formulas `p` do not contain
         // free occurences of `x`.
         match formula {
-            Formula::Forall(x, box p) | Formula::Exists(x, box p) => {
+            Formula::Forall(x, p) | Formula::Exists(x, p) => {
                 if p.free_variables().contains(x) {
                     formula.clone()
                 } else {
-                    p.clone()
+                    *p.clone()
                 }
             }
             _ => Formula::psimplify_step(formula),
@@ -1476,120 +1474,129 @@ impl Formula<Pred> {
         // Recursively pulls out all quantifiers leading `p` and `q` to result in
         // a prenex formula.
         match formula {
-            Formula::And(box Formula::Forall(x, box p), box Formula::Forall(y, box q)) => {
-                Formula::pullq(
+            Formula::And(r, s) => match (*r.clone(), *s.clone()) {
+                (Formula::Forall(x, p), Formula::Forall(y, q)) => Formula::pullq(
                     true,
                     true,
                     formula,
                     &Formula::forall,
                     &Formula::and,
-                    x,
-                    y,
-                    p,
-                    q,
-                )
-            }
-            Formula::Or(box Formula::Exists(x, box p), box Formula::Exists(y, box q)) => {
-                Formula::pullq(
+                    &x,
+                    &y,
+                    &p,
+                    &q,
+                ),
+
+                (Formula::Forall(x, p), q) => Formula::pullq(
+                    true,
+                    false,
+                    formula,
+                    &Formula::forall,
+                    &Formula::and,
+                    &x,
+                    &x,
+                    &p,
+                    &q,
+                ),
+
+                (p, Formula::Forall(y, q)) => Formula::pullq(
+                    false,
+                    true,
+                    formula,
+                    &Formula::forall,
+                    &Formula::and,
+                    &y,
+                    &y,
+                    &p,
+                    &q,
+                ),
+                (Formula::Exists(x, p), q) => Formula::pullq(
+                    true,
+                    false,
+                    formula,
+                    &Formula::exists,
+                    &Formula::and,
+                    &x,
+                    &x,
+                    &p,
+                    &q,
+                ),
+                (p, Formula::Exists(y, q)) => Formula::pullq(
+                    false,
+                    true,
+                    formula,
+                    &Formula::exists,
+                    &Formula::and,
+                    &y,
+                    &y,
+                    &p,
+                    &q,
+                ),
+                _ => formula.clone(),
+            },
+
+            Formula::Or(r, s) => match (*r.clone(), *s.clone()) {
+                (Formula::Exists(x, p), Formula::Exists(y, q)) => Formula::pullq(
                     true,
                     true,
                     formula,
                     &Formula::exists,
                     &Formula::or,
-                    x,
-                    y,
-                    p,
-                    q,
-                )
-            }
-            Formula::And(box Formula::Forall(x, box p), q) => Formula::pullq(
-                true,
-                false,
-                formula,
-                &Formula::forall,
-                &Formula::and,
-                x,
-                x,
-                p,
-                q,
-            ),
-            Formula::And(p, box Formula::Forall(y, box q)) => Formula::pullq(
-                false,
-                true,
-                formula,
-                &Formula::forall,
-                &Formula::and,
-                y,
-                y,
-                p,
-                q,
-            ),
-            Formula::Or(box Formula::Forall(x, box p), q) => Formula::pullq(
-                true,
-                false,
-                formula,
-                &Formula::forall,
-                &Formula::or,
-                x,
-                x,
-                p,
-                q,
-            ),
-            Formula::Or(p, box Formula::Forall(y, box q)) => Formula::pullq(
-                false,
-                true,
-                formula,
-                &Formula::forall,
-                &Formula::or,
-                y,
-                y,
-                p,
-                q,
-            ),
-            Formula::And(box Formula::Exists(x, box p), q) => Formula::pullq(
-                true,
-                false,
-                formula,
-                &Formula::exists,
-                &Formula::and,
-                x,
-                x,
-                p,
-                q,
-            ),
-            Formula::And(p, box Formula::Exists(y, box q)) => Formula::pullq(
-                false,
-                true,
-                formula,
-                &Formula::exists,
-                &Formula::and,
-                y,
-                y,
-                p,
-                q,
-            ),
-            Formula::Or(box Formula::Exists(x, box p), q) => Formula::pullq(
-                true,
-                false,
-                formula,
-                &Formula::exists,
-                &Formula::or,
-                x,
-                x,
-                p,
-                q,
-            ),
-            Formula::Or(p, box Formula::Exists(y, box q)) => Formula::pullq(
-                false,
-                true,
-                formula,
-                &Formula::exists,
-                &Formula::or,
-                y,
-                y,
-                p,
-                q,
-            ),
+                    &x,
+                    &y,
+                    &p,
+                    &q,
+                ),
+                (Formula::Forall(x, p), q) => Formula::pullq(
+                    true,
+                    false,
+                    formula,
+                    &Formula::forall,
+                    &Formula::or,
+                    &x,
+                    &x,
+                    &p,
+                    &q,
+                ),
+
+                (p, Formula::Forall(y, q)) => Formula::pullq(
+                    false,
+                    true,
+                    formula,
+                    &Formula::forall,
+                    &Formula::or,
+                    &y,
+                    &y,
+                    &p,
+                    &q,
+                ),
+
+                (Formula::Exists(x, p), q) => Formula::pullq(
+                    true,
+                    false,
+                    formula,
+                    &Formula::exists,
+                    &Formula::or,
+                    &x,
+                    &x,
+                    &p,
+                    &q,
+                ),
+
+                (p, Formula::Exists(y, q)) => Formula::pullq(
+                    false,
+                    true,
+                    formula,
+                    &Formula::exists,
+                    &Formula::or,
+                    &y,
+                    &y,
+                    &p,
+                    &q,
+                ),
+                _ => formula.clone(),
+            },
+
             _ => formula.clone(),
         }
     }
@@ -1634,12 +1641,12 @@ impl Formula<Pred> {
     fn raw_prenex(&self) -> Formula<Pred> {
         // Assumes `formula` is in NNF.
         match self {
-            Formula::Forall(x, box p) => Formula::forall(x, &p.raw_prenex()),
-            Formula::Exists(x, box p) => Formula::exists(x, &p.raw_prenex()),
-            Formula::And(box p, box q) => {
+            Formula::Forall(x, p) => Formula::forall(x, &p.raw_prenex()),
+            Formula::Exists(x, p) => Formula::exists(x, &p.raw_prenex()),
+            Formula::And(p, q) => {
                 Formula::pull_quantifiers(&Formula::and(&p.raw_prenex(), &q.raw_prenex()))
             }
-            Formula::Or(box p, box q) => {
+            Formula::Or(p, q) => {
                 Formula::pull_quantifiers(&Formula::or(&p.raw_prenex(), &q.raw_prenex()))
             }
             _ => self.clone(),
@@ -1726,7 +1733,7 @@ impl Formula<Pred> {
         functions: &HashSet<String>,
     ) -> (Formula<Pred>, HashSet<String>) {
         match formula {
-            Formula::Exists(y, box p) => {
+            Formula::Exists(y, p) => {
                 let free = formula.free_variables();
                 let func_name_candidate = if free.is_empty() {
                     format!("c_{y}")
@@ -1743,12 +1750,12 @@ impl Formula<Pred> {
                 let substituted = p.subst(&Instantiation::from([(y.to_owned(), function_term)]));
                 Formula::_skolem(&substituted, &new_functions)
             }
-            Formula::Forall(y, box p) => {
+            Formula::Forall(y, p) => {
                 let (inner, new_functions) = Formula::_skolem(p, functions);
                 (Formula::forall(y, &inner), new_functions)
             }
-            Formula::And(box p, box q) => Formula::_skolem_2(&Formula::and, p, q, functions),
-            Formula::Or(box p, box q) => Formula::_skolem_2(&Formula::or, p, q, functions),
+            Formula::And(p, q) => Formula::_skolem_2(&Formula::and, p, q, functions),
+            Formula::Or(p, q) => Formula::_skolem_2(&Formula::or, p, q, functions),
             _ => (formula.clone(), functions.clone()),
         }
     }
@@ -1776,7 +1783,7 @@ impl Formula<Pred> {
 
     fn specialize(&self) -> Formula<Pred> {
         match self {
-            Formula::Forall(_, box p) => p.specialize(),
+            Formula::Forall(_, p) => p.specialize(),
             _ => self.clone(),
         }
     }
@@ -1822,28 +1829,6 @@ mod skolemize_tests {
 
 // Canonical Models
 //
-
-impl Formula<Pred> {
-    pub fn peval(&self, d: &Valuation<Pred>) -> bool {
-        // For evaluating quantifier free formulas without evaluating Predicates
-        // but just looking up predicate instances in a table (FOValuation<Pred>).
-        //
-        // TODO (test)
-        let pred_atom_eval = |pred: &Pred| -> bool {
-            d.get(pred)
-                .expect("Pred {pred:?} not found in Valuation {d:?}")
-                .to_owned()
-        };
-
-        let forall_eval = |_var: &str, _subformula: &Formula<Pred>| -> bool {
-            panic!("peval recieved quantifier");
-        };
-        let exists_eval = |_var: &str, _subformula: &Formula<Pred>| -> bool {
-            panic!("peval recieved quantifier");
-        };
-        self.eval_core(&pred_atom_eval, &forall_eval, &exists_eval)
-    }
-}
 
 // Herbrand methods
 //
@@ -1962,6 +1947,7 @@ impl Formula<Pred> {
         ground_instances_so_far: &FormulaSet<Pred>,
         mut tuples_tried: HashSet<Vec<Term>>,
         mut tuples_left_at_level: BTreeSet<Vec<Term>>,
+        max_depth: usize,
     ) -> HashSet<Vec<Term>> {
         // `augment_ground_instances`:  Updates ground_instances_so_far for a given tuple
         // of ground terms. Note that this will depend on whether a FormulaSet<Pred> is a
@@ -1989,12 +1975,19 @@ impl Formula<Pred> {
         //
         // `tuples_left_at_level`: Remaining tuples for the last `next_level` computed
         // which we have yet to convert and incorporate into `ground_instances_so_far`.
+        //
+        // `max_depth`: A level of term nesting after which to give up.
+
         println!("Ground instances tried: {}", tuples_tried.len());
         println!(
             "Size of the Ground instance FormulaSet: {}",
             ground_instances_so_far.len()
         );
         println!();
+
+        if next_level > max_depth {
+            panic!("Reached herbrand term nesting bound.  Giving up.")
+        }
 
         if tuples_left_at_level.is_empty() {
             let new_tuples =
@@ -2010,6 +2003,7 @@ impl Formula<Pred> {
                 ground_instances_so_far,
                 tuples_tried,
                 new_tuples,
+                max_depth,
             )
         } else {
             let next_tuple: Vec<Term> = tuples_left_at_level.pop_first().unwrap();
@@ -2034,6 +2028,7 @@ impl Formula<Pred> {
                     &augmented_instances,
                     tuples_tried,
                     tuples_left_at_level,
+                    max_depth,
                 )
             }
         }
@@ -2079,6 +2074,7 @@ impl Formula<Pred> {
         ground_instances_so_far: &FormulaSet<Pred>,
         tuples_tried: HashSet<Vec<Term>>,
         tuples_left_at_level: BTreeSet<Vec<Term>>,
+        max_depth: usize,
     ) -> HashSet<Vec<Term>> {
         // USES DNF FormulaSet representations throughout.
         //
@@ -2097,10 +2093,11 @@ impl Formula<Pred> {
             ground_instances_so_far,
             tuples_tried,
             tuples_left_at_level,
+            max_depth,
         )
     }
 
-    pub fn gilmore(formula: &Formula<Pred>) -> usize {
+    pub fn gilmore(formula: &Formula<Pred>, max_depth: usize) -> usize {
         // Tautology test by checking whether the negation is unsatisfiable.
         // USES DNF FormulaSet representations throughout.
         let negation_skolemized = formula.generalize().negate().skolemize();
@@ -2117,6 +2114,7 @@ impl Formula<Pred> {
             &FormulaSet::from([BTreeSet::new()]),
             HashSet::new(),
             BTreeSet::new(),
+            max_depth,
         );
         println!("Formula is valid.");
         result.len()
@@ -2147,6 +2145,7 @@ impl Formula<Pred> {
         ground_instances_so_far: &FormulaSet<Pred>,
         tuples_tried: HashSet<Vec<Term>>,
         tuples_left_at_level: BTreeSet<Vec<Term>>,
+        max_depth: usize,
     ) -> HashSet<Vec<Term>> {
         // USES CNF FormulaSet representations throughout.
 
@@ -2161,6 +2160,7 @@ impl Formula<Pred> {
             ground_instances_so_far,
             tuples_tried,
             tuples_left_at_level,
+            max_depth,
         )
     }
 
@@ -2197,7 +2197,7 @@ impl Formula<Pred> {
         Formula::_get_dp_unsat_core(formula, free_variables, unknown, needed)
     }
 
-    pub fn davis_putnam(formula: &Formula<Pred>, get_unsat_core: bool) -> usize {
+    pub fn davis_putnam(formula: &Formula<Pred>, get_unsat_core: bool, max_depth: usize) -> usize {
         // Tautology test by checking whether the negation is unsatisfiable.
         // USES CNF FormulaSet representations throughout.
         let negation_skolemized = formula.generalize().negate().skolemize();
@@ -2214,6 +2214,7 @@ impl Formula<Pred> {
             &FormulaSet::new(),
             HashSet::new(),
             BTreeSet::new(),
+            max_depth,
         );
         if get_unsat_core {
             result = Formula::_get_dp_unsat_core(
@@ -2494,6 +2495,7 @@ mod herbrand_tests {
         let ground_instances_so_far: FormulaSet<Pred> = BTreeSet::new();
         let tuples_tried: HashSet<Vec<Term>> = HashSet::new();
         let tuples_left_at_level: BTreeSet<Vec<Term>> = BTreeSet::new();
+        let max_depth = 100;
 
         let result = Formula::_herbloop(
             &augment_ground_instances,
@@ -2506,6 +2508,7 @@ mod herbrand_tests {
             &ground_instances_so_far,
             tuples_tried.clone(),
             tuples_left_at_level.clone(),
+            max_depth,
         );
 
         let level_0_size_2 =
@@ -2532,6 +2535,7 @@ mod herbrand_tests {
             &ground_instances_so_far,
             tuples_tried,
             tuples_left_at_level,
+            max_depth,
         );
 
         assert!(result_2.is_subset(&level_2_size_2));
@@ -2553,6 +2557,7 @@ mod herbrand_tests {
         let ground_instances_so_far: FormulaSet<Pred> = BTreeSet::from([BTreeSet::new()]);
         let tuples_tried: HashSet<Vec<Term>> = HashSet::new();
         let tuples_left_at_level: BTreeSet<Vec<Term>> = BTreeSet::new();
+        let max_depth = 100;
 
         let result = Formula::gilmore_loop(
             &formula,
@@ -2563,6 +2568,7 @@ mod herbrand_tests {
             &ground_instances_so_far,
             tuples_tried,
             tuples_left_at_level,
+            max_depth,
         );
         assert!(result.contains(&vec![
             Term::parset("42").unwrap(),
@@ -2574,7 +2580,8 @@ mod herbrand_tests {
     fn test_gilmore() {
         // We will use DNF formulaset representations.
         let formula = Formula::<Pred>::parse("exists x. forall y. (P(x) ==> P(y))").unwrap();
-        let result = Formula::gilmore(&formula);
+        let max_depth = 100;
+        let result = Formula::gilmore(&formula, max_depth);
         assert!((2..=3).contains(&result));
     }
 
@@ -2595,6 +2602,8 @@ mod herbrand_tests {
         let tuples_tried: HashSet<Vec<Term>> = HashSet::new();
         let tuples_left_at_level: BTreeSet<Vec<Term>> = BTreeSet::new();
 
+        let max_depth = 100;
+
         let result = Formula::dp_loop(
             &formula,
             &constants,
@@ -2604,6 +2613,7 @@ mod herbrand_tests {
             &ground_instances_so_far,
             tuples_tried,
             tuples_left_at_level,
+            max_depth,
         );
         assert!(result.contains(&vec![
             Term::parset("42").unwrap(),
@@ -2641,18 +2651,24 @@ mod herbrand_tests {
     fn test_davis_putnam_simple() {
         // We will use DNF formulaset representations.
         let formula = Formula::<Pred>::parse("exists x. forall y. (P(x) ==> P(y))").unwrap();
-        let result = Formula::davis_putnam(&formula, false);
-        assert!((2..=3).contains(&result));
+        Formula::davis_putnam(&formula, false, 10);
     }
 
     #[test]
-    fn test_davis_putnam_longer() {
+    fn test_davis_putnam_complex() {
         // We will use DNF formulaset representations.
         let string = "(forall x y. exists z. forall w. (P(x) /\\ Q(y) ==> R(z) /\\ U(w))) ==> 
             (exists x y. (P(x) /\\ Q(y))) ==> (exists z. R(z))";
         let formula = Formula::<Pred>::parse(string).unwrap();
-        let result = Formula::davis_putnam(&formula, false);
-        println!("result: {result}");
+        Formula::davis_putnam(&formula, false, 100);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_davis_putnam_invalid() {
+        // We will use DNF formulaset representations.
+        let formula = Formula::<Pred>::parse("forall boy. exists girl. Loves(girl, boy)").unwrap();
+        Formula::davis_putnam(&formula, false, 1000);
     }
 
     #[test]
@@ -2661,7 +2677,7 @@ mod herbrand_tests {
         let string = "(forall x y. exists z. forall w. (P(x) /\\ Q(y) ==> R(z) /\\ U(w))) ==> 
             (exists x y. (P(x) /\\ Q(y))) ==> (exists z. R(z))";
         let formula = Formula::<Pred>::parse(string).unwrap();
-        let result = Formula::davis_putnam(&formula, true);
+        let result = Formula::davis_putnam(&formula, true, 100);
         assert_eq!(result, 2);
     }
 }

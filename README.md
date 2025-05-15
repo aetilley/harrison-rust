@@ -19,10 +19,6 @@
     1) Skolemization
     1) Herbrand methods of first-order validity checking (Gilmore and Davis-Putnam)
 
-    NOTE:  Currently this project RELIES ON NIGHTLY RUST for exactly one feature `box_patterns`.
-    For more info, see 
-    https://doc.rust-lang.org/beta/unstable-book/language-features/box-patterns.html
-    
     This README is the direct print output of `main.rs` (`cargo run --release > README.md`)
     (Make sure to include the release flag and run from the top level directory.)
     
@@ -250,9 +246,10 @@ Example 8: Test a first order formula for validity.
         ==> (exists x y. (P(x) /\\ Q(y))) ==> (exists z. R(z))";
     let formula = Formula::<Pred>::parse(string);
     let compute_unsat_core = true;
+    let max_depth = 100;
     // Note that this will run forever if `formula` is *not* a validity.
     let run = || {
-        Formula::davis_putnam(&formula, compute_unsat_core);
+        Formula::davis_putnam(&formula, compute_unsat_core, max_depth);
     };
     run_repeatedly_and_average(run, 1);
     let negation = formula.negate().skolemize();
@@ -330,7 +327,7 @@ Size of the Ground instance FormulaSet: 37
 
 Found 2 inconsistent tuples of skolemized negation: {[Fun("c_x", []), Fun("f_z", [Fun("c_x", []), Fun("c_y", [])]), Fun("c_x", [])], [Fun("c_y", []), Fun("c_x", []), Fun("c_y", [])]}
 Formula is valid.
-Average time over a total of 1 runs is 32.690959ms.
+Average time over a total of 1 runs is 14.258166ms.
 
 Fun Fact:  These vectors of terms are a minimal set of incompatible 
         instantiations (so call "ground instances") of the free variables ["w", "x", "y"] in 
@@ -364,6 +361,6 @@ Example 9: Solve a hard sudoku board (You should be in release mode for this.)
 Is satisfiable?: true
 Check: Solution satisfies original constraints?: true
 Let's use the same solver to run several times and take the average time...
-Average time over a total of 10 runs is 240.869545ms.
+Average time over a total of 10 runs is 192.727716ms.
 
 ```

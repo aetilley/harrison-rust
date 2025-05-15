@@ -644,15 +644,9 @@ impl Formula<Prop> {
     fn _main_def_cnf(formula: &Formula<Prop>, defs: &Defs, n: usize) -> Triple {
         let triple: Triple = (formula.clone(), defs.clone(), n);
         match formula {
-            Formula::And(box p, box q) => {
-                Formula::_defstep(Formula::and, (p.clone(), q.clone()), triple)
-            }
-            Formula::Or(box p, box q) => {
-                Formula::_defstep(Formula::or, (p.clone(), q.clone()), triple)
-            }
-            Formula::Iff(box p, box q) => {
-                Formula::_defstep(Formula::iff, (p.clone(), q.clone()), triple)
-            }
+            Formula::And(p, q) => Formula::_defstep(Formula::and, (*p.clone(), *q.clone()), triple),
+            Formula::Or(p, q) => Formula::_defstep(Formula::or, (*p.clone(), *q.clone()), triple),
+            Formula::Iff(p, q) => Formula::_defstep(Formula::iff, (*p.clone(), *q.clone()), triple),
             // Literals:
             _ => triple,
         }
@@ -761,10 +755,10 @@ impl Formula<Prop> {
     // TODO make the triple functions consume an actual triple?
     fn _def_cnf_opt_outer_disjunctions(formula: &Formula<Prop>, defs: &Defs, idx: usize) -> Triple {
         match formula {
-            Formula::Or(box p, box q) => Formula::_apply_to_children(
+            Formula::Or(p, q) => Formula::_apply_to_children(
                 Formula::_def_cnf_opt_outer_conjunctions,
                 Formula::or,
-                (p.clone(), q.clone()),
+                (*p.clone(), *q.clone()),
                 (formula.clone(), defs.clone(), idx),
             ),
             _ => Formula::_main_def_cnf(formula, defs, idx),
@@ -773,10 +767,10 @@ impl Formula<Prop> {
 
     fn _def_cnf_opt_outer_conjunctions(formula: &Formula<Prop>, defs: &Defs, idx: usize) -> Triple {
         match formula {
-            Formula::And(box p, box q) => Formula::_apply_to_children(
+            Formula::And(p, q) => Formula::_apply_to_children(
                 Formula::_def_cnf_opt_outer_conjunctions,
                 Formula::and,
-                (p.clone(), q.clone()),
+                (*p.clone(), *q.clone()),
                 (formula.clone(), defs.clone(), idx),
             ),
             _ => Formula::_def_cnf_opt_outer_disjunctions(formula, defs, idx),

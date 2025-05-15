@@ -66,29 +66,29 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
 
     // NOTE:  The following might be better off as methods.
     pub fn get_and_ops(formula: &Formula<T>) -> (Formula<T>, Formula<T>) {
-        if let Formula::And(box op1, box op2) = formula {
-            (op1.clone(), op2.clone())
+        if let Formula::And(op1, op2) = formula {
+            (*op1.clone(), *op2.clone())
         } else {
             panic!("Expected Formula::And, received {formula:?}.");
         }
     }
     pub fn get_or_ops(formula: &Formula<T>) -> (Formula<T>, Formula<T>) {
-        if let Formula::Or(box op1, box op2) = formula {
-            (op1.clone(), op2.clone())
+        if let Formula::Or(op1, op2) = formula {
+            (*op1.clone(), *op2.clone())
         } else {
             panic!("Expected Formula::Or, received {formula:?}.");
         }
     }
     pub fn get_imp_ops(formula: &Formula<T>) -> (Formula<T>, Formula<T>) {
-        if let Formula::Imp(box op1, box op2) = formula {
-            (op1.clone(), op2.clone())
+        if let Formula::Imp(op1, op2) = formula {
+            (*op1.clone(), *op2.clone())
         } else {
             panic!("Expected Formula::Imp, received {formula:?}.");
         }
     }
     pub fn get_iff_ops(formula: &Formula<T>) -> (Formula<T>, Formula<T>) {
-        if let Formula::Iff(box op1, box op2) = formula {
-            (op1.clone(), op2.clone())
+        if let Formula::Iff(op1, op2) = formula {
+            (*op1.clone(), *op2.clone())
         } else {
             panic!("Expected Formula::Iff, received {formula:?}.");
         }
@@ -104,7 +104,7 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
 
     pub fn conjuncts(formula: &Formula<T>) -> Vec<Formula<T>> {
         match formula {
-            Formula::And(box left_conjunct, box right_conjunct) => {
+            Formula::And(left_conjunct, right_conjunct) => {
                 let mut result = Formula::conjuncts(left_conjunct);
                 result.append(&mut Formula::conjuncts(right_conjunct));
                 result
@@ -115,7 +115,7 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
 
     pub fn disjuncts(formula: &Formula<T>) -> Vec<Formula<T>> {
         match formula {
-            Formula::Or(box left_conjunct, box right_conjunct) => {
+            Formula::Or(left_conjunct, right_conjunct) => {
                 let mut result = Formula::disjuncts(left_conjunct);
                 result.append(&mut Formula::disjuncts(right_conjunct));
                 result
@@ -129,13 +129,13 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
         // in `self` with that atom's image along `map`.
         match self {
             Formula::Atom(t) => map(t),
-            Formula::Not(box p) => Formula::not(&p.on_atoms(map)),
-            Formula::And(box p, box q) => Formula::and(&p.on_atoms(map), &q.on_atoms(map)),
-            Formula::Or(box p, box q) => Formula::or(&p.on_atoms(map), &q.on_atoms(map)),
-            Formula::Imp(box p, box q) => Formula::imp(&p.on_atoms(map), &q.on_atoms(map)),
-            Formula::Iff(box p, box q) => Formula::iff(&p.on_atoms(map), &q.on_atoms(map)),
-            Formula::Forall(var, box p) => Formula::forall(var, &p.on_atoms(map)),
-            Formula::Exists(var, box p) => Formula::exists(var, &p.on_atoms(map)),
+            Formula::Not(p) => Formula::not(&p.on_atoms(map)),
+            Formula::And(p, q) => Formula::and(&p.on_atoms(map), &q.on_atoms(map)),
+            Formula::Or(p, q) => Formula::or(&p.on_atoms(map), &q.on_atoms(map)),
+            Formula::Imp(p, q) => Formula::imp(&p.on_atoms(map), &q.on_atoms(map)),
+            Formula::Iff(p, q) => Formula::iff(&p.on_atoms(map), &q.on_atoms(map)),
+            Formula::Forall(var, p) => Formula::forall(var, &p.on_atoms(map)),
+            Formula::Exists(var, p) => Formula::exists(var, &p.on_atoms(map)),
             _ => self.clone(),
         }
     }
@@ -145,14 +145,11 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
         // in `aggregate`.
         match self {
             Formula::Atom(t) => combine(t, aggregate),
-            Formula::Not(box p) => p.over_atoms(combine, aggregate),
-            Formula::And(box p, box q)
-            | Formula::Or(box p, box q)
-            | Formula::Imp(box p, box q)
-            | Formula::Iff(box p, box q) => p.over_atoms(combine, q.over_atoms(combine, aggregate)),
-            Formula::Forall(_, box p) | Formula::Exists(_, box p) => {
-                p.over_atoms(combine, aggregate)
+            Formula::Not(p) => p.over_atoms(combine, aggregate),
+            Formula::And(p, q) | Formula::Or(p, q) | Formula::Imp(p, q) | Formula::Iff(p, q) => {
+                p.over_atoms(combine, q.over_atoms(combine, aggregate))
             }
+            Formula::Forall(_, p) | Formula::Exists(_, p) => p.over_atoms(combine, aggregate),
             _ => aggregate,
         }
     }
@@ -181,7 +178,7 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
 
     pub fn negate(&self) -> Formula<T> {
         match self {
-            Formula::Not(box p) => p.clone(),
+            Formula::Not(p) => *p.clone(),
             _ => Formula::not(self),
         }
     }
@@ -511,14 +508,30 @@ fn strip_quant<T: Clone + Debug + Hash + Eq + Ord>(
     // and the stripped formula.
     let formula: Formula<T> = formula.clone();
     match formula {
-        Formula::Forall(x, box yp @ Formula::Forall(_, _))
-        | Formula::Exists(x, box yp @ Formula::Exists(_, _)) => {
-            let (mut xs, q) = strip_quant(&yp);
-            // NOTE: Order is reversed.
-            xs.push(x);
-            (xs, q)
+        Formula::Forall(x, p) => {
+            match *p {
+                Formula::Forall(_, _) => {
+                    let (mut xs, q) = strip_quant(&p);
+                    // NOTE: Order is reversed.
+                    xs.push(x);
+                    (xs, q)
+                }
+                _ => (vec![x], *p),
+            }
         }
-        Formula::Forall(x, box p) | Formula::Exists(x, box p) => (vec![x], p),
+
+        Formula::Exists(x, p) => {
+            match *p {
+                Formula::Exists(_, _) => {
+                    let (mut xs, q) = strip_quant(&p);
+                    // NOTE: Order is reversed.
+                    xs.push(x);
+                    (xs, q)
+                }
+                _ => (vec![x], *p),
+            }
+        }
+
         _ => (vec![], formula),
     }
 }
@@ -874,66 +887,69 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
             Formula::True => true,
             Formula::False => false,
             Formula::Atom(t) => atom_eval(t),
-            Formula::Not(box p) => !p.eval_core(atom_eval, forall_eval, exists_eval),
-            Formula::And(box p, box q) => {
+            Formula::Not(p) => !p.eval_core(atom_eval, forall_eval, exists_eval),
+            Formula::And(p, q) => {
                 p.eval_core(atom_eval, forall_eval, exists_eval)
                     && q.eval_core(atom_eval, forall_eval, exists_eval)
             }
-            Formula::Or(box p, box q) => {
+            Formula::Or(p, q) => {
                 p.eval_core(atom_eval, forall_eval, exists_eval)
                     || q.eval_core(atom_eval, forall_eval, exists_eval)
             }
-            Formula::Imp(box p, box q) => {
+            Formula::Imp(p, q) => {
                 !p.eval_core(atom_eval, forall_eval, exists_eval)
                     || q.eval_core(atom_eval, forall_eval, exists_eval)
             }
-            Formula::Iff(box p, box q) => {
+            Formula::Iff(p, q) => {
                 p.eval_core(atom_eval, forall_eval, exists_eval)
                     == q.eval_core(atom_eval, forall_eval, exists_eval)
             }
-            Formula::Forall(var, box p) => forall_eval(var, p),
-            Formula::Exists(var, box p) => exists_eval(var, p),
+            Formula::Forall(var, p) => forall_eval(var, p),
+            Formula::Exists(var, p) => exists_eval(var, p),
         }
     }
 
     pub fn psimplify_step(formula: &Formula<T>) -> Formula<T> {
         // Simplify formulas involving `True` or `False` (constants).  Also
         // eliminate double negations
-        match formula {
-            Formula::Not(box Formula::False) => Formula::True,
-            Formula::Not(box Formula::True) => Formula::False,
-            Formula::Not(box Formula::Not(box p)) => p.clone(),
-            Formula::And(box p, box Formula::True) | Formula::And(box Formula::True, box p) => {
-                p.clone()
-            }
-            Formula::And(_, box Formula::False) | Formula::And(box Formula::False, _) => {
-                Formula::False
-            }
-            Formula::Or(_, box Formula::True) | Formula::Or(box Formula::True, _) => Formula::True,
-            Formula::Or(box p, box Formula::False) | Formula::Or(box Formula::False, box p) => {
-                p.clone()
-            }
-            Formula::Imp(_, box Formula::True) | Formula::Imp(box Formula::False, _) => {
-                Formula::True
-            }
-            // The following arm is not in Harrison
-            Formula::Imp(box Formula::True, box Formula::False) => Formula::False,
 
-            Formula::Imp(box p, box Formula::False) => Formula::not(p),
-            Formula::Imp(box Formula::True, box p) => p.clone(),
+        match formula {
+            Formula::Not(r) => match *r.clone() {
+                Formula::False => Formula::True,
+                Formula::True => Formula::False,
+                Formula::Not(p) => *p.clone(),
+                _ => formula.clone(),
+            },
+
+            Formula::And(r, s) => match (*r.clone(), *s.clone()) {
+                (p, Formula::True) | (Formula::True, p) => p.clone(),
+                (_, Formula::False) | (Formula::False, _) => Formula::False,
+                _ => formula.clone(),
+            },
+
+            Formula::Or(r, s) => match (*r.clone(), *s.clone()) {
+                (_, Formula::True) | (Formula::True, _) => Formula::True,
+                (p, Formula::False) | (Formula::False, p) => p.clone(),
+                _ => formula.clone(),
+            },
+
+            Formula::Imp(r, s) => match (*r.clone(), *s.clone()) {
+                (_, Formula::True) | (Formula::False, _) => Formula::True,
+                (Formula::True, Formula::False) => Formula::False,
+                (p, Formula::False) => Formula::not(&p),
+                (Formula::True, p) => p.clone(),
+                _ => formula.clone(),
+            },
+            Formula::Iff(r, s) => match (*r.clone(), *s.clone()) {
+                (Formula::True, Formula::True) | (Formula::False, Formula::False) => Formula::True,
+                (Formula::True, Formula::False) | (Formula::False, Formula::True) => Formula::False,
+
+                (Formula::True, p) | (p, Formula::True) => p.clone(),
+                (Formula::False, p) | (p, Formula::False) => Formula::not(&p),
+                _ => formula.clone(),
+            },
 
             // The following two arms are not in Harrison
-            Formula::Iff(box Formula::True, box Formula::True)
-            | Formula::Iff(box Formula::False, box Formula::False) => Formula::True,
-            Formula::Iff(box Formula::True, box Formula::False)
-            | Formula::Iff(box Formula::False, box Formula::True) => Formula::False,
-
-            Formula::Iff(box Formula::True, box p) | Formula::Iff(box p, box Formula::True) => {
-                p.clone()
-            }
-            Formula::Iff(box Formula::False, box p) | Formula::Iff(box p, box Formula::False) => {
-                Formula::not(p)
-            }
             _ => formula.clone(),
         }
     }
@@ -941,25 +957,25 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
     pub fn simplify_recursive(&self, step: &dyn Fn(&Formula<T>) -> Formula<T>) -> Formula<T> {
         // Apply `psimplify1` bottom-up to `self`.
         match self {
-            Formula::Not(box p) => step(&Formula::not(&p.simplify_recursive(step))),
-            Formula::And(box p, box q) => step(&Formula::and(
+            Formula::Not(p) => step(&Formula::not(&p.simplify_recursive(step))),
+            Formula::And(p, q) => step(&Formula::and(
                 &p.simplify_recursive(step),
                 &q.simplify_recursive(step),
             )),
-            Formula::Or(box p, box q) => step(&Formula::or(
+            Formula::Or(p, q) => step(&Formula::or(
                 &p.simplify_recursive(step),
                 &q.simplify_recursive(step),
             )),
-            Formula::Imp(box p, box q) => step(&Formula::imp(
+            Formula::Imp(p, q) => step(&Formula::imp(
                 &p.simplify_recursive(step),
                 &q.simplify_recursive(step),
             )),
-            Formula::Iff(box p, box q) => step(&Formula::iff(
+            Formula::Iff(p, q) => step(&Formula::iff(
                 &p.simplify_recursive(step),
                 &q.simplify_recursive(step),
             )),
-            Formula::Forall(x, box p) => step(&Formula::forall(x, &p.simplify_recursive(step))),
-            Formula::Exists(y, box p) => step(&Formula::exists(y, &p.simplify_recursive(step))),
+            Formula::Forall(x, p) => step(&Formula::forall(x, &p.simplify_recursive(step))),
+            Formula::Exists(y, p) => step(&Formula::exists(y, &p.simplify_recursive(step))),
             _ => self.clone(),
         }
     }
@@ -1219,35 +1235,32 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
         // Negation normal form
 
         match self {
-            Formula::And(box p, box q) => Formula::and(&p.raw_nnf(), &q.raw_nnf()),
-            Formula::Or(box p, box q) => Formula::or(&p.raw_nnf(), &q.raw_nnf()),
-            Formula::Imp(box p, box q) => Formula::or(&Formula::not(p).raw_nnf(), &q.raw_nnf()),
-            Formula::Iff(box p, box q) => Formula::or(
+            Formula::And(p, q) => Formula::and(&p.raw_nnf(), &q.raw_nnf()),
+            Formula::Or(p, q) => Formula::or(&p.raw_nnf(), &q.raw_nnf()),
+            Formula::Imp(p, q) => Formula::or(&Formula::not(p).raw_nnf(), &q.raw_nnf()),
+            Formula::Iff(p, q) => Formula::or(
                 &Formula::and(&p.raw_nnf(), &q.raw_nnf()),
                 &Formula::and(&Formula::not(q).raw_nnf(), &Formula::not(p).raw_nnf()),
             ),
-            Formula::Not(box Formula::Not(box p)) => p.raw_nnf(),
-            Formula::Not(box Formula::And(box p, box q)) => {
-                Formula::or(&Formula::not(p).raw_nnf(), &Formula::not(q).raw_nnf())
-            }
-            Formula::Not(box Formula::Or(box p, box q)) => {
-                Formula::and(&Formula::not(p).raw_nnf(), &Formula::not(q).raw_nnf())
-            }
-            Formula::Not(box Formula::Imp(box p, box q)) => {
-                Formula::and(&p.raw_nnf(), &Formula::not(q).raw_nnf())
-            }
-            Formula::Not(box Formula::Iff(box p, box q)) => Formula::or(
-                &Formula::and(&p.raw_nnf(), &Formula::not(q).raw_nnf()),
-                &Formula::and(&Formula::not(p).raw_nnf(), &q.raw_nnf()),
-            ),
-            Formula::Forall(x, box p) => Formula::forall(x, &p.raw_nnf()),
-            Formula::Exists(x, box p) => Formula::exists(x, &p.raw_nnf()),
-            Formula::Not(box Formula::Forall(x, box p)) => {
-                Formula::exists(x, &Formula::not(p).raw_nnf())
-            }
-            Formula::Not(box Formula::Exists(x, box p)) => {
-                Formula::forall(x, &Formula::not(p).raw_nnf())
-            }
+            Formula::Not(r) => match *r.clone() {
+                Formula::Not(p) => p.raw_nnf(),
+                Formula::And(p, q) => {
+                    Formula::or(&Formula::not(&p).raw_nnf(), &Formula::not(&q).raw_nnf())
+                }
+                Formula::Or(p, q) => {
+                    Formula::and(&Formula::not(&p).raw_nnf(), &Formula::not(&q).raw_nnf())
+                }
+                Formula::Imp(p, q) => Formula::and(&p.raw_nnf(), &Formula::not(&q).raw_nnf()),
+                Formula::Iff(p, q) => Formula::or(
+                    &Formula::and(&p.raw_nnf(), &Formula::not(&q).raw_nnf()),
+                    &Formula::and(&Formula::not(&p).raw_nnf(), &q.raw_nnf()),
+                ),
+                Formula::Forall(x, p) => Formula::exists(&x, &Formula::not(&p).raw_nnf()),
+                Formula::Exists(x, p) => Formula::forall(&x, &Formula::not(&p).raw_nnf()),
+                _ => self.clone(),
+            },
+            Formula::Forall(x, p) => Formula::forall(x, &p.raw_nnf()),
+            Formula::Exists(x, p) => Formula::exists(x, &p.raw_nnf()),
             _ => self.clone(),
         }
     }
@@ -1257,31 +1270,28 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
         // NOTE that this and `raw_nnf` could factor through a common function
         // (with an additional parameter for a `normalizer` but low priority for now.
         match self {
-            Formula::And(box p, box q) => Formula::and(&p.raw_nenf(), &q.raw_nenf()),
-            Formula::Or(box p, box q) => Formula::or(&p.raw_nenf(), &q.raw_nenf()),
-            Formula::Imp(box p, box q) => Formula::or(&Formula::not(p).raw_nenf(), &q.raw_nenf()),
-            Formula::Iff(box p, box q) => Formula::iff(&p.raw_nenf(), &q.raw_nenf()),
-            Formula::Not(box Formula::Not(box p)) => p.raw_nenf(),
-            Formula::Not(box Formula::And(box p, box q)) => {
-                Formula::or(&Formula::not(p).raw_nenf(), &Formula::not(q).raw_nenf())
-            }
-            Formula::Not(box Formula::Or(box p, box q)) => {
-                Formula::and(&Formula::not(p).raw_nenf(), &Formula::not(q).raw_nenf())
-            }
-            Formula::Not(box Formula::Imp(box p, box q)) => {
-                Formula::and(&p.raw_nenf(), &Formula::not(q).raw_nenf())
-            }
-            Formula::Not(box Formula::Iff(box p, box q)) => {
-                Formula::iff(&p.raw_nenf(), &Formula::not(q).raw_nenf())
-            }
-            Formula::Forall(x, box p) => Formula::forall(x, &p.raw_nenf()),
-            Formula::Exists(x, box p) => Formula::exists(x, &p.raw_nenf()),
-            Formula::Not(box Formula::Forall(x, box p)) => {
-                Formula::exists(x, &Formula::not(p).raw_nenf())
-            }
-            Formula::Not(box Formula::Exists(x, box p)) => {
-                Formula::forall(x, &Formula::not(p).raw_nenf())
-            }
+            Formula::And(p, q) => Formula::and(&p.raw_nenf(), &q.raw_nenf()),
+            Formula::Or(p, q) => Formula::or(&p.raw_nenf(), &q.raw_nenf()),
+            Formula::Imp(p, q) => Formula::or(&Formula::not(p).raw_nenf(), &q.raw_nenf()),
+            Formula::Iff(p, q) => Formula::iff(&p.raw_nenf(), &q.raw_nenf()),
+            Formula::Not(r) => match *r.clone() {
+                Formula::Not(p) => p.raw_nenf(),
+                Formula::And(p, q) => {
+                    Formula::or(&Formula::not(&p).raw_nenf(), &Formula::not(&q).raw_nenf())
+                }
+                Formula::Or(p, q) => {
+                    Formula::and(&Formula::not(&p).raw_nenf(), &Formula::not(&q).raw_nenf())
+                }
+                Formula::Imp(p, q) => Formula::and(&p.raw_nenf(), &Formula::not(&q).raw_nenf()),
+                Formula::Iff(p, q) => Formula::iff(&p.raw_nenf(), &Formula::not(&q).raw_nenf()),
+                Formula::Forall(x, p) => Formula::exists(&x, &Formula::not(&p).raw_nenf()),
+                Formula::Exists(x, p) => Formula::forall(&x, &Formula::not(&p).raw_nenf()),
+                _ => self.clone(),
+            },
+
+            Formula::Forall(x, p) => Formula::forall(x, &p.raw_nenf()),
+            Formula::Exists(x, p) => Formula::exists(x, &p.raw_nenf()),
+
             _ => self.clone(),
         }
     }
@@ -1309,10 +1319,8 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
             Formula::False => FormulaSet::new(),
             Formula::True => BTreeSet::from([BTreeSet::new()]),
             Formula::Atom(_) | Formula::Not(_) => BTreeSet::from([BTreeSet::from([nnf.clone()])]),
-            Formula::And(box p, box q) => {
-                Formula::_set_distrib_and_over_or(&p._purednf(), &q._purednf())
-            }
-            Formula::Or(box p, box q) => &p._purednf() | &q._purednf(),
+            Formula::And(p, q) => Formula::_set_distrib_and_over_or(&p._purednf(), &q._purednf()),
+            Formula::Or(p, q) => &p._purednf() | &q._purednf(),
             _ => panic!("Unrecognized formula type {nnf:?} for _puredfn."),
         }
     }
@@ -1411,10 +1419,9 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
 
     fn _is_disjunction_of_literals(&self) -> bool {
         match self {
-            Formula::Atom(_) | Formula::Not(box Formula::Atom(_)) => true,
-            Formula::Or(box p, box q) => {
-                p._is_disjunction_of_literals() && q._is_disjunction_of_literals()
-            }
+            Formula::Atom(_) => true,
+            Formula::Not(p) if matches!(**p, Formula::Atom(_)) => true,
+            Formula::Or(p, q) => p._is_disjunction_of_literals() && q._is_disjunction_of_literals(),
             _ => false,
         }
     }
@@ -1424,7 +1431,7 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
             return true;
         }
         match self {
-            Formula::And(box p, box q) => p.is_cnf() && q.is_cnf(),
+            Formula::And(p, q) => p.is_cnf() && q.is_cnf(),
             _ => false,
         }
     }
@@ -2505,7 +2512,7 @@ fn get_valuation_from_trail<T: Debug + Clone + Hash + Eq + Ord>(trail: &Trail<T>
 
 fn _lit_abs<T: Debug + Clone + Hash + Eq + Ord>(lit: &Formula<T>) -> Formula<T> {
     let result = match lit {
-        Formula::Not(box p) => p,
+        Formula::Not(p) => p,
         _ => lit,
     };
     result.clone()

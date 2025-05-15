@@ -1,4 +1,3 @@
-#![feature(box_patterns)]
 #![allow(dead_code)]
 
 pub mod applications_propositional;
