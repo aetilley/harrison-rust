@@ -628,7 +628,7 @@ Formula::davis_putnam(&formula, compute_unsat_core, max_depth);
     
 
 
-    Found 2 inconsistent tuples of skolemized negation: {[Fun("c_y", []), Fun("c_x", []), Fun("c_y", [])], [Fun("c_x", []), Fun("f_z", [Fun("c_x", []), Fun("c_y", [])]), Fun("c_x", [])]}
+    Found 2 inconsistent tuples of skolemized negation: {[Fun("c_x", []), Fun("f_z", [Fun("c_x", []), Fun("c_y", [])]), Fun("c_x", [])], [Fun("c_y", []), Fun("c_x", []), Fun("c_y", [])]}
 
 
     Formula is valid.
@@ -672,7 +672,7 @@ run_repeatedly_and_average(
     Let's use the same solver to run several times and take the average time...
 
 
-    Average time over a total of 10 runs is 556.225908ms.
+    Average time over a total of 10 runs is 684.137462ms.
 
 
     
