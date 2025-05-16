@@ -1734,6 +1734,8 @@ impl Formula<Pred> {
     ) -> (Formula<Pred>, HashSet<String>) {
         match formula {
             Formula::Exists(y, p) => {
+                // Here is where we introduce the new skolem constant (if `formula` has no free
+                // variables) / skolem function of any free variables.
                 let free = formula.free_variables();
                 let func_name_candidate = if free.is_empty() {
                     format!("c_{y}")
@@ -1772,24 +1774,33 @@ impl Formula<Pred> {
     }
 
     fn askolemize(&self) -> Formula<Pred> {
-        // Harrison actually keeps the arities since he allows for distinct
+        // We could keep the arities to allow for distinct
         // functions of the same name (but different arities).
         // I'm going to see how far we can get w/o this since I think allowing
         // disctinct functions of the same name is pretty rare.
         let functions: HashSet<String> = self.functions().into_iter().map(|pair| pair.0).collect();
 
+        // Note that Existential subformulas must occur "positively" for
+        // this proceedure to return an equi-satisfiable result.
+        // Else consider <<exists y. P(y) /\\ ~ exists z. P(z)>>
+        // whose skolemization is the (satisfiable) P(a) /\\ P(b).
+        // Traditionally one convers all the way to PNF first, but
+        // this can lead to overly complex skolemized version, and
+        // nnf is sufficient.
         Formula::skolem_1(&self.simplify().nnf(), &functions).0
     }
 
-    fn specialize(&self) -> Formula<Pred> {
+    fn remove_universal_quantifiers(&self) -> Formula<Pred> {
+        // NOTE:   This should only be applied to formulas of the form
+        // <<forall x_1 .. x_n. phi>> (where phi is quantifier free)
         match self {
-            Formula::Forall(_, p) => p.specialize(),
+            Formula::Forall(_, p) => p.remove_universal_quantifiers(),
             _ => self.clone(),
         }
     }
 
     pub fn skolemize(&self) -> Formula<Pred> {
-        self.askolemize().pnf().specialize()
+        self.askolemize().pnf().remove_universal_quantifiers()
     }
 }
 
@@ -1856,6 +1867,7 @@ impl Formula<Pred> {
         constants: &HashSet<(String, usize)>,
         functions: &HashSet<(String, usize)>,
         level: usize,
+        cache: &mut HashMap<(usize, usize), BTreeSet<Vec<Term>>>,
     ) -> HashSet<Term> {
         if level == 0 {
             return constants
@@ -1868,7 +1880,7 @@ impl Formula<Pred> {
             .map(|(name, arity)| {
                 // Get set of all applications of this function to args of the
                 // apprpriate level and length.
-                Formula::ground_tuples(constants, functions, level - 1, arity.to_owned())
+                Formula::ground_tuples(constants, functions, level - 1, arity.to_owned(), cache)
                     .iter()
                     .map(|tuple| Term::fun(name, tuple))
                     .collect::<HashSet<Term>>()
@@ -1902,7 +1914,12 @@ impl Formula<Pred> {
         functions: &HashSet<(String, usize)>,
         level: usize,
         size: usize,
+        cache: &mut HashMap<(usize, usize), BTreeSet<Vec<Term>>>,
     ) -> BTreeSet<Vec<Term>> {
+        // Todo:  Use a cache!
+
+        // Return all tuples of length `size` of ground terms having exactly `level` number of
+        // function call instances summing over all terms in the tuple.
         if size == 0 {
             return if level == 0 {
                 BTreeSet::from([Vec::new()])
@@ -1910,15 +1927,24 @@ impl Formula<Pred> {
                 BTreeSet::from([])
             };
         }
-        (0..=level)
+
+        if cache.contains_key(&(level, size)) {
+            return cache.get(&(level, size)).unwrap().clone();
+        }
+        // Consider each choice of num functions in last element.
+        let result = (0..=level)
             .map(|k| {
-                let last_element_options = Formula::ground_terms(constants, functions, k);
+                let last_element_options = Formula::ground_terms(constants, functions, k, cache);
                 let up_to_last_element_options =
-                    Formula::ground_tuples(constants, functions, level - k, size - 1);
+                    Formula::ground_tuples(constants, functions, level - k, size - 1, cache);
                 // Note we append instead of prepend since it seems cheaper.
                 Formula::get_all_appends(&up_to_last_element_options, &last_element_options)
             })
-            .fold(BTreeSet::new(), |x, y| &x | &y)
+            .fold(BTreeSet::new(), |x, y| &x | &y);
+
+        cache.insert((level, size), result.clone());
+
+        result
     }
 
     fn make_instantiation(free_variables: &[String], terms: &[Term]) -> Instantiation {
@@ -1946,6 +1972,7 @@ impl Formula<Pred> {
         mut tuples_tried: HashSet<Vec<Term>>,
         mut tuples_left_at_level: BTreeSet<Vec<Term>>,
         max_depth: usize,
+        tuple_cache: &mut HashMap<(usize, usize), BTreeSet<Vec<Term>>>,
     ) -> Result<HashSet<Vec<Term>>, HerbrandBoundReached>
     where
         SatTest: Fn(&FormulaSet<Pred>) -> bool,
@@ -1979,6 +2006,8 @@ impl Formula<Pred> {
         // which we have yet to convert and incorporate into `ground_instances_so_far`.
         //
         // `max_depth`: A level of term nesting after which to give up.
+        //
+        // `tuple_cache` A DP cache of all tuples for (size, level) if computed already.
 
         if next_level > max_depth {
             return Err(HerbrandBoundReached {
@@ -1992,8 +2021,14 @@ impl Formula<Pred> {
         if tuples_left_at_level.is_empty() {
             println!("Generating tuples for next level {}", next_level);
 
-            let new_tuples =
-                Formula::ground_tuples(constants, functions, next_level, free_variables.len());
+            // Note that these tuples are always of the same length = free_variables.len()
+            let new_tuples = Formula::ground_tuples(
+                constants,
+                functions,
+                next_level,
+                free_variables.len(),
+                tuple_cache,
+            );
             Formula::herbrand_loop(
                 augment_ground_instances,
                 sat_test,
@@ -2006,6 +2041,7 @@ impl Formula<Pred> {
                 tuples_tried,
                 new_tuples,
                 max_depth,
+                tuple_cache,
             )
         } else {
             let next_tuple: Vec<Term> = tuples_left_at_level.pop_first().unwrap();
@@ -2013,13 +2049,13 @@ impl Formula<Pred> {
                 Formula::make_instantiation(free_variables, &next_tuple);
 
             // First substitute in the ground instances for `instantiation`.
-            let new_formula: FormulaSet<Pred> =
+            let new_ground_instance: FormulaSet<Pred> =
                 Formula::subst_in_formulaset(formula, &instantiation);
 
+            println!("Adding formula {:?}", new_ground_instance);
             let augmented_instances =
-                augment_ground_instances(&new_formula, ground_instances_so_far);
+                augment_ground_instances(&new_ground_instance, ground_instances_so_far);
             tuples_tried.insert(next_tuple.clone());
-            println!("Adding formula {:?}", new_formula);
             if !sat_test(&augmented_instances) {
                 Ok(tuples_tried)
             } else {
@@ -2035,6 +2071,7 @@ impl Formula<Pred> {
                     tuples_tried,
                     tuples_left_at_level,
                     max_depth,
+                    tuple_cache,
                 )
             }
         }
@@ -2082,6 +2119,8 @@ impl Formula<Pred> {
             !formula.is_empty()
         }
 
+        let tuple_cache = &mut HashMap::new();
+
         Formula::herbrand_loop(
             &Formula::augement_dnf_formulaset,
             |formula: &FormulaSet<Pred>| !formula.is_empty(),
@@ -2094,6 +2133,7 @@ impl Formula<Pred> {
             tuples_tried,
             tuples_left_at_level,
             max_depth,
+            tuple_cache,
         )
     }
 
@@ -2150,6 +2190,8 @@ impl Formula<Pred> {
     ) -> Result<HashSet<Vec<Term>>, HerbrandBoundReached> {
         // USES CNF FormulaSet representations throughout.
 
+        let tuple_cache = &mut HashMap::new();
+
         Formula::herbrand_loop(
             &Formula::augment_cnf_formulaset,
             Formula::dpll,
@@ -2162,6 +2204,7 @@ impl Formula<Pred> {
             tuples_tried,
             tuples_left_at_level,
             max_depth,
+            tuple_cache,
         )
     }
 
@@ -2265,13 +2308,15 @@ mod herbrand_tests {
         let constants = HashSet::from([(String::from("42"), 0)]);
         let functions = HashSet::from([(String::from("f"), 2), (String::from("g"), 1)]);
 
+        let empty_cache = HashMap::new();
+
         let level = 0;
-        let result = Formula::ground_terms(&constants, &functions, level);
+        let result = Formula::ground_terms(&constants, &functions, level, &mut empty_cache.clone());
         let desired = HashSet::from([Term::constant("42")]);
         assert_eq!(result, desired);
 
         let level = 1;
-        let result = Formula::ground_terms(&constants, &functions, level);
+        let result = Formula::ground_terms(&constants, &functions, level, &mut empty_cache.clone());
         let desired = HashSet::from([
             Term::parset("g(42)").unwrap(),
             Term::parset("f(42, 42)").unwrap(),
@@ -2279,7 +2324,7 @@ mod herbrand_tests {
         assert_eq!(result, desired);
 
         let level = 2;
-        let result = Formula::ground_terms(&constants, &functions, level);
+        let result = Formula::ground_terms(&constants, &functions, level, &mut empty_cache.clone());
         let desired = HashSet::from([
             Term::parset("g(g(42))").unwrap(),
             Term::parset("g(f(42, 42))").unwrap(),
@@ -2334,24 +2379,40 @@ mod herbrand_tests {
         let constants = HashSet::from([(String::from("42"), 0)]);
         let functions = HashSet::from([(String::from("f"), 2), (String::from("g"), 1)]);
 
+        let empty_cache = HashMap::new();
         let level = 0;
         let size = 0;
-        let result: BTreeSet<Vec<Term>> =
-            Formula::ground_tuples(&constants, &functions, level, size);
+        let result: BTreeSet<Vec<Term>> = Formula::ground_tuples(
+            &constants,
+            &functions,
+            level,
+            size,
+            &mut empty_cache.clone(),
+        );
         let desired = BTreeSet::from([Vec::new()]);
         assert_eq!(result, desired);
 
         let level = 1;
         let size = 0;
-        let result: BTreeSet<Vec<Term>> =
-            Formula::ground_tuples(&constants, &functions, level, size);
+        let result: BTreeSet<Vec<Term>> = Formula::ground_tuples(
+            &constants,
+            &functions,
+            level,
+            size,
+            &mut empty_cache.clone(),
+        );
         let desired = BTreeSet::from([]);
         assert_eq!(result, desired);
 
         let level = 0;
         let size = 2;
-        let result: BTreeSet<Vec<Term>> =
-            Formula::ground_tuples(&constants, &functions, level, size);
+        let result: BTreeSet<Vec<Term>> = Formula::ground_tuples(
+            &constants,
+            &functions,
+            level,
+            size,
+            &mut empty_cache.clone(),
+        );
         let desired = BTreeSet::from([vec![
             Term::parset("42").unwrap(),
             Term::parset("42").unwrap(),
@@ -2360,8 +2421,14 @@ mod herbrand_tests {
 
         let level = 2;
         let size = 1;
-        let result: BTreeSet<Vec<Term>> =
-            Formula::ground_tuples(&constants, &functions, level, size);
+        let empty_cache = HashMap::new();
+        let result: BTreeSet<Vec<Term>> = Formula::ground_tuples(
+            &constants,
+            &functions,
+            level,
+            size,
+            &mut empty_cache.clone(),
+        );
         let desired = BTreeSet::from([
             vec![Term::parset("f(g(42), 42)").unwrap()],
             vec![Term::parset("f(42, g(42))").unwrap()],
@@ -2374,8 +2441,13 @@ mod herbrand_tests {
 
         let level = 1;
         let size = 2;
-        let result: BTreeSet<Vec<Term>> =
-            Formula::ground_tuples(&constants, &functions, level, size);
+        let result: BTreeSet<Vec<Term>> = Formula::ground_tuples(
+            &constants,
+            &functions,
+            level,
+            size,
+            &mut empty_cache.clone(),
+        );
         let desired = BTreeSet::from([
             vec![Term::parset("42").unwrap(), Term::parset("g(42)").unwrap()],
             vec![Term::parset("g(42)").unwrap(), Term::parset("42").unwrap()],
@@ -2392,8 +2464,13 @@ mod herbrand_tests {
 
         let level = 2;
         let size = 2;
-        let result: BTreeSet<Vec<Term>> =
-            Formula::ground_tuples(&constants, &functions, level, size);
+        let result: BTreeSet<Vec<Term>> = Formula::ground_tuples(
+            &constants,
+            &functions,
+            level,
+            size,
+            &mut empty_cache.clone(),
+        );
         let desired = BTreeSet::from([
             // 0 and 2
             vec![
@@ -2500,6 +2577,8 @@ mod herbrand_tests {
         let tuples_left_at_level: BTreeSet<Vec<Term>> = BTreeSet::new();
         let max_depth = 100;
 
+        let empty_cache = HashMap::new();
+
         let result = Formula::herbrand_loop(
             &augment_cnf_formulaset,
             sat_test,
@@ -2512,15 +2591,31 @@ mod herbrand_tests {
             tuples_tried.clone(),
             tuples_left_at_level.clone(),
             max_depth,
+            &mut empty_cache.clone(),
         )
         .unwrap();
 
-        let level_0_size_2 =
-            HashSet::from_iter(Formula::ground_tuples(&constants, &functions, 0, 2));
-        let level_1_size_2 =
-            HashSet::from_iter(Formula::ground_tuples(&constants, &functions, 1, 2));
-        let level_2_size_2 =
-            HashSet::from_iter(Formula::ground_tuples(&constants, &functions, 2, 2));
+        let level_0_size_2 = HashSet::from_iter(Formula::ground_tuples(
+            &constants,
+            &functions,
+            0,
+            2,
+            &mut empty_cache.clone(),
+        ));
+        let level_1_size_2 = HashSet::from_iter(Formula::ground_tuples(
+            &constants,
+            &functions,
+            1,
+            2,
+            &mut empty_cache.clone(),
+        ));
+        let level_2_size_2 = HashSet::from_iter(Formula::ground_tuples(
+            &constants,
+            &functions,
+            2,
+            2,
+            &mut empty_cache.clone(),
+        ));
         let all_size_2 = &(&level_0_size_2 | &level_1_size_2) | &level_2_size_2;
 
         assert!(result.is_subset(&all_size_2));
@@ -2540,6 +2635,7 @@ mod herbrand_tests {
             tuples_tried,
             tuples_left_at_level,
             max_depth,
+            &mut empty_cache.clone(),
         )
         .unwrap();
 
