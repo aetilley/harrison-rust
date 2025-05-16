@@ -296,7 +296,7 @@ run_repeatedly_and_average(
     Let's use the same solver to run several times and take the average time...
 
 
-    Average time over a total of 10 runs is 371.321245ms.
+    Average time over a total of 10 runs is 686.355929ms.
 
 
     
@@ -481,127 +481,70 @@ let max_depth = 10;
 Formula::davis_putnam(&formula, compute_unsat_core, max_depth);
 ```
 
-    Generating tuples for next level: 0
+    Generating tuples for next level 0
 
 
-    Adding tuple [Fun("c_x", []), Fun("c_x", []), Fun("c_x", [])]
+    Adding formula {{Atom(Pred { name: "P", terms: [Fun("c_x", [])] })}, {Atom(Pred { name: "Q", terms: [Fun("c_y", [])] })}, {Atom(Pred { name: "R", terms: [Fun("f_z", [Fun("c_x", []), Fun("c_x", [])])] }), Not(Atom(Pred { name: "P", terms: [Fun("c_x", [])] })), Not(Atom(Pred { name: "Q", terms: [Fun("c_x", [])] }))}, {Atom(Pred { name: "U", terms: [Fun("c_x", [])] }), Not(Atom(Pred { name: "P", terms: [Fun("c_x", [])] })), Not(Atom(Pred { name: "Q", terms: [Fun("c_x", [])] }))}, {Not(Atom(Pred { name: "R", terms: [Fun("c_x", [])] }))}}
 
 
-    1 tuples in formula
+    Adding formula {{Atom(Pred { name: "P", terms: [Fun("c_x", [])] })}, {Atom(Pred { name: "Q", terms: [Fun("c_y", [])] })}, {Atom(Pred { name: "R", terms: [Fun("f_z", [Fun("c_x", []), Fun("c_y", [])])] }), Not(Atom(Pred { name: "P", terms: [Fun("c_x", [])] })), Not(Atom(Pred { name: "Q", terms: [Fun("c_y", [])] }))}, {Atom(Pred { name: "U", terms: [Fun("c_x", [])] }), Not(Atom(Pred { name: "P", terms: [Fun("c_x", [])] })), Not(Atom(Pred { name: "Q", terms: [Fun("c_y", [])] }))}, {Not(Atom(Pred { name: "R", terms: [Fun("c_x", [])] }))}}
 
 
-    Adding tuple [Fun("c_x", []), Fun("c_x", []), Fun("c_y", [])]
+    Adding formula {{Atom(Pred { name: "P", terms: [Fun("c_x", [])] })}, {Atom(Pred { name: "Q", terms: [Fun("c_y", [])] })}, {Atom(Pred { name: "R", terms: [Fun("f_z", [Fun("c_y", []), Fun("c_x", [])])] }), Not(Atom(Pred { name: "P", terms: [Fun("c_y", [])] })), Not(Atom(Pred { name: "Q", terms: [Fun("c_x", [])] }))}, {Atom(Pred { name: "U", terms: [Fun("c_x", [])] }), Not(Atom(Pred { name: "P", terms: [Fun("c_y", [])] })), Not(Atom(Pred { name: "Q", terms: [Fun("c_x", [])] }))}, {Not(Atom(Pred { name: "R", terms: [Fun("c_y", [])] }))}}
 
 
-    2 tuples in formula
+    Adding formula {{Atom(Pred { name: "P", terms: [Fun("c_x", [])] })}, {Atom(Pred { name: "Q", terms: [Fun("c_y", [])] })}, {Atom(Pred { name: "R", terms: [Fun("f_z", [Fun("c_y", []), Fun("c_y", [])])] }), Not(Atom(Pred { name: "P", terms: [Fun("c_y", [])] })), Not(Atom(Pred { name: "Q", terms: [Fun("c_y", [])] }))}, {Atom(Pred { name: "U", terms: [Fun("c_x", [])] }), Not(Atom(Pred { name: "P", terms: [Fun("c_y", [])] })), Not(Atom(Pred { name: "Q", terms: [Fun("c_y", [])] }))}, {Not(Atom(Pred { name: "R", terms: [Fun("c_y", [])] }))}}
 
 
-    Adding tuple [Fun("c_x", []), Fun("c_y", []), Fun("c_x", [])]
+    Adding formula {{Atom(Pred { name: "P", terms: [Fun("c_x", [])] })}, {Atom(Pred { name: "Q", terms: [Fun("c_y", [])] })}, {Atom(Pred { name: "R", terms: [Fun("f_z", [Fun("c_x", []), Fun("c_x", [])])] }), Not(Atom(Pred { name: "P", terms: [Fun("c_x", [])] })), Not(Atom(Pred { name: "Q", terms: [Fun("c_x", [])] }))}, {Atom(Pred { name: "U", terms: [Fun("c_y", [])] }), Not(Atom(Pred { name: "P", terms: [Fun("c_x", [])] })), Not(Atom(Pred { name: "Q", terms: [Fun("c_x", [])] }))}, {Not(Atom(Pred { name: "R", terms: [Fun("c_x", [])] }))}}
 
 
-    3 tuples in formula
+    Adding formula {{Atom(Pred { name: "P", terms: [Fun("c_x", [])] })}, {Atom(Pred { name: "Q", terms: [Fun("c_y", [])] })}, {Atom(Pred { name: "R", terms: [Fun("f_z", [Fun("c_x", []), Fun("c_y", [])])] }), Not(Atom(Pred { name: "P", terms: [Fun("c_x", [])] })), Not(Atom(Pred { name: "Q", terms: [Fun("c_y", [])] }))}, {Atom(Pred { name: "U", terms: [Fun("c_y", [])] }), Not(Atom(Pred { name: "P", terms: [Fun("c_x", [])] })), Not(Atom(Pred { name: "Q", terms: [Fun("c_y", [])] }))}, {Not(Atom(Pred { name: "R", terms: [Fun("c_x", [])] }))}}
 
 
-    Adding tuple [Fun("c_x", []), Fun("c_y", []), Fun("c_y", [])]
+    Adding formula {{Atom(Pred { name: "P", terms: [Fun("c_x", [])] })}, {Atom(Pred { name: "Q", terms: [Fun("c_y", [])] })}, {Atom(Pred { name: "R", terms: [Fun("f_z", [Fun("c_y", []), Fun("c_x", [])])] }), Not(Atom(Pred { name: "P", terms: [Fun("c_y", [])] })), Not(Atom(Pred { name: "Q", terms: [Fun("c_x", [])] }))}, {Atom(Pred { name: "U", terms: [Fun("c_y", [])] }), Not(Atom(Pred { name: "P", terms: [Fun("c_y", [])] })), Not(Atom(Pred { name: "Q", terms: [Fun("c_x", [])] }))}, {Not(Atom(Pred { name: "R", terms: [Fun("c_y", [])] }))}}
 
 
-    4 tuples in formula
+    Adding formula {{Atom(Pred { name: "P", terms: [Fun("c_x", [])] })}, {Atom(Pred { name: "Q", terms: [Fun("c_y", [])] })}, {Atom(Pred { name: "R", terms: [Fun("f_z", [Fun("c_y", []), Fun("c_y", [])])] }), Not(Atom(Pred { name: "P", terms: [Fun("c_y", [])] })), Not(Atom(Pred { name: "Q", terms: [Fun("c_y", [])] }))}, {Atom(Pred { name: "U", terms: [Fun("c_y", [])] }), Not(Atom(Pred { name: "P", terms: [Fun("c_y", [])] })), Not(Atom(Pred { name: "Q", terms: [Fun("c_y", [])] }))}, {Not(Atom(Pred { name: "R", terms: [Fun("c_y", [])] }))}}
 
 
-    Adding tuple [Fun("c_y", []), Fun("c_x", []), Fun("c_x", [])]
+    Generating tuples for next level 1
 
 
-    5 tuples in formula
+    Adding formula {{Atom(Pred { name: "P", terms: [Fun("c_x", [])] })}, {Atom(Pred { name: "Q", terms: [Fun("c_y", [])] })}, {Atom(Pred { name: "R", terms: [Fun("f_z", [Fun("c_x", []), Fun("f_z", [Fun("c_x", []), Fun("c_x", [])])])] }), Not(Atom(Pred { name: "P", terms: [Fun("c_x", [])] })), Not(Atom(Pred { name: "Q", terms: [Fun("f_z", [Fun("c_x", []), Fun("c_x", [])])] }))}, {Atom(Pred { name: "U", terms: [Fun("c_x", [])] }), Not(Atom(Pred { name: "P", terms: [Fun("c_x", [])] })), Not(Atom(Pred { name: "Q", terms: [Fun("f_z", [Fun("c_x", []), Fun("c_x", [])])] }))}, {Not(Atom(Pred { name: "R", terms: [Fun("c_x", [])] }))}}
 
 
-    Adding tuple [Fun("c_y", []), Fun("c_x", []), Fun("c_y", [])]
+    Adding formula {{Atom(Pred { name: "P", terms: [Fun("c_x", [])] })}, {Atom(Pred { name: "Q", terms: [Fun("c_y", [])] })}, {Atom(Pred { name: "R", terms: [Fun("f_z", [Fun("c_x", []), Fun("f_z", [Fun("c_x", []), Fun("c_y", [])])])] }), Not(Atom(Pred { name: "P", terms: [Fun("c_x", [])] })), Not(Atom(Pred { name: "Q", terms: [Fun("f_z", [Fun("c_x", []), Fun("c_y", [])])] }))}, {Atom(Pred { name: "U", terms: [Fun("c_x", [])] }), Not(Atom(Pred { name: "P", terms: [Fun("c_x", [])] })), Not(Atom(Pred { name: "Q", terms: [Fun("f_z", [Fun("c_x", []), Fun("c_y", [])])] }))}, {Not(Atom(Pred { name: "R", terms: [Fun("c_x", [])] }))}}
 
 
-    6 tuples in formula
+    Adding formula {{Atom(Pred { name: "P", terms: [Fun("c_x", [])] })}, {Atom(Pred { name: "Q", terms: [Fun("c_y", [])] })}, {Atom(Pred { name: "R", terms: [Fun("f_z", [Fun("c_x", []), Fun("f_z", [Fun("c_y", []), Fun("c_x", [])])])] }), Not(Atom(Pred { name: "P", terms: [Fun("c_x", [])] })), Not(Atom(Pred { name: "Q", terms: [Fun("f_z", [Fun("c_y", []), Fun("c_x", [])])] }))}, {Atom(Pred { name: "U", terms: [Fun("c_x", [])] }), Not(Atom(Pred { name: "P", terms: [Fun("c_x", [])] })), Not(Atom(Pred { name: "Q", terms: [Fun("f_z", [Fun("c_y", []), Fun("c_x", [])])] }))}, {Not(Atom(Pred { name: "R", terms: [Fun("c_x", [])] }))}}
 
 
-    Adding tuple [Fun("c_y", []), Fun("c_y", []), Fun("c_x", [])]
+    Adding formula {{Atom(Pred { name: "P", terms: [Fun("c_x", [])] })}, {Atom(Pred { name: "Q", terms: [Fun("c_y", [])] })}, {Atom(Pred { name: "R", terms: [Fun("f_z", [Fun("c_x", []), Fun("f_z", [Fun("c_y", []), Fun("c_y", [])])])] }), Not(Atom(Pred { name: "P", terms: [Fun("c_x", [])] })), Not(Atom(Pred { name: "Q", terms: [Fun("f_z", [Fun("c_y", []), Fun("c_y", [])])] }))}, {Atom(Pred { name: "U", terms: [Fun("c_x", [])] }), Not(Atom(Pred { name: "P", terms: [Fun("c_x", [])] })), Not(Atom(Pred { name: "Q", terms: [Fun("f_z", [Fun("c_y", []), Fun("c_y", [])])] }))}, {Not(Atom(Pred { name: "R", terms: [Fun("c_x", [])] }))}}
 
 
-    7 tuples in formula
+    Adding formula {{Atom(Pred { name: "P", terms: [Fun("c_x", [])] })}, {Atom(Pred { name: "Q", terms: [Fun("c_y", [])] })}, {Atom(Pred { name: "R", terms: [Fun("f_z", [Fun("c_y", []), Fun("f_z", [Fun("c_x", []), Fun("c_x", [])])])] }), Not(Atom(Pred { name: "P", terms: [Fun("c_y", [])] })), Not(Atom(Pred { name: "Q", terms: [Fun("f_z", [Fun("c_x", []), Fun("c_x", [])])] }))}, {Atom(Pred { name: "U", terms: [Fun("c_x", [])] }), Not(Atom(Pred { name: "P", terms: [Fun("c_y", [])] })), Not(Atom(Pred { name: "Q", terms: [Fun("f_z", [Fun("c_x", []), Fun("c_x", [])])] }))}, {Not(Atom(Pred { name: "R", terms: [Fun("c_y", [])] }))}}
 
 
-    Adding tuple [Fun("c_y", []), Fun("c_y", []), Fun("c_y", [])]
+    Adding formula {{Atom(Pred { name: "P", terms: [Fun("c_x", [])] })}, {Atom(Pred { name: "Q", terms: [Fun("c_y", [])] })}, {Atom(Pred { name: "R", terms: [Fun("f_z", [Fun("c_y", []), Fun("f_z", [Fun("c_x", []), Fun("c_y", [])])])] }), Not(Atom(Pred { name: "P", terms: [Fun("c_y", [])] })), Not(Atom(Pred { name: "Q", terms: [Fun("f_z", [Fun("c_x", []), Fun("c_y", [])])] }))}, {Atom(Pred { name: "U", terms: [Fun("c_x", [])] }), Not(Atom(Pred { name: "P", terms: [Fun("c_y", [])] })), Not(Atom(Pred { name: "Q", terms: [Fun("f_z", [Fun("c_x", []), Fun("c_y", [])])] }))}, {Not(Atom(Pred { name: "R", terms: [Fun("c_y", [])] }))}}
 
 
-    8 tuples in formula
+    Adding formula {{Atom(Pred { name: "P", terms: [Fun("c_x", [])] })}, {Atom(Pred { name: "Q", terms: [Fun("c_y", [])] })}, {Atom(Pred { name: "R", terms: [Fun("f_z", [Fun("c_y", []), Fun("f_z", [Fun("c_y", []), Fun("c_x", [])])])] }), Not(Atom(Pred { name: "P", terms: [Fun("c_y", [])] })), Not(Atom(Pred { name: "Q", terms: [Fun("f_z", [Fun("c_y", []), Fun("c_x", [])])] }))}, {Atom(Pred { name: "U", terms: [Fun("c_x", [])] }), Not(Atom(Pred { name: "P", terms: [Fun("c_y", [])] })), Not(Atom(Pred { name: "Q", terms: [Fun("f_z", [Fun("c_y", []), Fun("c_x", [])])] }))}, {Not(Atom(Pred { name: "R", terms: [Fun("c_y", [])] }))}}
 
 
-    Generating tuples for next level: 1
+    Adding formula {{Atom(Pred { name: "P", terms: [Fun("c_x", [])] })}, {Atom(Pred { name: "Q", terms: [Fun("c_y", [])] })}, {Atom(Pred { name: "R", terms: [Fun("f_z", [Fun("c_y", []), Fun("f_z", [Fun("c_y", []), Fun("c_y", [])])])] }), Not(Atom(Pred { name: "P", terms: [Fun("c_y", [])] })), Not(Atom(Pred { name: "Q", terms: [Fun("f_z", [Fun("c_y", []), Fun("c_y", [])])] }))}, {Atom(Pred { name: "U", terms: [Fun("c_x", [])] }), Not(Atom(Pred { name: "P", terms: [Fun("c_y", [])] })), Not(Atom(Pred { name: "Q", terms: [Fun("f_z", [Fun("c_y", []), Fun("c_y", [])])] }))}, {Not(Atom(Pred { name: "R", terms: [Fun("c_y", [])] }))}}
 
 
-    Adding tuple [Fun("c_x", []), Fun("c_x", []), Fun("f_z", [Fun("c_x", []), Fun("c_x", [])])]
+    Adding formula {{Atom(Pred { name: "P", terms: [Fun("c_x", [])] })}, {Atom(Pred { name: "Q", terms: [Fun("c_y", [])] })}, {Atom(Pred { name: "R", terms: [Fun("f_z", [Fun("f_z", [Fun("c_x", []), Fun("c_x", [])]), Fun("c_x", [])])] }), Not(Atom(Pred { name: "P", terms: [Fun("f_z", [Fun("c_x", []), Fun("c_x", [])])] })), Not(Atom(Pred { name: "Q", terms: [Fun("c_x", [])] }))}, {Atom(Pred { name: "U", terms: [Fun("c_x", [])] }), Not(Atom(Pred { name: "P", terms: [Fun("f_z", [Fun("c_x", []), Fun("c_x", [])])] })), Not(Atom(Pred { name: "Q", terms: [Fun("c_x", [])] }))}, {Not(Atom(Pred { name: "R", terms: [Fun("f_z", [Fun("c_x", []), Fun("c_x", [])])] }))}}
 
 
-    9 tuples in formula
+    Adding formula {{Atom(Pred { name: "P", terms: [Fun("c_x", [])] })}, {Atom(Pred { name: "Q", terms: [Fun("c_y", [])] })}, {Atom(Pred { name: "R", terms: [Fun("f_z", [Fun("f_z", [Fun("c_x", []), Fun("c_x", [])]), Fun("c_y", [])])] }), Not(Atom(Pred { name: "P", terms: [Fun("f_z", [Fun("c_x", []), Fun("c_x", [])])] })), Not(Atom(Pred { name: "Q", terms: [Fun("c_y", [])] }))}, {Atom(Pred { name: "U", terms: [Fun("c_x", [])] }), Not(Atom(Pred { name: "P", terms: [Fun("f_z", [Fun("c_x", []), Fun("c_x", [])])] })), Not(Atom(Pred { name: "Q", terms: [Fun("c_y", [])] }))}, {Not(Atom(Pred { name: "R", terms: [Fun("f_z", [Fun("c_x", []), Fun("c_x", [])])] }))}}
 
 
-    Adding tuple [Fun("c_x", []), Fun("c_x", []), Fun("f_z", [Fun("c_x", []), Fun("c_y", [])])]
+    Adding formula {{Atom(Pred { name: "P", terms: [Fun("c_x", [])] })}, {Atom(Pred { name: "Q", terms: [Fun("c_y", [])] })}, {Atom(Pred { name: "R", terms: [Fun("f_z", [Fun("f_z", [Fun("c_x", []), Fun("c_y", [])]), Fun("c_x", [])])] }), Not(Atom(Pred { name: "P", terms: [Fun("f_z", [Fun("c_x", []), Fun("c_y", [])])] })), Not(Atom(Pred { name: "Q", terms: [Fun("c_x", [])] }))}, {Atom(Pred { name: "U", terms: [Fun("c_x", [])] }), Not(Atom(Pred { name: "P", terms: [Fun("f_z", [Fun("c_x", []), Fun("c_y", [])])] })), Not(Atom(Pred { name: "Q", terms: [Fun("c_x", [])] }))}, {Not(Atom(Pred { name: "R", terms: [Fun("f_z", [Fun("c_x", []), Fun("c_y", [])])] }))}}
 
 
-    10 tuples in formula
-
-
-    Adding tuple [Fun("c_x", []), Fun("c_x", []), Fun("f_z", [Fun("c_y", []), Fun("c_x", [])])]
-
-
-    11 tuples in formula
-
-
-    Adding tuple [Fun("c_x", []), Fun("c_x", []), Fun("f_z", [Fun("c_y", []), Fun("c_y", [])])]
-
-
-    12 tuples in formula
-
-
-    Adding tuple [Fun("c_x", []), Fun("c_y", []), Fun("f_z", [Fun("c_x", []), Fun("c_x", [])])]
-
-
-    13 tuples in formula
-
-
-    Adding tuple [Fun("c_x", []), Fun("c_y", []), Fun("f_z", [Fun("c_x", []), Fun("c_y", [])])]
-
-
-    14 tuples in formula
-
-
-    Adding tuple [Fun("c_x", []), Fun("c_y", []), Fun("f_z", [Fun("c_y", []), Fun("c_x", [])])]
-
-
-    15 tuples in formula
-
-
-    Adding tuple [Fun("c_x", []), Fun("c_y", []), Fun("f_z", [Fun("c_y", []), Fun("c_y", [])])]
-
-
-    16 tuples in formula
-
-
-    Adding tuple [Fun("c_x", []), Fun("f_z", [Fun("c_x", []), Fun("c_x", [])]), Fun("c_x", [])]
-
-
-    17 tuples in formula
-
-
-    Adding tuple [Fun("c_x", []), Fun("f_z", [Fun("c_x", []), Fun("c_x", [])]), Fun("c_y", [])]
-
-
-    18 tuples in formula
-
-
-    Adding tuple [Fun("c_x", []), Fun("f_z", [Fun("c_x", []), Fun("c_y", [])]), Fun("c_x", [])]
-
-
-    19 tuples in formula
-
-
-    Found 2 inconsistent tuples of skolemized negation: {[Fun("c_y", []), Fun("c_x", []), Fun("c_y", [])], [Fun("c_x", []), Fun("f_z", [Fun("c_x", []), Fun("c_y", [])]), Fun("c_x", [])]}
+    Found 2 inconsistent tuples of skolemized negation: {[Fun("c_x", []), Fun("f_z", [Fun("c_x", []), Fun("c_y", [])]), Fun("c_x", [])], [Fun("c_y", []), Fun("c_x", []), Fun("c_y", [])]}
 
 
     Formula is valid.
@@ -619,100 +562,70 @@ let result = Formula::davis_putnam(&formula, compute_unsat_core, max_depth);
 println!("{:?}", result);
 ```
 
-    Generating tuples for next level: 0
+    Generating tuples for next level 0
 
 
-    Adding tuple [Fun("c_boy", [])]
+    Adding formula {{Not(Atom(Pred { name: "Loves", terms: [Fun("c_boy", []), Fun("friend", [Fun("c_boy", [])])] }))}}
 
 
-    1 tuples in formula
+    Generating tuples for next level 1
 
 
-    Generating tuples for next level: 1
+    Adding formula {{Not(Atom(Pred { name: "Loves", terms: [Fun("friend", [Fun("c_boy", [])]), Fun("friend", [Fun("c_boy", [])])] }))}}
 
 
-    Adding tuple [Fun("friend", [Fun("c_boy", [])])]
+    Generating tuples for next level 2
 
 
-    2 tuples in formula
+    Adding formula {{Not(Atom(Pred { name: "Loves", terms: [Fun("friend", [Fun("friend", [Fun("c_boy", [])])]), Fun("friend", [Fun("c_boy", [])])] }))}}
 
 
-    Generating tuples for next level: 2
+    Generating tuples for next level 3
 
 
-    Adding tuple [Fun("friend", [Fun("friend", [Fun("c_boy", [])])])]
+    Adding formula {{Not(Atom(Pred { name: "Loves", terms: [Fun("friend", [Fun("friend", [Fun("friend", [Fun("c_boy", [])])])]), Fun("friend", [Fun("c_boy", [])])] }))}}
 
 
-    3 tuples in formula
+    Generating tuples for next level 4
 
 
-    Generating tuples for next level: 3
+    Adding formula {{Not(Atom(Pred { name: "Loves", terms: [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("c_boy", [])])])])]), Fun("friend", [Fun("c_boy", [])])] }))}}
 
 
-    Adding tuple [Fun("friend", [Fun("friend", [Fun("friend", [Fun("c_boy", [])])])])]
+    Generating tuples for next level 5
 
 
-    4 tuples in formula
+    Adding formula {{Not(Atom(Pred { name: "Loves", terms: [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("c_boy", [])])])])])]), Fun("friend", [Fun("c_boy", [])])] }))}}
 
 
-    Generating tuples for next level: 4
+    Generating tuples for next level 6
 
 
-    Adding tuple [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("c_boy", [])])])])])]
+    Adding formula {{Not(Atom(Pred { name: "Loves", terms: [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("c_boy", [])])])])])])]), Fun("friend", [Fun("c_boy", [])])] }))}}
 
 
-    5 tuples in formula
+    Generating tuples for next level 7
 
 
-    Generating tuples for next level: 5
+    Adding formula {{Not(Atom(Pred { name: "Loves", terms: [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("c_boy", [])])])])])])])]), Fun("friend", [Fun("c_boy", [])])] }))}}
 
 
-    Adding tuple [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("c_boy", [])])])])])])]
+    Generating tuples for next level 8
 
 
-    6 tuples in formula
+    Adding formula {{Not(Atom(Pred { name: "Loves", terms: [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("c_boy", [])])])])])])])])]), Fun("friend", [Fun("c_boy", [])])] }))}}
 
 
-    Generating tuples for next level: 6
+    Generating tuples for next level 9
 
 
-    Adding tuple [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("c_boy", [])])])])])])])]
+    Adding formula {{Not(Atom(Pred { name: "Loves", terms: [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("c_boy", [])])])])])])])])])]), Fun("friend", [Fun("c_boy", [])])] }))}}
 
 
-    7 tuples in formula
+    Generating tuples for next level 10
 
 
-    Generating tuples for next level: 7
-
-
-    Adding tuple [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("c_boy", [])])])])])])])])]
-
-
-    8 tuples in formula
-
-
-    Generating tuples for next level: 8
-
-
-    Adding tuple [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("c_boy", [])])])])])])])])])]
-
-
-    9 tuples in formula
-
-
-    Generating tuples for next level: 9
-
-
-    Adding tuple [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("c_boy", [])])])])])])])])])])]
-
-
-    10 tuples in formula
-
-
-    Generating tuples for next level: 10
-
-
-    Err(HerbrandBoundReached { msg: "Reached herbrand term nesting bound of 10.  Giving up." })
+    Err(HerbrandBoundReached { msg: "Reached Herbrand term nesting bound of 10.  Giving up." })
 
 
 Note:  You might think that you could also run a parallel process checking all models of the above language of increasing size looking for counterexamples.  While this would indeed work for the example above, it does not work in general because there are some first order formulas which have counterexamples only in infinite models.  For example consider the sentence

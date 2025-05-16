@@ -1983,14 +1983,14 @@ impl Formula<Pred> {
         if next_level > max_depth {
             return Err(HerbrandBoundReached {
                 msg: format!(
-                    "Reached herbrand term nesting bound of {}.  Giving up.",
+                    "Reached Herbrand term nesting bound of {}.  Giving up.",
                     max_depth
                 ),
             });
         }
 
         if tuples_left_at_level.is_empty() {
-            println!("Generating tuples for next level: {}", next_level);
+            println!("Generating tuples for next level {}", next_level);
 
             let new_tuples =
                 Formula::ground_tuples(constants, functions, next_level, free_variables.len());
@@ -2013,14 +2013,13 @@ impl Formula<Pred> {
                 Formula::make_instantiation(free_variables, &next_tuple);
 
             // First substitute in the ground instances for `instantiation`.
-            let subst_result: FormulaSet<Pred> =
+            let new_formula: FormulaSet<Pred> =
                 Formula::subst_in_formulaset(formula, &instantiation);
 
             let augmented_instances =
-                augment_ground_instances(&subst_result, ground_instances_so_far);
+                augment_ground_instances(&new_formula, ground_instances_so_far);
             tuples_tried.insert(next_tuple.clone());
-            println!("Adding tuple {:?}", next_tuple);
-            println!("{:?} tuples in formula", tuples_tried.len());
+            println!("Adding formula {:?}", new_formula);
             if !sat_test(&augmented_instances) {
                 Ok(tuples_tried)
             } else {
@@ -2062,7 +2061,6 @@ impl Formula<Pred> {
     ) -> FormulaSet<Pred> {
         // Combine with existing ground instances
         let aggregate = Formula::_set_distrib_and_over_or(new_formula, ground_instances_so_far);
-
         Formula::_strip_contradictory(&aggregate)
     }
 
@@ -2109,6 +2107,9 @@ impl Formula<Pred> {
         let (constants, functions) = Formula::herbrand_functions(&negation_skolemized);
         let mut free_variables = Vec::from_iter(negation_skolemized.free_variables());
         free_variables.sort();
+        // The following does a strip of clauses with contradictory literals,
+        // so that the satisfiability is equivalent to being non-empty.
+        // This is an invariant we maintain throughout, even as we add to the accumulator.
         let dnf_formula = negation_skolemized.dnf_formulaset();
         let result = Formula::gilmore_loop(
             &dnf_formula,
@@ -2131,6 +2132,7 @@ impl Formula<Pred> {
         new_formula: &FormulaSet<Pred>,
         ground_instances_so_far: &FormulaSet<Pred>,
     ) -> FormulaSet<Pred> {
+        // Simply conjoin all new CNF clauses.
         new_formula | ground_instances_so_far
     }
 
@@ -2585,6 +2587,14 @@ mod herbrand_tests {
         let max_depth = 100;
         let result = Formula::gilmore(&formula, max_depth).unwrap();
         assert!((2..=3).contains(&result.len()));
+    }
+
+    #[test]
+    fn test_gilmore_2() {
+        // (Not valid)
+        let formula = Formula::<Pred>::parse("forall x. (P(x) \\/ ~P(x))").unwrap();
+        let result = Formula::gilmore(&formula, 10);
+        assert!(result.is_ok());
     }
 
     #[test]
