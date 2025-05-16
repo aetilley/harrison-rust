@@ -1,10 +1,4 @@
-A Rust library for SAT solving and automated theorem proving highly informed by John Harrison's text on Automated Theorem Proving.  
-
-(Harrison, J. (2009). Handbook of Practical Logic and Automated Reasoning. Cambridge: Cambridge University Press)
-
-(Harrison's text uses Ocaml.)
-
-This package is a work in progress, but the following are supported:
+A Rust library for SAT solving and automated theorem proving. This package is a work in progress, but the following are supported:
 
 1) datatypes/parsing/printing operations
 2) eval
@@ -23,6 +17,10 @@ and a Jupyter Rust kernel, e.g. https://github.com/evcxr/evcxr/blob/main/evcxr_j
 
 `README.md` is generated from `README.ipynb` by running 
 ```jupyter nbconvert --execute --to markdown README.ipynb```
+
+Acknowlegement:  This libarary was highly informed by John Harrison's text on Automated Theorem Proving (which uses Ocaml).  
+
+(Harrison, J. (2009). Handbook of Practical Logic and Automated Reasoning. Cambridge: Cambridge University Press)
 
 
 
@@ -260,7 +258,51 @@ simplified.pprint(&mut stdout);
     <<forall x. (~R(x) ==> (exists y. ~K(y)))>>
 
 
-Example 5: Arithmetic mod n (n >= 2)
+Example 5: Solve a hard sudoku board (You should be in release mode for this.)
+
+
+```Rust
+let path_str: &str = "./data/sudoku.txt";
+let path: &Path = Path::new(path_str);
+let boards: Vec<Board> = parse_sudoku_dataset(path, Some(1));
+let clauses = get_board_formulas(&boards, 9, 3)[0].clone();
+let mut solver = DPLBSolver::new(&clauses);
+let num_props = solver.num_props();
+println!("(A sentence in {num_props} propositional variables)");
+let is_sat = solver.solve();
+println!("Is satisfiable?: {is_sat}");
+assert!(is_sat);
+let formula = Formula::formulaset_to_formula(clauses);
+let check = formula.eval(&solver.get_valuation().unwrap());
+println!("Check: Solution satisfies original constraints?: {check}");
+println!("Let's use the same solver to run several times and take the average time...");
+run_repeatedly_and_average(
+    || {
+        solver.solve();
+    },
+    10,
+);
+```
+
+    (A sentence in 729 propositional variables)
+
+
+    Is satisfiable?: true
+
+
+    Check: Solution satisfies original constraints?: true
+
+
+    Let's use the same solver to run several times and take the average time...
+
+
+    Average time over a total of 10 runs is 371.321245ms.
+
+
+    
+
+
+Example 6: Arithmetic mod n (n >= 2)
 
 
 ```Rust
@@ -382,7 +424,7 @@ for n in 2..20 {
     Integers mod 19:  true
 
 
-Example 6: Prenex Normal Form
+Example 7: Prenex Normal Form
 
 
 ```Rust
@@ -403,7 +445,7 @@ result.pprint(&mut stdout);
     <<forall x' z'. (~F(x', z) \/ ~G(z', x))>>
 
 
-Example 7: Skolemization
+Example 8: Skolemization
 
 
 ```Rust
@@ -427,7 +469,7 @@ result.pprint(&mut stdout);
     <<R(F(y)) \/ P(f_w(c_x)) /\ M(G(y', f_w'(y'))) \/ ~M(F(f_z(w), w))>>
 
 
-Example 8: Test a first order formula for validity
+Example 9: Test a first order formula for validity (valid formula)
 
 
 ```Rust
@@ -435,248 +477,247 @@ let string = "(forall x y. exists z. forall w. (P(x) /\\ Q(y) ==> R(z) /\\ U(w))
     ==> (exists x y. (P(x) /\\ Q(y))) ==> (exists z. R(z))";
 let formula = Formula::<Pred>::parse(string).unwrap();
 let compute_unsat_core = true;
-let max_depth = 100;
+let max_depth = 10;
 Formula::davis_putnam(&formula, compute_unsat_core, max_depth);
 ```
 
-    Ground instances tried: 0
+    Generating tuples for next level: 0
 
 
-    Size of the Ground instance FormulaSet: 0
+    Adding tuple [Fun("c_x", []), Fun("c_x", []), Fun("c_x", [])]
 
 
-    
+    1 tuples in formula
 
 
-    Ground instances tried: 0
+    Adding tuple [Fun("c_x", []), Fun("c_x", []), Fun("c_y", [])]
 
 
-    Size of the Ground instance FormulaSet: 0
+    2 tuples in formula
 
 
-    
+    Adding tuple [Fun("c_x", []), Fun("c_y", []), Fun("c_x", [])]
 
 
-    Ground instances tried: 1
+    3 tuples in formula
 
 
-    Size of the Ground instance FormulaSet: 5
+    Adding tuple [Fun("c_x", []), Fun("c_y", []), Fun("c_y", [])]
 
 
-    
+    4 tuples in formula
 
 
-    Ground instances tried: 2
+    Adding tuple [Fun("c_y", []), Fun("c_x", []), Fun("c_x", [])]
 
 
-    Size of the Ground instance FormulaSet: 7
+    5 tuples in formula
 
 
-    
+    Adding tuple [Fun("c_y", []), Fun("c_x", []), Fun("c_y", [])]
 
 
-    Ground instances tried: 3
+    6 tuples in formula
 
 
-    Size of the Ground instance FormulaSet: 10
+    Adding tuple [Fun("c_y", []), Fun("c_y", []), Fun("c_x", [])]
 
 
-    
+    7 tuples in formula
 
 
-    Ground instances tried: 4
+    Adding tuple [Fun("c_y", []), Fun("c_y", []), Fun("c_y", [])]
 
 
-    Size of the Ground instance FormulaSet: 12
+    8 tuples in formula
 
 
-    
+    Generating tuples for next level: 1
 
 
-    Ground instances tried: 5
+    Adding tuple [Fun("c_x", []), Fun("c_x", []), Fun("f_z", [Fun("c_x", []), Fun("c_x", [])])]
 
 
-    Size of the Ground instance FormulaSet: 13
+    9 tuples in formula
 
 
-    
+    Adding tuple [Fun("c_x", []), Fun("c_x", []), Fun("f_z", [Fun("c_x", []), Fun("c_y", [])])]
 
 
-    Ground instances tried: 6
+    10 tuples in formula
 
 
-    Size of the Ground instance FormulaSet: 14
+    Adding tuple [Fun("c_x", []), Fun("c_x", []), Fun("f_z", [Fun("c_y", []), Fun("c_x", [])])]
 
 
-    
+    11 tuples in formula
 
 
-    Ground instances tried: 7
+    Adding tuple [Fun("c_x", []), Fun("c_x", []), Fun("f_z", [Fun("c_y", []), Fun("c_y", [])])]
 
 
-    Size of the Ground instance FormulaSet: 15
+    12 tuples in formula
 
 
-    
+    Adding tuple [Fun("c_x", []), Fun("c_y", []), Fun("f_z", [Fun("c_x", []), Fun("c_x", [])])]
 
 
-    Ground instances tried: 8
+    13 tuples in formula
 
 
-    Size of the Ground instance FormulaSet: 16
+    Adding tuple [Fun("c_x", []), Fun("c_y", []), Fun("f_z", [Fun("c_x", []), Fun("c_y", [])])]
 
 
-    
+    14 tuples in formula
 
 
-    Ground instances tried: 8
+    Adding tuple [Fun("c_x", []), Fun("c_y", []), Fun("f_z", [Fun("c_y", []), Fun("c_x", [])])]
 
 
-    Size of the Ground instance FormulaSet: 16
+    15 tuples in formula
 
 
-    
+    Adding tuple [Fun("c_x", []), Fun("c_y", []), Fun("f_z", [Fun("c_y", []), Fun("c_y", [])])]
 
 
-    Ground instances tried: 9
+    16 tuples in formula
 
 
-    Size of the Ground instance FormulaSet: 18
+    Adding tuple [Fun("c_x", []), Fun("f_z", [Fun("c_x", []), Fun("c_x", [])]), Fun("c_x", [])]
 
 
-    
+    17 tuples in formula
 
 
-    Ground instances tried: 10
+    Adding tuple [Fun("c_x", []), Fun("f_z", [Fun("c_x", []), Fun("c_x", [])]), Fun("c_y", [])]
 
 
-    Size of the Ground instance FormulaSet: 20
+    18 tuples in formula
 
 
-    
+    Adding tuple [Fun("c_x", []), Fun("f_z", [Fun("c_x", []), Fun("c_y", [])]), Fun("c_x", [])]
 
 
-    Ground instances tried: 11
+    19 tuples in formula
 
 
-    Size of the Ground instance FormulaSet: 22
-
-
-    
-
-
-    Ground instances tried: 12
-
-
-    Size of the Ground instance FormulaSet: 24
-
-
-    
-
-
-    Ground instances tried: 13
-
-
-    Size of the Ground instance FormulaSet: 26
-
-
-    
-
-
-    Ground instances tried: 14
-
-
-    Size of the Ground instance FormulaSet: 28
-
-
-    
-
-
-    Ground instances tried: 15
-
-
-    Size of the Ground instance FormulaSet: 30
-
-
-    
-
-
-    Ground instances tried: 16
-
-
-    Size of the Ground instance FormulaSet: 32
-
-
-    
-
-
-    Ground instances tried: 17
-
-
-    Size of the Ground instance FormulaSet: 35
-
-
-    
-
-
-    Ground instances tried: 18
-
-
-    Size of the Ground instance FormulaSet: 37
-
-
-    
-
-
-    Found 2 inconsistent tuples of skolemized negation: {[Fun("c_x", []), Fun("f_z", [Fun("c_x", []), Fun("c_y", [])]), Fun("c_x", [])], [Fun("c_y", []), Fun("c_x", []), Fun("c_y", [])]}
+    Found 2 inconsistent tuples of skolemized negation: {[Fun("c_y", []), Fun("c_x", []), Fun("c_y", [])], [Fun("c_x", []), Fun("f_z", [Fun("c_x", []), Fun("c_y", [])]), Fun("c_x", [])]}
 
 
     Formula is valid.
 
 
-Example 9: Solve a hard sudoku board (You should be in release mode for this.)
+Example 10: Test a first order formula for validity (invalid formula)
 
 
 ```Rust
-let path_str: &str = "./data/sudoku.txt";
-let path: &Path = Path::new(path_str);
-let boards: Vec<Board> = parse_sudoku_dataset(path, Some(1));
-let clauses = get_board_formulas(&boards, 9, 3)[0].clone();
-let mut solver = DPLBSolver::new(&clauses);
-let num_props = solver.num_props();
-println!("(A sentence in {num_props} propositional variables)");
-let is_sat = solver.solve();
-println!("Is satisfiable?: {is_sat}");
-assert!(is_sat);
-let formula = Formula::formulaset_to_formula(clauses);
-let check = formula.eval(&solver.get_valuation().unwrap());
-println!("Check: Solution satisfies original constraints?: {check}");
-println!("Let's use the same solver to run several times and take the average time...");
-run_repeatedly_and_average(
-    || {
-        solver.solve();
-    },
-    10,
-);
+let string = "forall boy. exists girl. (Loves(girl, friend(boy)))";
+let formula = Formula::<Pred>::parse(string).unwrap();
+let compute_unsat_core = true;
+let max_depth = 10;
+let result = Formula::davis_putnam(&formula, compute_unsat_core, max_depth);
+println!("{:?}", result);
 ```
 
-    (A sentence in 729 propositional variables)
+    Generating tuples for next level: 0
 
 
-    Is satisfiable?: true
+    Adding tuple [Fun("c_boy", [])]
 
 
-    Check: Solution satisfies original constraints?: true
+    1 tuples in formula
 
 
-    Let's use the same solver to run several times and take the average time...
+    Generating tuples for next level: 1
 
 
-    Average time over a total of 10 runs is 684.137462ms.
+    Adding tuple [Fun("friend", [Fun("c_boy", [])])]
 
 
-    
+    2 tuples in formula
 
+
+    Generating tuples for next level: 2
+
+
+    Adding tuple [Fun("friend", [Fun("friend", [Fun("c_boy", [])])])]
+
+
+    3 tuples in formula
+
+
+    Generating tuples for next level: 3
+
+
+    Adding tuple [Fun("friend", [Fun("friend", [Fun("friend", [Fun("c_boy", [])])])])]
+
+
+    4 tuples in formula
+
+
+    Generating tuples for next level: 4
+
+
+    Adding tuple [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("c_boy", [])])])])])]
+
+
+    5 tuples in formula
+
+
+    Generating tuples for next level: 5
+
+
+    Adding tuple [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("c_boy", [])])])])])])]
+
+
+    6 tuples in formula
+
+
+    Generating tuples for next level: 6
+
+
+    Adding tuple [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("c_boy", [])])])])])])])]
+
+
+    7 tuples in formula
+
+
+    Generating tuples for next level: 7
+
+
+    Adding tuple [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("c_boy", [])])])])])])])])]
+
+
+    8 tuples in formula
+
+
+    Generating tuples for next level: 8
+
+
+    Adding tuple [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("c_boy", [])])])])])])])])])]
+
+
+    9 tuples in formula
+
+
+    Generating tuples for next level: 9
+
+
+    Adding tuple [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("friend", [Fun("c_boy", [])])])])])])])])])])]
+
+
+    10 tuples in formula
+
+
+    Generating tuples for next level: 10
+
+
+    Err(HerbrandBoundReached { msg: "Reached herbrand term nesting bound of 10.  Giving up." })
+
+
+Note:  You might think that you could also run a parallel process checking all models of the above language of increasing size looking for counterexamples.  While this would indeed work for the example above, it does not work in general because there are some first order formulas which have counterexamples only in infinite models.  For example consider the sentence
+`forall x y. (f(x) == f(y) ==> x == y) ==> exists z. (f(z) == c))` That is, every 1-1 function is onto.
+This sentence is true in all finite models but need not be true in infinite models.
 
 
 ```Rust
