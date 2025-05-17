@@ -1,4 +1,4 @@
-// Formula<T> class and Formula<T>-pecific parsing/printing functions
+// Formula<T> class and Formula<T>-specific parsing/printing functions
 // that do *not* depend on T.  See propositional_logic and first_order_logic
 // files for specific parsing/printing functions that specify T.
 
@@ -13,10 +13,6 @@ use priority_queue::PriorityQueue;
 //### Formula AST ###
 #[derive(Debug, PartialEq, Clone, PartialOrd, Eq, Ord, Hash)]
 pub enum Formula<T: Clone + Debug + Hash + Eq + Ord> {
-    // Note that using Rc would actually be preferable to Box here
-    // since we will not need to mutate the inner formulas.
-    // Unfortunately we currently rely heavily on #![feature(box_patterns)]
-    // and that feature does not have a corresponding "rc" keyword.
     False,
     True,
     Atom(T),
@@ -35,7 +31,6 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
         Formula::Atom(t.to_owned())
     }
 
-    #[allow(clippy::should_implement_trait)]
     pub fn not(formula: &Formula<T>) -> Formula<T> {
         Formula::Not(Box::new(formula.to_owned()))
     }
@@ -65,32 +60,12 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
     }
 
     // NOTE:  The following might be better off as methods.
-    pub fn get_and_ops(formula: &Formula<T>) -> (Formula<T>, Formula<T>) {
-        if let Formula::And(op1, op2) = formula {
-            (*op1.clone(), *op2.clone())
-        } else {
-            panic!("Expected Formula::And, received {formula:?}.");
-        }
-    }
-    pub fn get_or_ops(formula: &Formula<T>) -> (Formula<T>, Formula<T>) {
-        if let Formula::Or(op1, op2) = formula {
-            (*op1.clone(), *op2.clone())
-        } else {
-            panic!("Expected Formula::Or, received {formula:?}.");
-        }
-    }
+
     pub fn get_imp_ops(formula: &Formula<T>) -> (Formula<T>, Formula<T>) {
         if let Formula::Imp(op1, op2) = formula {
             (*op1.clone(), *op2.clone())
         } else {
             panic!("Expected Formula::Imp, received {formula:?}.");
-        }
-    }
-    pub fn get_iff_ops(formula: &Formula<T>) -> (Formula<T>, Formula<T>) {
-        if let Formula::Iff(op1, op2) = formula {
-            (*op1.clone(), *op2.clone())
-        } else {
-            panic!("Expected Formula::Iff, received {formula:?}.");
         }
     }
 
@@ -100,28 +75,6 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
 
     pub fn consequent(imp_formula: &Formula<T>) -> Formula<T> {
         Formula::get_imp_ops(imp_formula).1
-    }
-
-    pub fn conjuncts(formula: &Formula<T>) -> Vec<Formula<T>> {
-        match formula {
-            Formula::And(left_conjunct, right_conjunct) => {
-                let mut result = Formula::conjuncts(left_conjunct);
-                result.append(&mut Formula::conjuncts(right_conjunct));
-                result
-            }
-            _ => vec![formula.clone()],
-        }
-    }
-
-    pub fn disjuncts(formula: &Formula<T>) -> Vec<Formula<T>> {
-        match formula {
-            Formula::Or(left_conjunct, right_conjunct) => {
-                let mut result = Formula::disjuncts(left_conjunct);
-                result.append(&mut Formula::disjuncts(right_conjunct));
-                result
-            }
-            _ => vec![formula.clone()],
-        }
     }
 
     pub fn on_atoms<F: Fn(&T) -> Formula<T>>(&self, map: &F) -> Formula<T> {
@@ -266,31 +219,6 @@ mod formula_tests_general {
     }
 
     #[test]
-    fn test_get_iff_ops_good_input() {
-        let conj_left = Formula::atom(&String::from("hello"));
-        let conj_right = Formula::or(
-            &Formula::atom(&String::from("apples")),
-            &Formula::atom(&String::from("oranges")),
-        );
-        let good_input: Formula<String> = Formula::iff(&conj_left, &conj_right);
-
-        let (result_left, result_right) = Formula::get_iff_ops(&good_input);
-        assert_eq!(result_left, conj_left);
-        assert_eq!(result_right, conj_right);
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_get_iff_ops_bad_input() {
-        let bad_input: Formula<String> = Formula::and(
-            &Formula::atom(&String::from("apples")),
-            &Formula::atom(&String::from("oranges")),
-        );
-
-        Formula::get_iff_ops(&bad_input);
-    }
-
-    #[test]
     fn test_antecedent_and_consequent() {
         let ante = Formula::atom(&String::from("apples"));
         let cons = Formula::atom(&String::from("oranges"));
@@ -299,54 +227,6 @@ mod formula_tests_general {
         let result_cons = Formula::consequent(&input);
         assert_eq!(result_ante, ante);
         assert_eq!(result_cons, cons);
-    }
-
-    #[test]
-    fn test_conjuncts() {
-        let input: Formula<String> = Formula::and(
-            &Formula::or(
-                &Formula::atom(&String::from("A")),
-                &Formula::atom(&String::from("B")),
-            ),
-            &Formula::and(
-                &Formula::atom(&String::from("C")),
-                &Formula::atom(&String::from("D")),
-            ),
-        );
-        let result_conjuncts = Formula::conjuncts(&input);
-        let desired_conjuncts = vec![
-            Formula::or(
-                &Formula::atom(&String::from("A")),
-                &Formula::atom(&String::from("B")),
-            ),
-            Formula::atom(&String::from("C")),
-            Formula::atom(&String::from("D")),
-        ];
-        assert_eq!(result_conjuncts, desired_conjuncts);
-    }
-
-    #[test]
-    fn test_disjuncts() {
-        let input: Formula<String> = Formula::or(
-            &Formula::or(
-                &Formula::atom(&String::from("A")),
-                &Formula::atom(&String::from("B")),
-            ),
-            &Formula::and(
-                &Formula::atom(&String::from("C")),
-                &Formula::atom(&String::from("D")),
-            ),
-        );
-        let result_disjuncts = Formula::disjuncts(&input);
-        let desired_disjuncts = vec![
-            Formula::atom(&String::from("A")),
-            Formula::atom(&String::from("B")),
-            Formula::and(
-                &Formula::atom(&String::from("C")),
-                &Formula::atom(&String::from("D")),
-            ),
-        ];
-        assert_eq!(result_disjuncts, desired_disjuncts);
     }
 
     #[test]
@@ -1221,12 +1101,11 @@ mod formula_tests_simplify_and_eval {
 
 // Normal Forms
 
-// Set representations of Formulas in disjunctive or conjunctive normal form
-// (we need to specify in order to have a unique meaning)..
-// Note we could replace the inner `Formula<T>` by an indicator
-// function on `T` (or just a set of type Valuation<T>), which would prevent
-// non-literals from going in there.
-// In the meantime, we use a BTreeSet here so that we can rely on an ordering
+// `FormulaSet`: a set representations of Formulas in disjunctive or conjunctive normal form
+// (we need to specify which in order to have a unique meaning)..
+// The inner sets are the clauses, and the outer set represents their disjunction
+// (for DNF) for conjunction (for CNF).
+// We use BTreeSet here so that we can rely on an ordering
 // for tests.
 pub type FormulaSet<T> = BTreeSet<BTreeSet<Formula<T>>>;
 
@@ -1266,9 +1145,8 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
     }
 
     pub fn raw_nenf(&self) -> Formula<T> {
-        // Negation and normal form also allowing equivalences (iff).
+        // Negation normal form also allowing equivalences (iff).
         // NOTE that this and `raw_nnf` could factor through a common function
-        // (with an additional parameter for a `normalizer` but low priority for now.
         match self {
             Formula::And(p, q) => Formula::and(&p.raw_nenf(), &q.raw_nenf()),
             Formula::Or(p, q) => Formula::or(&p.raw_nenf(), &q.raw_nenf()),
@@ -1338,27 +1216,23 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
         result
     }
 
-    fn _negative(formula: &Formula<T>) -> bool {
-        matches!(formula, Formula::Not(_))
-    }
-
-    fn _positive(formula: &Formula<T>) -> bool {
+    fn positive(formula: &Formula<T>) -> bool {
         // NOTE: that the way _negative and _positive are defined,
         // every non-literal will count as `_positive`.
-        !Formula::_negative(formula)
+        !Formula::negative(formula)
     }
 
     fn _contradictory_lits(lits: &BTreeSet<Formula<T>>) -> bool {
         // Whether `lits` contains two literals of the form `p` and `~p`.
         let pos: BTreeSet<Formula<T>> = lits
             .iter()
-            .filter(|x| Formula::_positive(x))
+            .filter(|x| Formula::positive(x))
             .cloned()
             .collect();
 
         let neg: BTreeSet<Formula<T>> = lits
             .iter()
-            .filter(|x| Formula::_negative(x))
+            .filter(|x| Formula::negative(x))
             .map(|lit| lit.negate())
             .collect();
 
@@ -1911,6 +1785,11 @@ pub type ErrInner = &'static str;
 // ### Davis-Putnam (DP)
 impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
     fn _one_literal_rule(clauses: &FormulaSet<T>) -> Result<FormulaSet<T>, ErrInner> {
+        // If there is a singleton clause (containing one literal) then the only
+        // satisfying interpretations are those where that literal is true.
+        // Thus we can remove all clauses that contain that literal (they will be true)
+        // and we can remove the negation of that literal from all clauses that contain
+        // that negation (that disjunct cannot be true).
         for clause in clauses {
             if clause.len() == 1 {
                 let clause_vec: Vec<Formula<T>> = Vec::from_iter(clause.clone());
@@ -1918,7 +1797,7 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
                 let negation = literal.negate();
                 let result: FormulaSet<T> = clauses
                     .iter()
-                    .filter(|c| !c.contains(&literal))
+                    .filter(|clause| !clause.contains(&literal))
                     .cloned()
                     .collect();
                 let result: FormulaSet<T> = result
@@ -1943,6 +1822,7 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
             clauses.iter().fold(BTreeSet::new(), |x, y| &x | y);
         let (negative, positive): (BTreeSet<Formula<T>>, BTreeSet<Formula<T>>) =
             all_literals.into_iter().partition(Formula::negative);
+        // The atoms whose negations appear in a clause.
         let unnegated: BTreeSet<Formula<T>> = negative
             .into_iter()
             .map(|neg| Formula::negate(&neg))
@@ -1976,6 +1856,9 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
 
     // For _resolution_rule (DP only).
     fn _resolve_atom(clauses: &FormulaSet<T>, literal: &Formula<T>) -> FormulaSet<T> {
+        // Given a `literal` p appearing both positively in some clauses p V C_i
+        // and negatively in others ~p V D_j, remove all such clauses and replace them with
+        // all possible C_i V D_j.
         let clauses = Formula::_strip_contradictory(clauses);
         let (contains_literal, doesnt_contain_literal): (FormulaSet<T>, FormulaSet<T>) = clauses
             .into_iter()
@@ -2007,6 +1890,8 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
             })
             .collect();
         let mut result = FormulaSet::new();
+
+        // Collect unions of all stripped positive and stripped negative pairs.
         for literal_comp in literal_complements.iter() {
             for negation_comp in negation_complements.iter() {
                 result.insert(literal_comp | negation_comp);
@@ -2083,7 +1968,7 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
         Formula::dp(&Formula::cnf_formulaset(self))
     }
     pub fn dp_taut(&self) -> bool {
-        !Formula::dp_sat(&Formula::not(self))
+        !Formula::dp_sat(&Formula::negate(self))
     }
 }
 
@@ -2379,23 +2264,9 @@ mod dp_tests {
 // DPLL
 impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
     pub fn _posneg_count(clauses: &FormulaSet<T>, literal: &Formula<T>) -> isize {
-        // splitting creates *two* formulae for DPLL of sizes
-        // N + 1 each, but the next call to DPLL will call the unit clause rule
-        // which will reduce each by
-        // 1) removing the whole *clauses* where `literal` appears positively, and
-        // 2) removing all occurences of the negation of literal.
-        // NOTE that Harrison seems to count both of (1) and (2) equally, but
-        // it doesn't seem that much harder to count up the sizes of the
-        // clauses removed in 1).
         let (num_containing_lit, num_containing_neg) =
             Formula::_counts_containing_literal_and_negation(clauses, literal);
         num_containing_lit + num_containing_neg
-    }
-
-    fn _neg_count(clauses: &FormulaSet<T>, literal: &Formula<T>) -> isize {
-        let (_, num_containing_neg) =
-            Formula::_counts_containing_literal_and_negation(clauses, literal);
-        num_containing_neg
     }
 
     pub fn dpll(clauses: &FormulaSet<T>) -> bool {
@@ -2413,12 +2284,16 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
             return Formula::dpll(&formula);
         }
         // Split.
+        // Splitting creates *two* formulas for DPLL of sizes
+        // N + 1 each, but the next call to DPLL will call the unit clause rule
+        // which will reduce each.
         let positive_literals: BTreeSet<Formula<T>> = clauses
             .iter()
             .fold(BTreeSet::new(), |x, y| &x | y)
             .into_iter()
             .filter(|literal| !Formula::negative(literal))
             .collect();
+        // Use atom with max posneg_count
         let atom = Formula::_find_min(
             &|atom| -Formula::_posneg_count(clauses, atom),
             &positive_literals,
@@ -2436,7 +2311,7 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
         Formula::dpll(&Formula::cnf_formulaset(self))
     }
     pub fn dpll_taut(&self) -> bool {
-        !Formula::dpll_sat(&Formula::not(self))
+        !Formula::dpll_sat(&Formula::negate(self))
     }
 }
 
@@ -2485,6 +2360,8 @@ mod dpll_tests {
     }
 }
 
+// DPLI  ie. Iterative DPLL
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Mix {
     Guessed,
@@ -2493,7 +2370,6 @@ pub enum Mix {
 
 pub type Valuation<T> = BTreeMap<T, bool>;
 
-// Unlike Harrison, we will push to / pop from the back.
 pub type Trail<T> = Vec<(Formula<T>, Mix)>;
 
 fn get_valuation_from_trail<T: Debug + Clone + Hash + Eq + Ord>(trail: &Trail<T>) -> Valuation<T> {

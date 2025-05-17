@@ -2052,7 +2052,10 @@ impl Formula<Pred> {
             let new_ground_instance: FormulaSet<Pred> =
                 Formula::subst_in_formulaset(formula, &instantiation);
 
-            println!("Adding formula {:?}", new_ground_instance);
+            println!(
+                "Adding new formula to set: {:?}",
+                Formula::formulaset_to_formula(new_ground_instance.clone())
+            );
             let augmented_instances =
                 augment_ground_instances(&new_ground_instance, ground_instances_so_far);
             tuples_tried.insert(next_tuple.clone());
@@ -2143,6 +2146,10 @@ impl Formula<Pred> {
     ) -> Result<HashSet<Vec<Term>>, HerbrandBoundReached> {
         // Tautology test by checking whether the negation is unsatisfiable.
         // USES DNF FormulaSet representations throughout.
+
+        // Note that it is important to generalize first, since `p valid iff ~p unsat` is true
+        // only for ground formulas, ie. formulas with no free variables.
+
         let negation_skolemized = formula.generalize().negate().skolemize();
         let (constants, functions) = Formula::herbrand_functions(&negation_skolemized);
         let mut free_variables = Vec::from_iter(negation_skolemized.free_variables());
@@ -2249,6 +2256,9 @@ impl Formula<Pred> {
     ) -> Result<HashSet<Vec<Term>>, HerbrandBoundReached> {
         // Validity test by checking whether the negation is unsatisfiable.
         // USES CNF FormulaSet representations throughout.
+
+        // Note that it is important to generalize first, since `p valid iff ~p unsat` is true
+        // only for ground formulas, ie. formulas with no free variables.
         let negation_skolemized = formula.generalize().negate().skolemize();
         let (constants, functions) = Formula::herbrand_functions(&negation_skolemized);
         let mut free_variables = Vec::from_iter(negation_skolemized.free_variables());
