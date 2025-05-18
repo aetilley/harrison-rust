@@ -254,7 +254,7 @@ impl Term {
         }
     }
 
-    fn pprint<W: Write>(&self, dest: &mut W) {
+    pub fn pprint<W: Write>(&self, dest: &mut W) {
         open_box(0);
         write(dest, "<<|");
         open_box(0);
@@ -1863,7 +1863,7 @@ impl Formula<Pred> {
         }
         (constants, functions)
     }
-    fn ground_terms(
+    pub fn ground_terms(
         constants: &HashSet<(String, usize)>,
         functions: &HashSet<(String, usize)>,
         level: usize,
@@ -1909,7 +1909,7 @@ impl Formula<Pred> {
             .fold(BTreeSet::new(), |x, y| &x | &y)
     }
 
-    fn ground_tuples(
+    pub fn ground_tuples(
         constants: &HashSet<(String, usize)>,
         functions: &HashSet<(String, usize)>,
         level: usize,
