@@ -6,7 +6,6 @@ use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;
-use std::io::Write;
 
 use priority_queue::PriorityQueue;
 
@@ -337,49 +336,7 @@ mod formula_tests_general {
     }
 }
 
-// ### Formula Printing ###
-
-// Note this is not as nice as Harrison's because it relies on an
-// open_box, close_box, print_space, print_break as
-// in Ocaml's Format module, which may take time to implement in rust.
-// In the meantime, the result will all be on one line.
-
-// Our base write function for strings.
-// Can change the `dest` during testing.
-pub fn write(dest: &mut impl Write, input: &str) {
-    write!(dest, "{input}").expect("Unable to write");
-}
-#[allow(unused_variables)]
-pub fn open_box(indent: u32) {
-    // No-op for now
-}
-
-pub fn close_box() {
-    // No-op for now
-}
-
-pub fn print_space(dest: &mut impl Write) {
-    // Just print a space for now.
-    write(dest, " ");
-}
-
-pub fn print_break(dest: &mut impl Write, _x: u32, _y: u32) {
-    // Just print a space for now.
-    write(dest, " ");
-}
-
-fn bracket<W: Write>(dest: &mut W, add_brackets: bool, indent: u32, print_action: impl Fn(&mut W)) {
-    // Similar to Harrison's `bracket` function but with a unified type `print_action` arg.
-    if add_brackets {
-        write(dest, "(");
-    }
-    open_box(indent);
-    print_action(dest);
-    close_box();
-    if add_brackets {
-        write(dest, ")");
-    }
-}
+// ### Formula Prettifying ###
 
 fn strip_quant<T: Clone + Debug + Hash + Eq + Ord>(
     formula: &Formula<T>,
@@ -416,113 +373,107 @@ fn strip_quant<T: Clone + Debug + Hash + Eq + Ord>(
     }
 }
 
-fn print_formula<T: Clone + Debug + Hash + Eq + Ord, W: Write>(
-    dest: &mut W,
-    pfn: &dyn Fn(&mut W, u32, &T),
+fn maybe_bracketed(add_brackets: bool, middle: &str) -> String {
+    let mut result = String::from("");
+    if add_brackets {
+        result.push('(');
+    }
+    result.push_str(middle);
+    if add_brackets {
+        result.push(')');
+    }
+    result
+}
+
+fn get_formula<T: Clone + Debug + Hash + Eq + Ord>(
+    atom_pretty: &dyn Fn(u32, &T) -> String,
     prec: u32,
     formula: &Formula<T>,
-) {
+) -> String {
     /*NOTE: This is actually Harrison's *inner* print_formula with an additional pfn argument
      *
      * prec is operator precidence
-     * pfn is a subprinter taking a precedence and an atom (T). */
+     * atom_pretty is a subprinter taking a precedence and an atom (T). */
 
     match formula {
-        Formula::False => write(dest, "false"),
-        Formula::True => write(dest, "true"),
-        Formula::Atom(t) => pfn(dest, prec, t),
-        Formula::Not(p) => bracket(dest, prec > 10, 1, |d| {
-            print_prefix(d, pfn, 10, "~", p);
-        }),
-        Formula::And(p, q) => bracket(dest, prec > 8, 0, |d| {
-            print_infix(d, pfn, 8, "/\\", p, q);
-        }),
-        Formula::Or(p, q) => bracket(dest, prec > 6, 0, |d| {
-            print_infix(d, pfn, 6, "\\/", p, q);
-        }),
-        Formula::Imp(p, q) => bracket(dest, prec > 4, 0, |d| {
-            print_infix(d, pfn, 4, "==>", p, q);
-        }),
-        Formula::Iff(p, q) => bracket(dest, prec > 2, 0, |d| {
-            print_infix(d, pfn, 2, "<=>", p, q);
-        }),
-        Formula::Forall(_, _) => bracket(dest, prec > 0, 2, |d| {
-            print_quant(d, pfn, "forall", formula);
-        }),
-        Formula::Exists(_, _) => bracket(dest, prec > 0, 2, |d| {
-            print_quant(d, pfn, "exists", formula);
-        }),
+        Formula::False => String::from("false"),
+        Formula::True => String::from("true"),
+        Formula::Atom(t) => atom_pretty(prec, t),
+        Formula::Not(p) => maybe_bracketed(prec > 10, &get_prefix(atom_pretty, 10, "~", p)),
+        Formula::And(p, q) => maybe_bracketed(prec > 8, &get_infix(atom_pretty, 8, "/\\", p, q)),
+        Formula::Or(p, q) => maybe_bracketed(prec > 6, &get_infix(atom_pretty, 6, "\\/", p, q)),
+        Formula::Imp(p, q) => maybe_bracketed(prec > 4, &get_infix(atom_pretty, 4, "==>", p, q)),
+        Formula::Iff(p, q) => maybe_bracketed(prec > 2, &get_infix(atom_pretty, 2, "<=>", p, q)),
+        Formula::Forall(_, _) => {
+            maybe_bracketed(prec > 0, &get_quant(atom_pretty, "forall", formula))
+        }
+        Formula::Exists(_, _) => {
+            maybe_bracketed(prec > 0, &get_quant(atom_pretty, "exists", formula))
+        }
     }
 }
 
-fn print_quant<T: Clone + Debug + Hash + Eq + Ord, W: Write>(
-    dest: &mut W,
-    pfn: &dyn Fn(&mut W, u32, &T),
+fn get_quant<T: Clone + Debug + Hash + Eq + Ord>(
+    atom_pretty: &dyn Fn(u32, &T) -> String,
     qname: &str,
     formula: &Formula<T>,
-) {
+) -> String {
     // Note that `formula` is the entire quantified formula (not just the body).
+    let mut result = String::from("");
+
     let (mut vars, body) = strip_quant(formula);
     // `strip_quant` returns vars in reverse order.
     vars.reverse();
-    write(dest, qname);
+    result.push_str(qname);
+
     vars.iter().for_each(|v| {
-        write(dest, &(" ".to_string() + v));
+        result.push(' ');
+        result.push_str(v);
     });
-    write(dest, ". ");
-    open_box(0);
-    // Recall that, unlike Harrison, we make quantifiers bind tighter than
-    // all binops, hence the precidence of 9 here.
-    print_formula(dest, pfn, 9, &body);
-    close_box();
+    result.push_str(". ");
+
+    result.push_str(&get_formula(atom_pretty, 9, &body));
+    result
 }
 
-fn print_prefix<T: Clone + Debug + Hash + Eq + Ord, W: Write>(
-    dest: &mut W,
-    pfn: &dyn Fn(&mut W, u32, &T),
+fn get_prefix<T: Clone + Debug + Hash + Eq + Ord>(
+    atom_pretty: &dyn Fn(u32, &T) -> String,
     prec: u32,
     symbol: &str,
     inner: &Formula<T>,
-) {
-    write(dest, symbol);
-    // let prec = prec + 1;
-    // NOTE that harrison seems to think (pg 627 that we should drop be dropping
-    // the parents in double negations.
-    // (pg 627, "[...] so that ~(~p) is printed ~~p.")
-    // but the function he gives does not do that since in incrementing here we
-    // would be keeping parens in double negations.
-    // Likely this increment is necessary when we get to predicate logic though.
-    print_formula(dest, pfn, prec, inner);
+) -> String {
+    let mut result = String::from(symbol);
+    result.push_str(&get_formula(atom_pretty, prec, inner));
+    result
 }
 
-fn print_infix<T: Clone + Debug + Hash + Eq + Ord, W: Write>(
-    dest: &mut W,
-    pfn: &dyn Fn(&mut W, u32, &T),
+fn get_infix<T: Clone + Debug + Hash + Eq + Ord>(
+    atom_pretty: &dyn Fn(u32, &T) -> String,
     prec: u32,
     symbol: &str,
     left: &Formula<T>,
     right: &Formula<T>,
-) {
+) -> String {
     // As in the double negation case, this will lead to extra brackets in A & (B & C).
-    print_formula(dest, pfn, prec + 1, left);
-    write(dest, &(" ".to_string() + symbol));
-    print_space(dest);
-    print_formula(dest, pfn, prec, right);
+    let mut result = String::new();
+
+    result.push_str(&get_formula(atom_pretty, prec + 1, left));
+    result.push(' ');
+    result.push_str(symbol);
+    result.push(' ');
+    result.push_str(&get_formula(atom_pretty, prec, right));
+    result
 }
 
 impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
-    pub fn pprint_general<W: Write, P: Fn(&mut W, u32, &T)>(&self, dest: &mut W, pfn: &P) {
-        // Takes a generic Write for `dest`, e.g. one can use std::io::stdout()
-        // pfn is a sub-parser for atoms (type T)
-        // NOTE:  It appears that both times this is passed a `pfn`, that function
+    pub fn pretty_general<P: Fn(u32, &T) -> String>(&self, atom_pretty: &P) -> String {
+        // atom_pretty is a sub-prettifier for atoms (type T)
+        // NOTE:  It appears that both times this is passed a `atom_pretty`, that function
         // ignores the precidence argument (u32).  Maybe simplify the type accordingly?
-        open_box(0);
-        write(dest, "<<");
-        open_box(0);
-        print_formula(dest, pfn, 0, self);
-        close_box();
-        write(dest, ">>");
-        close_box();
+        let mut result = String::from("<<");
+        result.push_str(&get_formula(atom_pretty, 0, self));
+        result.push_str(">>");
+        result
     }
 }
 #[cfg(test)]
@@ -535,25 +486,11 @@ mod generic_ast_print_tests {
         let _ = env_logger::builder().is_test(true).try_init();
     }
 
-    fn test_write() {
-        let mut output = Vec::new();
-        write(&mut output, "TESTING");
-        let output = String::from_utf8(output).expect("Not UTF-8");
-        assert_eq!(output, "TESTING");
-    }
-
-    fn test_bracket_no_indent() {
-        let mut output1 = Vec::new();
-        let mut output2 = Vec::new();
-        let test_action: fn(&mut _) -> () = |dest| {
-            write(dest, "TESTING");
-        };
-        bracket(&mut output1, true, 0, test_action);
-        bracket(&mut output2, false, 0, test_action);
-        let output1 = String::from_utf8(output1).expect("Not UTF-8");
-        let output2 = String::from_utf8(output2).expect("Not UTF-8");
-        assert_eq!(output1, "(TESTING)");
-        assert_eq!(output2, "TESTING");
+    fn test_maybe_bracket_no_indent() {
+        let result1 = maybe_bracketed(true, "TESTING");
+        let result2 = maybe_bracketed(false, "TESTING");
+        assert_eq!(result1, "(TESTING)");
+        assert_eq!(result2, "TESTING");
     }
 
     #[test]
@@ -577,14 +514,12 @@ mod generic_ast_print_tests {
     }
 
     fn _test_pprint_general(formula: Formula<String>, desired: &str) {
-        let pfn = |dest: &mut _, _prec: u32, name: &String| {
+        let pfn = |_prec: u32, name: &String| {
             // A toy printer for `Atom<String>`s that simply prints the `String`.
-            write(dest, name);
+            name.to_owned()
         };
-        let mut output = Vec::new();
-        formula.pprint_general(&mut output, &pfn);
-        let output = String::from_utf8(output).expect("Not UTF-8");
-        assert_eq!(output, desired);
+        let result = formula.pretty_general(&pfn);
+        assert_eq!(result, desired);
     }
 
     #[test]
@@ -1285,10 +1220,6 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
             .map(|conj| Formula::list_disj(&conj))
             .collect();
         Formula::list_conj(&partial)
-    }
-
-    pub fn formulaset_to_formula(formula_set: FormulaSet<T>) -> Formula<T> {
-        Formula::formulaset_to_cnf(formula_set)
     }
 
     fn _is_disjunction_of_literals(&self) -> bool {

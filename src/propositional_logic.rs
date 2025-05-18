@@ -6,9 +6,8 @@
 use std::cmp;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Debug;
-use std::io::Write;
 
-use crate::formula::{write, Formula, Valuation};
+use crate::formula::{Formula, Valuation};
 use crate::propositional_logic_grammar::PropFormulaParser;
 use crate::token::{Lexer, LexicalError, Token};
 
@@ -29,10 +28,11 @@ impl Prop {
         }
     }
 
-    fn print_propvar<W: Write>(dest: &mut W, _prec: u32, atom: &Prop) {
+    fn get_propvar(_prec: u32, atom: &Prop) -> String {
         // Our atom printer for propositional logic.  Note that the precedence argument is
         // simply ignored.
-        write(dest, &atom.name);
+
+        atom.name.clone()
     }
 }
 
@@ -46,15 +46,11 @@ mod prop_basic_tests {
 
     #[test]
     fn test_print_propvar() {
-        let mut output = Vec::new();
         let prop = Prop::new("SomeProp");
-        Prop::print_propvar(&mut output, 0, &prop);
-        let output = String::from_utf8(output).expect("Not UTF-8");
+        let output = Prop::get_propvar(0, &prop);
         assert_eq!(output, "SomeProp");
 
-        let mut output2 = Vec::new();
-        Prop::print_propvar(&mut output2, 42, &prop);
-        let output2 = String::from_utf8(output2).expect("Not UTF-8");
+        let output2 = Prop::get_propvar(42, &prop);
         assert_eq!(output2, "SomeProp");
     }
 }
@@ -258,10 +254,13 @@ mod prop_parse_tests {
 // PRINTING
 
 impl Formula<Prop> {
-    pub fn pprint<W: Write>(&self, dest: &mut W) {
-        let pfn: fn(&mut W, u32, &Prop) -> () = Prop::print_propvar;
-        self.pprint_general(dest, &pfn);
-        write(dest, "\n");
+    pub fn pretty(&self) -> String {
+        let pfn: fn(u32, &Prop) -> String = Prop::get_propvar;
+        self.pretty_general(&pfn)
+    }
+
+    pub fn pprint(&self) {
+        println!("{}\n", self.pretty())
     }
 }
 
@@ -274,7 +273,7 @@ mod prop_formula_print_tests {
     }
 
     #[test]
-    fn test_pprint() {
+    fn test_pretty() {
         let formula = Formula::and(
             &Formula::atom(&Prop::new("Prop5")),
             &Formula::iff(
@@ -288,12 +287,10 @@ mod prop_formula_print_tests {
                 ),
             ),
         );
-        let mut output = Vec::new();
-        formula.pprint(&mut output);
-        let output = String::from_utf8(output).expect("Not UTF-8");
+        let result = formula.pretty();
         assert_eq!(
-            output,
-            "<<Prop5 /\\ (Prop2 <=> Prop3 \\/ Prop4 ==> Prop1)>>\n"
+            result,
+            "<<Prop5 /\\ (Prop2 <=> Prop3 \\/ Prop4 ==> Prop1)>>"
         );
     }
 }
@@ -376,7 +373,7 @@ impl Formula<Prop> {
         result
     }
 
-    pub fn print_truthtable(&self, dest: &mut impl Write) {
+    pub fn get_truthtable(&self) -> String {
         let atoms = self.atoms();
         let mut sorted_atoms = Vec::from_iter(&atoms);
         sorted_atoms.sort();
@@ -413,8 +410,7 @@ impl Formula<Prop> {
         let header_lhs = String::from_iter(sorted_atoms.iter().map(|p| p.name.clone()).map(pad));
         let header = format!("{header_lhs}| formula");
         let separator = String::from_iter(vec!['-'; header.len()]);
-        let result = format!("{header}\n{separator}\n{body}{separator}\n");
-        write(dest, &result);
+        format!("{header}\n{separator}\n{body}{separator}\n")
     }
 
     pub fn brute_tautology(&self) -> bool {
@@ -472,9 +468,7 @@ mod core_sat_definitions_tests {
     #[test]
     fn test_print_truthtable() {
         let formula = Formula::<Prop>::parse("C <=> A /\\ B").unwrap();
-        let mut output = Vec::new();
-        formula.print_truthtable(&mut output);
-        let output = String::from_utf8(output).expect("Not UTF-8");
+        let output = formula.get_truthtable();
         let desired_output = "\
 A     B     C     | formula
 ---------------------------

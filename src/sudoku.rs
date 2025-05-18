@@ -213,6 +213,7 @@ pub fn get_board_formulas(
     board_size: usize,
     subboard_size: usize,
 ) -> Vec<FormulaSet<Prop>> {
+    // FormulaSets are in CNF
     let props = get_all_props(board_size);
 
     let constant_constraints: FormulaSet<Prop> = [
@@ -525,7 +526,7 @@ mod sudoku_tests {
         let mut solver = DPLISolver::new(&start_clauses);
         let is_sat = solver.solve();
         assert!(is_sat);
-        let formula = Formula::formulaset_to_formula(start_clauses);
+        let formula = Formula::formulaset_to_cnf(start_clauses);
         assert!(formula.eval(&solver.get_valuation().unwrap()));
     }
 
@@ -538,7 +539,7 @@ mod sudoku_tests {
         let mut solver = DPLBSolver::new(&start_clauses);
         let is_sat = solver.solve();
         assert!(is_sat);
-        let formula = Formula::formulaset_to_formula(start_clauses);
+        let formula = Formula::formulaset_to_cnf(start_clauses);
         assert!(formula.eval(&solver.get_valuation().unwrap()));
         run_repeatedly_and_average(
             || {

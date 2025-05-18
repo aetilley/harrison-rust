@@ -5,10 +5,9 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;
-use std::io::Write;
 
 use crate::first_order_logic_grammar::{PredFormulaParser, TermParser};
-use crate::formula::{close_box, open_box, print_break, write, Formula, FormulaSet};
+use crate::formula::{Formula, FormulaSet};
 use crate::token::INFIX_RELATION_SYMBOLS;
 use crate::token::{Lexer, LexicalError, Token};
 
@@ -172,96 +171,94 @@ mod term_parse_tests {
     }
 }
 
-// TERM PRINTING
+// TERM Pretty
 impl Term {
-    fn print_term<W: Write>(dest: &mut W, prec: u32, term: &Term) {
+    fn get_term(prec: u32, term: &Term) -> String {
         match term {
-            Term::Var(x) => {
-                write(dest, x);
-            }
+            Term::Var(x) => x.to_owned(),
             Term::Fun(op, args) if op == "^" && args.len() == 2 => {
-                Term::print_infix_term(dest, true, prec, 24, "^", &args[0], &args[1])
+                Term::get_infix_term(true, prec, 24, "^", &args[0], &args[1])
             }
             Term::Fun(op, args) if op == "/" && args.len() == 2 => {
-                Term::print_infix_term(dest, true, prec, 22, " / ", &args[0], &args[1])
+                Term::get_infix_term(true, prec, 22, " / ", &args[0], &args[1])
             }
             Term::Fun(op, args) if op == "*" && args.len() == 2 => {
-                Term::print_infix_term(dest, false, prec, 20, " * ", &args[0], &args[1])
+                Term::get_infix_term(false, prec, 20, " * ", &args[0], &args[1])
             }
             Term::Fun(op, args) if op == "-" && args.len() == 2 => {
-                Term::print_infix_term(dest, true, prec, 18, " - ", &args[0], &args[1])
+                Term::get_infix_term(true, prec, 18, " - ", &args[0], &args[1])
             }
             Term::Fun(op, args) if op == "+" && args.len() == 2 => {
-                Term::print_infix_term(dest, false, prec, 16, " + ", &args[0], &args[1])
+                Term::get_infix_term(false, prec, 16, " + ", &args[0], &args[1])
             }
             Term::Fun(op, args) if op == "::" && args.len() == 2 => {
-                Term::print_infix_term(dest, false, prec, 14, "::", &args[0], &args[1])
+                Term::get_infix_term(false, prec, 14, "::", &args[0], &args[1])
             }
-            Term::Fun(f, args) => Term::print_fargs(dest, f, args),
+            Term::Fun(f, args) => Term::get_fargs(f, args),
         }
     }
 
-    fn print_fargs<W: Write>(dest: &mut W, f: &str, args: &[Term]) {
+    fn get_fargs(f: &str, args: &[Term]) -> String {
         // Print a prefix predicate/function application e.g. R(x, y, ...), or f(u, v, ...)
-        write(dest, f);
+
+        let mut result = String::from(f);
+
         match &args {
             [] => {}
             // Dont' print parens for constants and propositions
             [head, rest @ ..] => {
-                write(dest, "(");
-                open_box(0);
-                Term::print_term(dest, 0, head);
+                result.push('(');
+                result.push_str(&Term::get_term(0, head));
+
                 for term in rest {
-                    write(dest, ",");
-                    print_break(dest, 0, 0);
-                    Term::print_term(dest, 0, term);
+                    result.push_str(", ");
+                    result.push_str(&Term::get_term(0, term));
                 }
-                close_box();
-                write(dest, ")");
+                result.push(')');
             }
         }
+
+        result
     }
 
-    fn print_infix_term<W: Write>(
-        dest: &mut W,
+    fn get_infix_term(
         is_left: bool,
         old_prec: u32,
         new_prec: u32,
         symbol: &str,
         term1: &Term,
         term2: &Term,
-    ) {
+    ) -> String {
+        let mut result = String::new();
         if old_prec > new_prec {
-            write(dest, "(");
-            open_box(0);
+            result.push('(')
         }
-        Term::print_term(dest, if is_left { new_prec } else { new_prec + 1 }, term1);
-        // print_break(0,0)
-        write(dest, symbol);
-        // print_break(
-        //     dest,
-        //     if symbol.chars().nth(0).unwrap() == ' ' {
-        //         1
-        //     } else {
-        //         0
-        //     },
-        //     0,
-        // );
-        Term::print_term(dest, if is_left { new_prec + 1 } else { new_prec }, term2);
+        result.push_str(&Term::get_term(
+            if is_left { new_prec } else { new_prec + 1 },
+            term1,
+        ));
+
+        result.push_str(symbol);
+        result.push_str(&Term::get_term(
+            if is_left { new_prec + 1 } else { new_prec },
+            term2,
+        ));
+
         if old_prec > new_prec {
-            write(dest, ")");
-            open_box(0);
+            result.push(')');
         }
+
+        result
     }
 
-    pub fn pprint<W: Write>(&self, dest: &mut W) {
-        open_box(0);
-        write(dest, "<<|");
-        open_box(0);
-        Term::print_term(dest, 0, self);
-        close_box();
-        write(dest, "|>>");
-        close_box();
+    pub fn pretty(&self) -> String {
+        let mut result = String::from("<<|");
+        result.push_str(&Term::get_term(0, self));
+        result.push_str("|>>");
+        result
+    }
+    pub fn pprint(&self) {
+        println!("{}", self.pretty());
     }
 }
 
@@ -277,10 +274,7 @@ mod term_print_tests {
             &Term::var("A"),
         );
 
-        let mut output = Vec::new();
-
-        term.pprint(&mut output);
-        let output = String::from_utf8(output).expect("Not UTF-8");
+        let output = term.pretty();
 
         let desired = "<<|(13 + x) / A|>>";
 
@@ -296,10 +290,8 @@ mod term_print_tests {
             ),
             &Term::constant("42"),
         );
-        let mut output = Vec::new();
 
-        term.pprint(&mut output);
-        let output = String::from_utf8(output).expect("Not UTF-8");
+        let output = term.pretty();
         let desired = "<<|apples * -(oranges) - 42|>>";
         assert_eq!(output, desired);
     }
@@ -320,10 +312,8 @@ mod term_print_tests {
                 Term::constant("19"),
             ],
         );
-        let mut output = Vec::new();
 
-        term.pprint(&mut output);
-        let output = String::from_utf8(output).expect("Not UTF-8");
+        let output = term.pretty();
         let desired = "<<|F(V, apples::oranges::42, 19)|>>";
         assert_eq!(output, desired);
     }
@@ -345,19 +335,11 @@ impl Pred {
         }
     }
 
-    fn print_pred<W: Write>(dest: &mut W, _prec: u32, Pred { name, terms }: &Pred) {
+    fn pretty(_prec: u32, Pred { name, terms }: &Pred) -> String {
         if INFIX_RELATION_SYMBOLS.contains(&name.as_str()) && terms.len() == 2 {
-            Term::print_infix_term(
-                dest,
-                false,
-                12,
-                12,
-                &format!(" {name} "),
-                &terms[0],
-                &terms[1],
-            );
+            Term::get_infix_term(false, 12, 12, &format!(" {name} "), &terms[0], &terms[1])
         } else {
-            Term::print_fargs(dest, name, terms);
+            Term::get_fargs(name, terms)
         }
     }
 }
@@ -383,9 +365,7 @@ mod pred_print_tests {
                 Term::constant("19"),
             ],
         );
-        let mut output = Vec::new();
-        Pred::print_pred(&mut output, 0, &pred);
-        let output = String::from_utf8(output).expect("Not UTF-8");
+        let output = Pred::pretty(0, &pred);
         let desired = "R(V, apples::oranges::42, 19)";
         assert_eq!(output, desired);
     }
@@ -405,9 +385,7 @@ mod pred_print_tests {
                 Term::constant("19"),
             ],
         );
-        let mut output = Vec::new();
-        Pred::print_pred(&mut output, 0, &pred);
-        let output = String::from_utf8(output).expect("Not UTF-8");
+        let output = Pred::pretty(0, &pred);
         let desired = "apples::oranges::42 <= 19";
         assert_eq!(output, desired);
     }
@@ -609,10 +587,13 @@ mod parse_pred_formula_tests {
 
 // Formula Printing
 impl Formula<Pred> {
-    pub fn pprint<W: Write>(&self, dest: &mut W) {
-        let pfn: fn(&mut W, u32, &Pred) -> () = Pred::print_pred;
-        self.pprint_general(dest, &pfn);
-        write(dest, "\n");
+    pub fn pretty(&self) -> String {
+        let atom_pretty: fn(u32, &Pred) -> String = Pred::pretty;
+        self.pretty_general(&atom_pretty)
+    }
+
+    pub fn pprint(&self) {
+        println!("{}", self.pretty())
     }
 }
 
@@ -630,10 +611,8 @@ mod test_print_pred_formula {
             &Formula::atom(&Pred::new("p", &[Term::constant("13"), Term::var("w")])),
         );
 
-        let mut output = Vec::new();
-        input.pprint(&mut output);
-        let output = String::from_utf8(output).expect("Not UTF-8");
-        let desired = "<<F(x) /\\ G(d(y)) ==> p(13, w)>>\n";
+        let output = input.pretty();
+        let desired = "<<F(x) /\\ G(d(y)) ==> p(13, w)>>";
         assert_eq!(output, desired);
     }
 
@@ -655,10 +634,8 @@ mod test_print_pred_formula {
                 ),
             ),
         );
-        let mut output = Vec::new();
-        input.pprint(&mut output);
-        let output = String::from_utf8(output).expect("Not UTF-8");
-        let desired = "<<forall y w. (F(RED) /\\ (exists RED BLUE. G(d(y))))>>\n";
+        let output = input.pretty();
+        let desired = "<<forall y w. (F(RED) /\\ (exists RED BLUE. G(d(y))))>>";
         assert_eq!(output, desired);
     }
 }
@@ -2054,7 +2031,7 @@ impl Formula<Pred> {
 
             println!(
                 "Adding new formula to set: {:?}",
-                Formula::formulaset_to_formula(new_ground_instance.clone())
+                Formula::formulaset_to_cnf(new_ground_instance.clone()).pretty()
             );
             let augmented_instances =
                 augment_ground_instances(&new_ground_instance, ground_instances_so_far);
