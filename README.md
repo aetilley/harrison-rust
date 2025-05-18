@@ -307,7 +307,7 @@ run_repeatedly_and_average(
     Let's use the same solver to run several times and take the average time...
 
 
-    Average time over a total of 10 runs is 132.689695ms.
+    Average time over a total of 10 runs is 839.698529ms.
 
 
     
@@ -555,7 +555,13 @@ Formula::davis_putnam(&formula, compute_unsat_core, max_depth);
     Adding new formula to set: "<<(((P(c_x) /\\ Q(c_y)) /\\ ((R(f_z(f_z(c_x, c_y), c_x)) \\/ ~P(f_z(c_x, c_y))) \\/ ~Q(c_x))) /\\ ((U(c_x) \\/ ~P(f_z(c_x, c_y))) \\/ ~Q(c_x))) /\\ ~R(f_z(c_x, c_y))>>"
 
 
-    Found 2 inconsistent tuples of skolemized negation: {[Fun("c_y", []), Fun("c_x", []), Fun("c_y", [])], [Fun("c_x", []), Fun("f_z", [Fun("c_x", []), Fun("c_y", [])]), Fun("c_x", [])]}
+    Found 2 inconsistent ground instances of skolemized negation:
+
+
+    <<(((P(c_x) /\ Q(c_y)) /\ ((R(f_z(f_z(c_x, c_y), c_x)) \/ ~P(f_z(c_x, c_y))) \/ ~Q(c_x))) /\ ((U(c_x) \/ ~P(f_z(c_x, c_y))) \/ ~Q(c_x))) /\ ~R(f_z(c_x, c_y))>>
+
+
+    <<(((P(c_x) /\ Q(c_y)) /\ ((R(f_z(c_x, c_y)) \/ ~P(c_x)) \/ ~Q(c_y))) /\ ((U(c_y) \/ ~P(c_x)) \/ ~Q(c_y))) /\ ~R(c_x)>>
 
 
     Formula is valid.
@@ -1176,5 +1182,16 @@ println!("{:?}", result);
     Generating tuples for next level 100
 
 
-    Err(HerbrandBoundReached { msg: "Reached Herbrand term nesting bound of 100.  Giving up." })
+    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
 
+
+    After searching to bound depth 100, set of ground instances (of negation) is still satisfiable. Giving up.
+
+
+    BoundReached(100)
+
+
+
+```Rust
+
+```

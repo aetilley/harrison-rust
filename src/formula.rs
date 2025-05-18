@@ -1834,22 +1834,24 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
     fn _counts_containing_literal_and_negation(
         clauses: &FormulaSet<T>,
         literal: &Formula<T>,
-    ) -> (isize, isize) {
+    ) -> (usize, usize) {
         let num_containing_lit = clauses
             .iter()
             .filter(|clause| clause.contains(literal))
-            .count() as isize;
+            .count();
         let negated = &Formula::negate(literal);
         let num_containing_neg = clauses
             .iter()
             .filter(|clause| clause.contains(negated))
-            .count() as isize;
+            .count();
         (num_containing_lit, num_containing_neg)
     }
 
     fn _atom_resolution_cost(clauses: &FormulaSet<T>, literal: &Formula<T>) -> isize {
-        let (num_containing_lit, num_containing_neg) =
-            Formula::_counts_containing_literal_and_negation(clauses, literal);
+        let (pos, neg) = Formula::_counts_containing_literal_and_negation(clauses, literal);
+
+        let num_containing_lit = pos as isize;
+        let num_containing_neg = neg as isize;
 
         num_containing_lit * num_containing_neg - (num_containing_lit + num_containing_neg)
     }
@@ -1860,6 +1862,14 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
     {
         let comp = |f1: &&Formula<T>, f2: &&Formula<T>| -> Ordering { obj(f1).cmp(&obj(f2)) };
         domain.iter().min_by(comp).cloned()
+    }
+
+    pub fn _find_max<F>(obj: &F, domain: &BTreeSet<Formula<T>>) -> Option<Formula<T>>
+    where
+        F: Fn(&Formula<T>) -> isize,
+    {
+        let comp = |f1: &&Formula<T>, f2: &&Formula<T>| -> Ordering { obj(f1).cmp(&obj(f2)) };
+        domain.iter().max_by(comp).cloned()
     }
 
     fn _resolution_rule(clauses: &FormulaSet<T>) -> FormulaSet<T> {
@@ -2103,7 +2113,7 @@ mod dp_tests {
             &Formula::atom(&String::from("A")),
         );
         // (2 * 1) - 2 - 1 = -1
-        let desired: (isize, isize) = (2, 1);
+        let desired: (usize, usize) = (2, 1);
         assert_eq!(result, desired);
     }
 
@@ -2194,7 +2204,7 @@ mod dp_tests {
 
 // DPLL
 impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
-    pub fn _posneg_count(clauses: &FormulaSet<T>, literal: &Formula<T>) -> isize {
+    pub fn _posneg_count(clauses: &FormulaSet<T>, literal: &Formula<T>) -> usize {
         let (num_containing_lit, num_containing_neg) =
             Formula::_counts_containing_literal_and_negation(clauses, literal);
         num_containing_lit + num_containing_neg
@@ -2225,8 +2235,8 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
             .filter(|literal| !Formula::negative(literal))
             .collect();
         // Use atom with max posneg_count
-        let atom = Formula::_find_min(
-            &|atom| -Formula::_posneg_count(clauses, atom),
+        let atom = Formula::_find_max(
+            &|atom| Formula::_posneg_count(clauses, atom) as isize,
             &positive_literals,
         )
         .expect("Positive literals should not be empty");
@@ -2330,6 +2340,7 @@ fn unit_subpropagate<T: Debug + Clone + Hash + Eq + Ord>(
     mut trail_set: BTreeSet<Formula<T>>,
     mut trail: Trail<T>,
 ) -> (FormulaSet<T>, BTreeSet<Formula<T>>, Trail<T>) {
+    // Note:  takes ownership.
     // Filter out disjuncts that disagree with `trail_set`
     // from clauses.  If there are any new resulting unit clauses
     // add these to `trail` and `trail_set` and repeat.
@@ -2374,9 +2385,9 @@ fn unit_subpropagate<T: Debug + Clone + Hash + Eq + Ord>(
 pub struct DPLISolver<T: Debug + Clone + Hash + Eq + Ord> {
     clauses: FormulaSet<T>,
     trail: Trail<T>,
-    unassigned: PriorityQueue<Formula<T>, isize>,
+    unassigned: PriorityQueue<Formula<T>, usize>,
     sat: Option<bool>,
-    scores: HashMap<Formula<T>, isize>,
+    scores: HashMap<Formula<T>, usize>,
 }
 
 impl<T: Debug + Clone + Hash + Eq + Ord> DPLISolver<T> {
@@ -2388,7 +2399,7 @@ impl<T: Debug + Clone + Hash + Eq + Ord> DPLISolver<T> {
             .map(_lit_abs)
             .collect();
 
-        let scores: HashMap<Formula<T>, isize> = props
+        let scores: HashMap<Formula<T>, usize> = props
             .into_iter()
             .map(|prop| {
                 let count = Formula::_posneg_count(clauses, &prop);
@@ -2396,7 +2407,7 @@ impl<T: Debug + Clone + Hash + Eq + Ord> DPLISolver<T> {
             })
             .collect();
 
-        let unassigned: PriorityQueue<Formula<T>, isize> = scores.clone().into_iter().collect();
+        let unassigned: PriorityQueue<Formula<T>, usize> = scores.clone().into_iter().collect();
 
         let trail = Trail::with_capacity(unassigned.len());
 
@@ -2416,18 +2427,14 @@ impl<T: Debug + Clone + Hash + Eq + Ord> DPLISolver<T> {
 
     fn trail_pop(&mut self) -> Option<Formula<T>> {
         // Pop and add back to `self.unassigned`.
-        match self.trail.pop() {
-            Some((lit, _)) => {
-                let abs = _lit_abs(&lit);
-                self.unassigned.push(abs.clone(), self.scores[&abs]);
-                Some(lit)
-            }
-            None => None,
-        }
+        let (lit, _mix) = self.trail.pop()?;
+        let abs = _lit_abs(&lit);
+        self.unassigned.push(abs.clone(), self.scores[&abs]);
+        Some(lit)
     }
 
     fn unit_propagate(&self) -> (FormulaSet<T>, Trail<T>) {
-        // Kick of recursive unit_subpropagation with a `trail_set` matching the incoming `trail`.
+        // Kick off recursive unit_subpropagation with a `trail_set` matching the incoming `trail`.
         let trail_set: BTreeSet<Formula<T>> =
             self.trail.clone().into_iter().map(|pair| pair.0).collect();
         let (reduced_clauses, _, extended_trail) =
@@ -2450,16 +2457,13 @@ impl<T: Debug + Clone + Hash + Eq + Ord> DPLISolver<T> {
         if simplified_clauses.contains(&BTreeSet::new()) {
             // Reach a contradiction.  Must backtrack.
             self.backtrack();
-            let last = self.trail.last();
-            // Unfortunately cloning/to_owned-ing a Option<&T> gives the same type.
-            // So we use "map" here as a kludge.
-            let copy = last.map(|inner| inner.to_owned());
-            match copy {
+            match self.trail.last() {
                 // Switch parity of our last guess.  Marking as Deduced this time.
                 Some((lit, Mix::Guessed)) => {
-                    assert!(!Formula::negative(&lit));
+                    let lit_clone = lit.clone();
+                    assert!(!Formula::negative(lit));
                     self.trail.pop();
-                    self.trail.push((Formula::negate(&lit), Mix::Deduced));
+                    self.trail.push((Formula::negate(&lit_clone), Mix::Deduced));
                     self._dpli()
                 }
                 // If there were no more Guesses, the clauses are not satisfiable.
@@ -2467,12 +2471,20 @@ impl<T: Debug + Clone + Hash + Eq + Ord> DPLISolver<T> {
             }
         } else {
             // Above propagation was consistent.  Choose another variable to guess.
+
+            // We have to remove the new trail elements from the Queue.
+            // and update the official trail.
+            // (We could have done this during subpropagation, but
+            // then we would have to add them back if we had to backtrack.)
             let xlen = extended_trail.len();
             let num_new = xlen - self.trail.len();
             for (prop, _mix) in &extended_trail[xlen - num_new..] {
                 self.unassigned.remove(&_lit_abs(prop));
             }
             self.trail = extended_trail;
+
+            // Get add the next guess if there are any left, or declare victory
+            // if not.
             match self.unassigned.pop() {
                 Some(optimum) => {
                     self.trail.push((optimum.0, Mix::Guessed));
@@ -2730,9 +2742,9 @@ mod dpli_solver_tests {
 pub struct DPLBSolver<T: Debug + Clone + Hash + Eq + Ord> {
     clauses: FormulaSet<T>,
     trail: Trail<T>,
-    unassigned: PriorityQueue<Formula<T>, isize>,
+    unassigned: PriorityQueue<Formula<T>, usize>,
     sat: Option<bool>,
-    scores: HashMap<Formula<T>, isize>, // read only
+    scores: HashMap<Formula<T>, usize>, // read only
 }
 
 impl<T: Debug + Clone + Hash + Eq + Ord> DPLBSolver<T> {
@@ -2744,7 +2756,7 @@ impl<T: Debug + Clone + Hash + Eq + Ord> DPLBSolver<T> {
             .map(_lit_abs)
             .collect();
 
-        let scores: HashMap<Formula<T>, isize> = props
+        let scores: HashMap<Formula<T>, usize> = props
             .into_iter()
             .map(|prop| {
                 let count = Formula::_posneg_count(clauses, &prop);
@@ -2752,7 +2764,7 @@ impl<T: Debug + Clone + Hash + Eq + Ord> DPLBSolver<T> {
             })
             .collect();
 
-        let unassigned: PriorityQueue<Formula<T>, isize> = scores.clone().into_iter().collect();
+        let unassigned: PriorityQueue<Formula<T>, usize> = scores.clone().into_iter().collect();
 
         let trail = Trail::<T>::with_capacity(unassigned.len());
 
