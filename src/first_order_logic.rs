@@ -1818,10 +1818,11 @@ mod skolemize_tests {
 // Herbrand methods
 //
 
-#[derive(Debug, PartialEq)]
-// To be raised when we give up generating new herbrand ground instances.
-pub struct HerbrandBoundReached {
-    pub msg: String,
+#[derive(Debug, PartialEq, Clone)]
+pub enum HerbrandResult {
+    ValidityProved(HashSet<Vec<Term>>),
+    InvalidityProved,
+    BoundReached(usize),
 }
 
 impl Formula<Pred> {
@@ -1934,6 +1935,16 @@ impl Formula<Pred> {
             .collect()
     }
 
+    fn subst_tuple_into_formulaset(
+        formula: &FormulaSet<Pred>,
+        free_variables: &[String],
+        tuple: &[Term],
+    ) -> FormulaSet<Pred> {
+        let instantiation: Instantiation = Formula::make_instantiation(free_variables, tuple);
+        // First substitute in the ground instances for `instantiation`.
+        Formula::subst_in_formulaset(formula, &instantiation)
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn herbrand_loop<SatTest, GroundInstancesAugmenter>(
         // NOTE could put the first 6 of these parameters into a struct `HerbloopContext`
@@ -1950,7 +1961,7 @@ impl Formula<Pred> {
         mut tuples_left_at_level: BTreeSet<Vec<Term>>,
         max_depth: usize,
         tuple_cache: &mut HashMap<(usize, usize), BTreeSet<Vec<Term>>>,
-    ) -> Result<HashSet<Vec<Term>>, HerbrandBoundReached>
+    ) -> HerbrandResult
     where
         SatTest: Fn(&FormulaSet<Pred>) -> bool,
         GroundInstancesAugmenter: Fn(&FormulaSet<Pred>, &FormulaSet<Pred>) -> FormulaSet<Pred>,
@@ -1986,16 +1997,11 @@ impl Formula<Pred> {
         //
         // `tuple_cache` A DP cache of all tuples for (size, level) if computed already.
 
-        if next_level > max_depth {
-            return Err(HerbrandBoundReached {
-                msg: format!(
-                    "Reached Herbrand term nesting bound of {}.  Giving up.",
-                    max_depth
-                ),
-            });
-        }
-
         if tuples_left_at_level.is_empty() {
+            if next_level > max_depth {
+                return HerbrandResult::BoundReached(max_depth);
+            }
+
             println!("Generating tuples for next level {}", next_level);
 
             // Note that these tuples are always of the same length = free_variables.len()
@@ -2006,6 +2012,11 @@ impl Formula<Pred> {
                 free_variables.len(),
                 tuple_cache,
             );
+
+            if new_tuples.is_empty() {
+                return HerbrandResult::InvalidityProved;
+            }
+
             Formula::herbrand_loop(
                 augment_ground_instances,
                 sat_test,
@@ -2022,12 +2033,10 @@ impl Formula<Pred> {
             )
         } else {
             let next_tuple: Vec<Term> = tuples_left_at_level.pop_first().unwrap();
-            let instantiation: Instantiation =
-                Formula::make_instantiation(free_variables, &next_tuple);
 
             // First substitute in the ground instances for `instantiation`.
             let new_ground_instance: FormulaSet<Pred> =
-                Formula::subst_in_formulaset(formula, &instantiation);
+                Formula::subst_tuple_into_formulaset(formula, free_variables, &next_tuple);
 
             println!(
                 "Adding new formula to set: {:?}",
@@ -2037,7 +2046,7 @@ impl Formula<Pred> {
                 augment_ground_instances(&new_ground_instance, ground_instances_so_far);
             tuples_tried.insert(next_tuple.clone());
             if !sat_test(&augmented_instances) {
-                Ok(tuples_tried)
+                HerbrandResult::ValidityProved(tuples_tried)
             } else {
                 Formula::herbrand_loop(
                     augment_ground_instances,
@@ -2092,7 +2101,7 @@ impl Formula<Pred> {
         tuples_tried: HashSet<Vec<Term>>,
         tuples_left_at_level: BTreeSet<Vec<Term>>,
         max_depth: usize,
-    ) -> Result<HashSet<Vec<Term>>, HerbrandBoundReached> {
+    ) -> HerbrandResult {
         // USES DNF FormulaSet representations throughout.
         //
         fn sat_test(formula: &FormulaSet<Pred>) -> bool {
@@ -2117,10 +2126,7 @@ impl Formula<Pred> {
         )
     }
 
-    pub fn gilmore(
-        formula: &Formula<Pred>,
-        max_depth: usize,
-    ) -> Result<HashSet<Vec<Term>>, HerbrandBoundReached> {
+    pub fn gilmore(formula: &Formula<Pred>, max_depth: usize) -> HerbrandResult {
         // Tautology test by checking whether the negation is unsatisfiable.
         // USES DNF FormulaSet representations throughout.
 
@@ -2135,7 +2141,7 @@ impl Formula<Pred> {
         // so that the satisfiability is equivalent to being non-empty.
         // This is an invariant we maintain throughout, even as we add to the accumulator.
         let dnf_formula = negation_skolemized.dnf_formulaset();
-        let result = Formula::gilmore_loop(
+        Formula::gilmore_loop(
             &dnf_formula,
             &constants,
             &functions,
@@ -2145,9 +2151,7 @@ impl Formula<Pred> {
             HashSet::new(),
             BTreeSet::new(),
             max_depth,
-        );
-        println!("Formula is valid.");
-        result
+        )
     }
 
     // Davis-Putnam approach
@@ -2171,7 +2175,7 @@ impl Formula<Pred> {
         tuples_tried: HashSet<Vec<Term>>,
         tuples_left_at_level: BTreeSet<Vec<Term>>,
         max_depth: usize,
-    ) -> Result<HashSet<Vec<Term>>, HerbrandBoundReached> {
+    ) -> HerbrandResult {
         // USES CNF FormulaSet representations throughout.
 
         let tuple_cache = &mut HashMap::new();
@@ -2192,7 +2196,7 @@ impl Formula<Pred> {
         )
     }
 
-    fn _get_dp_unsat_core(
+    fn _get_dp_unsat_core_cnf(
         formula: &FormulaSet<Pred>,
         free_variables: &Vec<String>,
         mut unknown: BTreeSet<Vec<Term>>,
@@ -2207,30 +2211,29 @@ impl Formula<Pred> {
             return HashSet::from_iter(needed);
         }
         let next = unknown.pop_first().unwrap();
-        // If formulas for unknown U needed are still inconsistent, discard `next`,
-        // and else add next to needed.
+        // If formulas for unknown U needed are still inconsistent, discard `next`.
+        // Else add next to needed.
 
         // NOTE: Could pass this as an additional parameter to keep from having to build
         // it from scratch each time.
         let new_union = needed
             .union(&unknown)
-            .map(|tuple| Formula::make_instantiation(free_variables, tuple))
-            .fold(FormulaSet::new(), |acc, inst| {
-                let subst_result: FormulaSet<Pred> = Formula::subst_in_formulaset(formula, &inst);
-                Formula::augment_cnf_formulaset(&subst_result, &acc)
+            .map(|tuple| Formula::subst_tuple_into_formulaset(formula, free_variables, tuple))
+            .fold(FormulaSet::new(), |acc, new| {
+                Formula::augment_cnf_formulaset(&new, &acc)
             });
 
         if Formula::dpll(&new_union) {
             needed.insert(next);
         }
-        Formula::_get_dp_unsat_core(formula, free_variables, unknown, needed)
+        Formula::_get_dp_unsat_core_cnf(formula, free_variables, unknown, needed)
     }
 
     pub fn davis_putnam(
         formula: &Formula<Pred>,
         get_unsat_core: bool,
         max_depth: usize,
-    ) -> Result<HashSet<Vec<Term>>, HerbrandBoundReached> {
+    ) -> HerbrandResult {
         // Validity test by checking whether the negation is unsatisfiable.
         // USES CNF FormulaSet representations throughout.
 
@@ -2241,6 +2244,7 @@ impl Formula<Pred> {
         let mut free_variables = Vec::from_iter(negation_skolemized.free_variables());
         free_variables.sort();
         let cnf_formula = negation_skolemized.cnf_formulaset();
+
         let mut result = Formula::dp_loop(
             &cnf_formula,
             &constants,
@@ -2251,22 +2255,45 @@ impl Formula<Pred> {
             HashSet::new(),
             BTreeSet::new(),
             max_depth,
-        )?;
-        if get_unsat_core {
-            result = Formula::_get_dp_unsat_core(
-                &cnf_formula,
-                &free_variables,
-                BTreeSet::from_iter(result),
-                BTreeSet::new(),
-            )
-        }
-        println!(
-            "Found {} inconsistent tuples of skolemized negation: {:?}",
-            result.len(),
-            result
         );
-        println!("Formula is valid.");
-        Ok(result)
+        match result.clone() {
+            HerbrandResult::ValidityProved(mut tuples) => {
+                if get_unsat_core {
+                    tuples = Formula::_get_dp_unsat_core_cnf(
+                        &cnf_formula,
+                        &free_variables,
+                        BTreeSet::from_iter(tuples),
+                        BTreeSet::new(),
+                    )
+                }
+                result = HerbrandResult::ValidityProved(tuples.clone());
+                let unsat_formulas: HashSet<Formula<Pred>> = tuples
+                    .iter()
+                    .map(|tuple| {
+                        Formula::subst_tuple_into_formulaset(&cnf_formula, &free_variables, tuple)
+                    })
+                    .map(Formula::formulaset_to_cnf)
+                    .collect();
+
+                println!(
+                    "Found {} inconsistent ground instances of skolemized negation:",
+                    unsat_formulas.len()
+                );
+                for form in unsat_formulas.iter() {
+                    form.pprint();
+                }
+                println!("Formula is valid.");
+            }
+
+            HerbrandResult::InvalidityProved => {
+                println!("Set of ground instances (of negation) was both finite and satisfiable.  Invalidity proved.");
+            }
+            HerbrandResult::BoundReached(bound) => {
+                println!("After searching to bound depth {}, set of ground instances (of negation) is still satisfiable. Giving up.", bound);
+            }
+        }
+
+        result
     }
 }
 
@@ -2579,8 +2606,12 @@ mod herbrand_tests {
             tuples_left_at_level.clone(),
             max_depth,
             &mut empty_cache.clone(),
-        )
-        .unwrap();
+        );
+
+        let tuples = match result {
+            HerbrandResult::ValidityProved(tuples) => tuples,
+            _ => panic!("Expected Validity proved in this test"),
+        };
 
         let level_0_size_2 = HashSet::from_iter(Formula::ground_tuples(
             &constants,
@@ -2605,9 +2636,9 @@ mod herbrand_tests {
         ));
         let all_size_2 = &(&level_0_size_2 | &level_1_size_2) | &level_2_size_2;
 
-        assert!(result.is_subset(&all_size_2));
-        assert!(level_0_size_2.is_subset(&result));
-        assert!(level_1_size_2.is_subset(&result));
+        assert!(tuples.is_subset(&all_size_2));
+        assert!(level_0_size_2.is_subset(&tuples));
+        assert!(level_1_size_2.is_subset(&tuples));
 
         // Start at level 2:
         let result_2 = Formula::herbrand_loop(
@@ -2623,10 +2654,14 @@ mod herbrand_tests {
             tuples_left_at_level,
             max_depth,
             &mut empty_cache.clone(),
-        )
-        .unwrap();
+        );
 
-        assert!(result_2.is_subset(&level_2_size_2));
+        let tuples_2 = match result_2 {
+            HerbrandResult::ValidityProved(tuples) => tuples,
+            _ => panic!("Expected Validity proved in this test"),
+        };
+
+        assert!(tuples_2.is_subset(&level_2_size_2));
     }
 
     #[test]
@@ -2656,9 +2691,14 @@ mod herbrand_tests {
             tuples_tried,
             tuples_left_at_level,
             max_depth,
-        )
-        .unwrap();
-        assert!(result.contains(&vec![
+        );
+
+        let tuples = match result {
+            HerbrandResult::ValidityProved(tuples) => tuples,
+            _ => panic!("Expected Validity proved in this test"),
+        };
+
+        assert!(tuples.contains(&vec![
             Term::parset("42").unwrap(),
             Term::parset("g(42)").unwrap()
         ]));
@@ -2668,8 +2708,12 @@ mod herbrand_tests {
     fn test_gilmore() {
         let formula = Formula::<Pred>::parse("exists x. forall y. (P(x) ==> P(y))").unwrap();
         let max_depth = 100;
-        let result = Formula::gilmore(&formula, max_depth).unwrap();
-        assert!((2..=3).contains(&result.len()));
+        let result = Formula::gilmore(&formula, max_depth);
+        let tuples = match result {
+            HerbrandResult::ValidityProved(tuples) => tuples,
+            _ => panic!("Expected Validity proved in this test"),
+        };
+        assert!((2..=3).contains(&tuples.len()));
     }
 
     #[test]
@@ -2677,7 +2721,7 @@ mod herbrand_tests {
         // (Not valid)
         let formula = Formula::<Pred>::parse("forall x. (P(x) \\/ ~P(x))").unwrap();
         let result = Formula::gilmore(&formula, 10);
-        assert!(result.is_ok());
+        assert!(matches!(result, HerbrandResult::ValidityProved(_)));
     }
 
     #[test]
@@ -2708,9 +2752,13 @@ mod herbrand_tests {
             tuples_tried,
             tuples_left_at_level,
             max_depth,
-        )
-        .unwrap();
-        assert!(result.contains(&vec![
+        );
+        let tuples = match result {
+            HerbrandResult::ValidityProved(tuples) => tuples,
+            _ => panic!("Expected Validity proved in this test"),
+        };
+
+        assert!(tuples.contains(&vec![
             Term::parset("42").unwrap(),
             Term::parset("g(42)").unwrap()
         ]));
@@ -2732,7 +2780,7 @@ mod herbrand_tests {
         let needed = BTreeSet::new();
 
         let result: HashSet<Vec<Term>> =
-            Formula::_get_dp_unsat_core(&formula, &free_variables, unknown, needed);
+            Formula::_get_dp_unsat_core_cnf(&formula, &free_variables, unknown, needed);
 
         let desired = HashSet::from([
             vec![Term::parset("f_y(c)").unwrap()],
@@ -2746,7 +2794,7 @@ mod herbrand_tests {
     fn test_davis_putnam_simple() {
         let formula = Formula::<Pred>::parse("exists x. forall y. (P(x) ==> P(y))").unwrap();
         let result = Formula::davis_putnam(&formula, false, 10);
-        assert!(result.is_ok());
+        assert!(matches!(result, HerbrandResult::ValidityProved(_)));
     }
 
     #[test]
@@ -2755,7 +2803,7 @@ mod herbrand_tests {
             (exists x y. (P(x) /\\ Q(y))) ==> (exists z. R(z))";
         let formula = Formula::<Pred>::parse(string).unwrap();
         let result = Formula::davis_putnam(&formula, false, 10);
-        assert!(result.is_ok());
+        assert!(matches!(result, HerbrandResult::ValidityProved(_)));
     }
 
     #[test]
@@ -2764,8 +2812,11 @@ mod herbrand_tests {
             (exists x y. (P(x) /\\ Q(y))) ==> (exists z. R(z))";
         let formula = Formula::<Pred>::parse(string).unwrap();
         let result = Formula::davis_putnam(&formula, true, 10);
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap().len(), 2);
+        let tuples = match result {
+            HerbrandResult::ValidityProved(tuples) => tuples,
+            _ => panic!("Expected Validity proved in this test"),
+        };
+        assert_eq!(tuples.len(), 2);
     }
 
     #[test]
@@ -2774,6 +2825,6 @@ mod herbrand_tests {
         let formula =
             Formula::<Pred>::parse("forall boy. exists girl. Loves(girl, friend(boy))").unwrap();
         let result = Formula::davis_putnam(&formula, false, 10);
-        assert!(result.is_err());
+        assert_eq!(result, HerbrandResult::BoundReached(10));
     }
 }
