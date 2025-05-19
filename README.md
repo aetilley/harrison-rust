@@ -40,7 +40,7 @@ use harrison_rust::first_order_logic::{FOValuation, Interpretation, Language, Pr
 use harrison_rust::formula::{DPLBSolver, Formula};
 use harrison_rust::propositional_logic::Prop;
 use harrison_rust::sudoku::{get_board_formulas, parse_sudoku_dataset, Board};
-use harrison_rust::utils::run_repeatedly_and_average;
+use harrison_rust::utils::run_and_time;
 ```
 
 Example 1: Simple formula
@@ -269,7 +269,7 @@ simplified.pprint();
     <<forall x. (~R(x) ==> (exists y. ~K(y)))>>
 
 
-Example 5: Solve a hard sudoku board (You should be in release mode for this.)
+Example 5: Solve a hard sudoku board
 
 
 ```Rust
@@ -279,38 +279,28 @@ let boards: Vec<Board> = parse_sudoku_dataset(path, Some(1));
 let clauses = get_board_formulas(&boards, 9, 3)[0].clone();
 let mut solver = DPLBSolver::new(&clauses);
 let num_props = solver.num_props();
-println!("(A sentence in {num_props} propositional variables)");
-let is_sat = solver.solve();
+println!("(Sukoku sentence has {num_props} propositional variables)");
+let is_sat = run_and_time(|| solver.solve());
 println!("Is satisfiable?: {is_sat}");
-assert!(is_sat);
+
 let formula = Formula::formulaset_to_cnf(clauses);
 let check = formula.eval(&solver.get_valuation().unwrap());
 println!("Check: Solution satisfies original constraints?: {check}");
-println!("Let's use the same solver to run several times and take the average time...");
-run_repeatedly_and_average(
-    || {
-        solver.solve();
-    },
-    10,
-);
 ```
 
-    (A sentence in 729 propositional variables)
+    (Sukoku sentence has 729 propositional variables)
+
+
+    Run time is 1.4603595s.
+
+
+    
 
 
     Is satisfiable?: true
 
 
     Check: Solution satisfies original constraints?: true
-
-
-    Let's use the same solver to run several times and take the average time...
-
-
-    Average time over a total of 10 runs is 839.698529ms.
-
-
-    
 
 
 Example 6: Arithmetic mod n (n >= 2)
@@ -574,7 +564,7 @@ Example 10: Test a first order formula for validity (invalid formula)
 let string = "forall boy. exists girl. (Loves(girl, friend(boy)))";
 let formula = Formula::<Pred>::parse(string).unwrap();
 let compute_unsat_core = true;
-let max_depth = 100;
+let max_depth = 20;
 let result = Formula::davis_putnam(&formula, compute_unsat_core, max_depth);
 println!("{:?}", result);
 ```
@@ -705,493 +695,8 @@ println!("{:?}", result);
     Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy)))))))))))))))))))), friend(c_boy))>>"
 
 
-    Generating tuples for next level 21
+    After searching to bound depth 20, set of ground instances (of negation) is still satisfiable. Giving up.
 
 
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy))))))))))))))))))))), friend(c_boy))>>"
+    BoundReached(20)
 
-
-    Generating tuples for next level 22
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy)))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 23
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 24
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy)))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 25
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 26
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy)))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 27
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 28
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy)))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 29
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 30
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy)))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 31
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 32
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy)))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 33
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 34
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy)))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 35
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 36
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy)))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 37
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 38
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy)))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 39
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 40
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy)))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 41
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 42
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy)))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 43
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 44
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy)))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 45
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy))))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 46
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy)))))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 47
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy))))))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 48
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy)))))))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 49
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy))))))))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 50
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy)))))))))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 51
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy))))))))))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 52
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy)))))))))))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 53
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy))))))))))))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 54
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy)))))))))))))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 55
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy))))))))))))))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 56
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy)))))))))))))))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 57
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy))))))))))))))))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 58
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy)))))))))))))))))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 59
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy))))))))))))))))))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 60
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 61
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 62
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 63
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 64
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 65
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 66
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 67
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 68
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 69
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 70
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 71
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 72
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 73
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 74
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 75
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 76
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 77
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 78
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 79
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 80
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 81
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 82
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 83
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 84
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 85
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 86
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 87
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 88
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 89
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 90
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 91
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 92
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 93
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 94
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 95
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 96
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 97
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 98
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 99
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    Generating tuples for next level 100
-
-
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))), friend(c_boy))>>"
-
-
-    After searching to bound depth 100, set of ground instances (of negation) is still satisfiable. Giving up.
-
-
-    BoundReached(100)
-
-
-
-```Rust
-
-```

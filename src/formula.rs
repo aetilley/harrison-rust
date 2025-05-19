@@ -2426,6 +2426,10 @@ impl<T: Debug + Clone + Hash + Eq + Ord> DPLISolver<T> {
         self.sat = None;
     }
 
+    pub fn num_props(&self) -> usize {
+        self.scores.len()
+    }
+
     fn trail_pop(&mut self) -> Option<Formula<T>> {
         // Pop and add back to `self.unassigned`.
         let (lit, _mix) = self.trail.pop()?;
