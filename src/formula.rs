@@ -2422,6 +2422,7 @@ impl<T: Debug + Clone + Hash + Eq + Ord> DPLISolver<T> {
 
     fn _reset(&mut self) {
         self.trail.clear();
+        self.unassigned = self.scores.clone().into_iter().collect();
         self.sat = None;
     }
 
@@ -2450,7 +2451,7 @@ impl<T: Debug + Clone + Hash + Eq + Ord> DPLISolver<T> {
         }
     }
 
-    pub fn _dpli(&mut self) -> bool {
+    fn _dpli(&mut self) -> bool {
         // Start by unit propagating.  If this results in a contradiction, backtrack.
         let (simplified_clauses, extended_trail) = self.unit_propagate();
 
@@ -2460,8 +2461,9 @@ impl<T: Debug + Clone + Hash + Eq + Ord> DPLISolver<T> {
             match self.trail.last() {
                 // Switch parity of our last guess.  Marking as Deduced this time.
                 Some((lit, Mix::Guessed)) => {
-                    let lit_clone = lit.clone();
                     assert!(!Formula::negative(lit));
+                    let lit_clone = lit.clone();
+                    // We don't call trail_pop here because we are going to use (its negation) again right after.
                     self.trail.pop();
                     self.trail.push((Formula::negate(&lit_clone), Mix::Deduced));
                     self._dpli()
@@ -2783,14 +2785,10 @@ impl<T: Debug + Clone + Hash + Eq + Ord> DPLBSolver<T> {
 
     fn trail_pop(&mut self) -> Option<Formula<T>> {
         // Pop and add back to `self.unassigned`.
-        match self.trail.pop() {
-            Some((lit, _)) => {
-                let abs = _lit_abs(&lit);
-                self.unassigned.push(abs.clone(), self.scores[&abs]);
-                Some(lit)
-            }
-            None => None,
-        }
+        let (lit, _mix) = self.trail.pop()?;
+        let abs = _lit_abs(&lit);
+        self.unassigned.push(abs.clone(), self.scores[&abs]);
+        Some(lit)
     }
 
     fn _reset(&mut self) {
@@ -2838,7 +2836,7 @@ impl<T: Debug + Clone + Hash + Eq + Ord> DPLBSolver<T> {
         self.unassigned = orig_unassigned;
     }
 
-    pub fn _dplb(&mut self) -> bool {
+    fn _dplb(&mut self) -> bool {
         // Start by unit propagating.  If this results in a contradiction, backtrack.
         //
         let (simplified_clauses, extended_trail) = self.unit_propagate();
@@ -2846,15 +2844,14 @@ impl<T: Debug + Clone + Hash + Eq + Ord> DPLBSolver<T> {
         if simplified_clauses.contains(&BTreeSet::new()) {
             // Reach a contradiction.  Must backtrack.
             self.backtrack();
-            let last = self.trail.last();
-            // Unfortunately cloning/to_owned-ing a Option<&T> gives the same type.
-            // So we use "map" here as a kludge.
-            let copy = last.map(|inner| inner.to_owned());
-            match copy {
+            match self.trail.last() {
                 // Switch parity of our last guess.  Marking as Deduced this time.
                 Some((lit, Mix::Guessed)) => {
+                    assert!(!Formula::negative(lit));
+                    let lit_clone = lit.clone();
                     self.trail_pop();
-                    self.backjump(&lit);
+                    // Keep going back and removing Guesses (keeping lit_clone) until we get to a satisfiable trail.
+                    self.backjump(&lit_clone);
 
                     // A clause of the negations of all guesses up till but not including
                     // p.  Note that those guesses are jointly consistent (were one to conjoin them),
@@ -2866,10 +2863,10 @@ impl<T: Debug + Clone + Hash + Eq + Ord> DPLBSolver<T> {
                         .filter(|(_, mix)| mix == &Mix::Guessed)
                         .map(|(val, _)| Formula::negate(val))
                         .collect();
-                    constraint.insert(Formula::negate(&lit));
+                    constraint.insert(Formula::negate(&lit_clone));
                     self.clauses.insert(constraint);
-                    self.trail.push((Formula::negate(&lit), Mix::Deduced));
-                    self.unassigned.remove(&lit).unwrap();
+                    self.trail.push((Formula::negate(&lit_clone), Mix::Deduced));
+                    self.unassigned.remove(&lit_clone).unwrap();
                     self._dplb()
                 }
 
