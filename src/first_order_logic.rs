@@ -2240,6 +2240,7 @@ impl Formula<Pred> {
         // Note that it is important to generalize first, since `p valid iff ~p unsat` is true
         // only for ground formulas, ie. formulas with no free variables.
         let negation_skolemized = formula.generalize().negate().skolemize();
+        println!("Skolemized negation is {}", negation_skolemized.pretty());
         let (constants, functions) = Formula::herbrand_functions(&negation_skolemized);
         let mut free_variables = Vec::from_iter(negation_skolemized.free_variables());
         free_variables.sort();
@@ -2826,5 +2827,21 @@ mod herbrand_tests {
             Formula::<Pred>::parse("forall boy. exists girl. Loves(girl, friend(boy))").unwrap();
         let result = Formula::davis_putnam(&formula, false, 10);
         assert_eq!(result, HerbrandResult::BoundReached(10));
+    }
+
+    #[test]
+    fn test_davis_putnam_invalidity_proved_no_free_variables_in_skolemized() {
+        // (Not valid)
+        let formula = Formula::<Pred>::parse("forall x. P(f(x))").unwrap();
+        let result = Formula::davis_putnam(&formula, false, 10);
+        assert_eq!(result, HerbrandResult::InvalidityProved);
+    }
+
+    #[test]
+    fn test_davis_putnam_invalidity_proved_relational() {
+        // (Not valid)
+        let formula = Formula::<Pred>::parse("exists x. (P(x, y) \\/ P(y, x))").unwrap();
+        let result = Formula::davis_putnam(&formula, false, 10);
+        assert_eq!(result, HerbrandResult::InvalidityProved);
     }
 }
