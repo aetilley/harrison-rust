@@ -13,9 +13,9 @@ extern {
   type Error = LexicalError;
 
   enum Token {
-    "alphanum" => Token::Alphanumeric(<String>),
-    "cnst" => Token::Constant(<String>),
-    "variable" => Token::Alphanumeric(<String>),
+    "id" => Token::Identifier(<String>),
+    "num" => Token::Numeral(<String>),
+    "variable" => Token::Identifier(<String>),
     "infix_relation" => Token::InfixRelation(<String>),
     "true" => Token::True,
     "false" => Token::False,
@@ -41,10 +41,10 @@ extern {
 
 // A (possibly empty) comma separated list of terms
 pub TermList: Vec<Term> = {
-  <mut list: (<Term> ",")*> <tail: Term?> => match tail {
+  <mut list: (<Term> ",")*> <last: Term?> => match last {
     None => list,
-    Some(tail) => {
-      list.push(tail);
+    Some(last) => {
+      list.push(last);
       list
     }
   },
@@ -52,15 +52,15 @@ pub TermList: Vec<Term> = {
 
 // TODO:  Use e.g. #[precedence(level="1")] #[assoc(side="left")]
 // Unfortunately we must include the extra production clauses below
-// since otherwise we run into a ambiguity for, e.g. "(" "alphanum" ")"
-// since "alphanum" could be either a variable or a predicate.
+// since otherwise we run into a ambiguity for, e.g. "(" "id" ")"
+// since "id" could be either a variable or a predicate.
 
 pub AtomicTerm: Term = {
   "(" <term: BinopTerm> ")" => term,
   "-" <atomic: AtomicTerm> => Term::unary_minus(&atomic),
-  <func: "alphanum"> "(" <list: TermList> ")" => Term::fun(&func, &list),
-  <cnst: "cnst"> => Term::constant(&cnst),
-  <var: "alphanum"> => Term::var(&var),
+  <func: "id"> "(" <list: TermList> ")" => Term::fun(&func, &list),
+  <num: "num"> => Term::constant(&num),
+  <var: "id"> => Term::var(&var),
 }
 
 pub ExpTerm: Term = {
@@ -122,22 +122,21 @@ pub Term: Term = {
 }
 
 pub Predication: Pred = {
-  <pred: "alphanum"> "(" <terms: TermList> ")" => Pred::new(&pred, &terms),
-  <pred: "alphanum">  => Pred::new(&pred, &[]),
+  <pred: "id"> "(" <terms: TermList> ")" => Pred::new(&pred, &terms),
+  <pred: "id">  => Pred::new(&pred, &[]),
   <lhs: Term> <infix: "infix_relation"> <rhs: Term> => Pred::new(&infix, &[lhs, rhs]),
 }
 
-// NOTE: We differ from Harrison in that our quantifiers bind tighter 
-// than any binary connective.
+// NOTE: quantifiers bind tighter than binary connectives.
 pub QuantifiedFormula: Formula<Pred> = {
-  "forall" <varlist: (<"alphanum">)+> "." <inner: NonBinopFormula> => {
+  "forall" <varlist: (<"id">)+> "." <inner: NonBinopFormula> => {
     let mut result = inner;
     for var in varlist.iter().rev() {
       result = Formula::forall(var, &result);
     }
     result
   },
-  "exists" <varlist: (<"alphanum">)+> "." <inner: NonBinopFormula> => {
+  "exists" <varlist: (<"id">)+> "." <inner: NonBinopFormula> => {
     let mut result = inner;
     for var in varlist.iter().rev() {
       result = Formula::exists(var, &result);

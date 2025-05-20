@@ -171,34 +171,34 @@ mod term_parse_tests {
     }
 }
 
-// TERM Pretty
+// Term Prettifying
 impl Term {
-    fn get_term(prec: u32, term: &Term) -> String {
+    fn pretty_term(prec: u32, term: &Term) -> String {
         match term {
             Term::Var(x) => x.to_owned(),
             Term::Fun(op, args) if op == "^" && args.len() == 2 => {
-                Term::get_infix_term(true, prec, 24, "^", &args[0], &args[1])
+                Term::pretty_infix_term(true, prec, 24, "^", &args[0], &args[1])
             }
             Term::Fun(op, args) if op == "/" && args.len() == 2 => {
-                Term::get_infix_term(true, prec, 22, " / ", &args[0], &args[1])
+                Term::pretty_infix_term(true, prec, 22, " / ", &args[0], &args[1])
             }
             Term::Fun(op, args) if op == "*" && args.len() == 2 => {
-                Term::get_infix_term(false, prec, 20, " * ", &args[0], &args[1])
+                Term::pretty_infix_term(false, prec, 20, " * ", &args[0], &args[1])
             }
             Term::Fun(op, args) if op == "-" && args.len() == 2 => {
-                Term::get_infix_term(true, prec, 18, " - ", &args[0], &args[1])
+                Term::pretty_infix_term(true, prec, 18, " - ", &args[0], &args[1])
             }
             Term::Fun(op, args) if op == "+" && args.len() == 2 => {
-                Term::get_infix_term(false, prec, 16, " + ", &args[0], &args[1])
+                Term::pretty_infix_term(false, prec, 16, " + ", &args[0], &args[1])
             }
             Term::Fun(op, args) if op == "::" && args.len() == 2 => {
-                Term::get_infix_term(false, prec, 14, "::", &args[0], &args[1])
+                Term::pretty_infix_term(false, prec, 14, "::", &args[0], &args[1])
             }
-            Term::Fun(f, args) => Term::get_fargs(f, args),
+            Term::Fun(f, args) => Term::pretty_fargs(f, args),
         }
     }
 
-    fn get_fargs(f: &str, args: &[Term]) -> String {
+    fn pretty_fargs(f: &str, args: &[Term]) -> String {
         // Print a prefix predicate/function application e.g. R(x, y, ...), or f(u, v, ...)
 
         let mut result = String::from(f);
@@ -208,11 +208,11 @@ impl Term {
             // Dont' print parens for constants and propositions
             [head, rest @ ..] => {
                 result.push('(');
-                result.push_str(&Term::get_term(0, head));
+                result.push_str(&Term::pretty_term(0, head));
 
                 for term in rest {
                     result.push_str(", ");
-                    result.push_str(&Term::get_term(0, term));
+                    result.push_str(&Term::pretty_term(0, term));
                 }
                 result.push(')');
             }
@@ -221,7 +221,7 @@ impl Term {
         result
     }
 
-    fn get_infix_term(
+    fn pretty_infix_term(
         is_left: bool,
         old_prec: u32,
         new_prec: u32,
@@ -233,13 +233,13 @@ impl Term {
         if old_prec > new_prec {
             result.push('(')
         }
-        result.push_str(&Term::get_term(
+        result.push_str(&Term::pretty_term(
             if is_left { new_prec } else { new_prec + 1 },
             term1,
         ));
 
         result.push_str(symbol);
-        result.push_str(&Term::get_term(
+        result.push_str(&Term::pretty_term(
             if is_left { new_prec + 1 } else { new_prec },
             term2,
         ));
@@ -252,10 +252,7 @@ impl Term {
     }
 
     pub fn pretty(&self) -> String {
-        let mut result = String::from("<<|");
-        result.push_str(&Term::get_term(0, self));
-        result.push_str("|>>");
-        result
+        Term::pretty_term(0, self)
     }
     pub fn pprint(&self) {
         println!("{}", self.pretty());
@@ -276,7 +273,7 @@ mod term_print_tests {
 
         let output = term.pretty();
 
-        let desired = "<<|(13 + x) / A|>>";
+        let desired = "(13 + x) / A";
 
         assert_eq!(output, desired);
     }
@@ -292,7 +289,7 @@ mod term_print_tests {
         );
 
         let output = term.pretty();
-        let desired = "<<|apples * -(oranges) - 42|>>";
+        let desired = "apples * -(oranges) - 42";
         assert_eq!(output, desired);
     }
 
@@ -314,7 +311,7 @@ mod term_print_tests {
         );
 
         let output = term.pretty();
-        let desired = "<<|F(V, apples::oranges::42, 19)|>>";
+        let desired = "F(V, apples::oranges::42, 19)";
         assert_eq!(output, desired);
     }
 }
@@ -337,9 +334,9 @@ impl Pred {
 
     fn pretty(_prec: u32, Pred { name, terms }: &Pred) -> String {
         if INFIX_RELATION_SYMBOLS.contains(&name.as_str()) && terms.len() == 2 {
-            Term::get_infix_term(false, 12, 12, &format!(" {name} "), &terms[0], &terms[1])
+            Term::pretty_infix_term(false, 12, 12, &format!(" {name} "), &terms[0], &terms[1])
         } else {
-            Term::get_fargs(name, terms)
+            Term::pretty_fargs(name, terms)
         }
     }
 }
@@ -612,7 +609,7 @@ mod test_print_pred_formula {
         );
 
         let output = input.pretty();
-        let desired = "<<F(x) /\\ G(d(y)) ==> p(13, w)>>";
+        let desired = "F(x) /\\ G(d(y)) ==> p(13, w)";
         assert_eq!(output, desired);
     }
 
@@ -635,7 +632,7 @@ mod test_print_pred_formula {
             ),
         );
         let output = input.pretty();
-        let desired = "<<forall y w. (F(RED) /\\ (exists RED BLUE. G(d(y))))>>";
+        let desired = "forall y w. (F(RED) /\\ (exists RED BLUE. G(d(y))))";
         assert_eq!(output, desired);
     }
 }

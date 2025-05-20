@@ -288,10 +288,7 @@ mod prop_formula_print_tests {
             ),
         );
         let result = formula.pretty();
-        assert_eq!(
-            result,
-            "<<Prop5 /\\ (Prop2 <=> Prop3 \\/ Prop4 ==> Prop1)>>"
-        );
+        assert_eq!(result, "Prop5 /\\ (Prop2 <=> Prop3 \\/ Prop4 ==> Prop1)");
     }
 }
 

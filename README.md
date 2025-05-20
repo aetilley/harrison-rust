@@ -57,7 +57,7 @@ println!("Is satisfiable?: {}", formula.dpll_sat());
 println!("Is tautology?: {}", formula.dpll_taut());
 ```
 
-    <<C \/ D <=> ~A /\ B>>
+    C \/ D <=> ~A /\ B
 
 
     
@@ -123,7 +123,7 @@ println!("Is tautology?: {}", formula.dpll_taut());
     
 
 
-    <<((((((A \/ C) \/ D) \/ ~B) /\ (B \/ ~C)) /\ (B \/ ~D)) /\ (~A \/ ~C)) /\ (~A \/ ~D)>>
+    ((((((A \/ C) \/ D) \/ ~B) /\ (B \/ ~C)) /\ (B \/ ~D)) /\ (~A \/ ~C)) /\ (~A \/ ~D)
 
 
     
@@ -147,7 +147,7 @@ println!("Is satisfiable?: {}", formula.dpll_sat());
 println!("Is tautology?: {}", formula.dpll_taut());
 ```
 
-    <<A \/ ~A>>
+    A \/ ~A
 
 
     
@@ -190,7 +190,7 @@ println!("Is tautology?: {}", formula.dpll_taut());
 println!("Is contradiction?: {}", Formula::not(&formula).dpll_taut());
 ```
 
-    <<~A /\ A>>
+    ~A /\ A
 
 
     
@@ -245,7 +245,7 @@ let simplified = formula.simplify();
 simplified.pprint();
 ```
 
-    <<(true ==> (x <=> false)) ==> ~(y \/ false /\ z)>>
+    (true ==> (x <=> false)) ==> ~(y \/ false /\ z)
 
 
     
@@ -254,19 +254,19 @@ simplified.pprint();
     ...simplifies to...
 
 
-    <<~x ==> ~y>>
+    ~x ==> ~y
 
 
     
 
 
-    <<forall x. ((true ==> (R(x) <=> false)) ==> (exists z y. ~(K(y) \/ false)))>>
+    forall x. ((true ==> (R(x) <=> false)) ==> (exists z y. ~(K(y) \/ false)))
 
 
     ...simplifies to...
 
 
-    <<forall x. (~R(x) ==> (exists y. ~K(y)))>>
+    forall x. (~R(x) ==> (exists y. ~K(y)))
 
 
 Example 5: Solve a hard sudoku board
@@ -291,7 +291,7 @@ println!("Check: Solution satisfies original constraints?: {check}");
     (Sukoku sentence has 729 propositional variables)
 
 
-    Run time is 1.4603595s.
+    Run time is 5.543409625s.
 
 
     
@@ -365,7 +365,7 @@ for n in 2..20 {
     Definition of multiplicative inverses:
 
 
-    <<forall x. (~x = 0 ==> (exists y. x * y = 1))>>
+    forall x. (~x = 0 ==> (exists y. x * y = 1))
 
 
     Model:         |  Is a field?
@@ -437,13 +437,13 @@ let result = formula.pnf();
 result.pprint();
 ```
 
-    <<(exists x. F(x, z)) ==> (exists w. (forall z. ~G(z, x)))>>
+    (exists x. F(x, z)) ==> (exists w. (forall z. ~G(z, x)))
 
 
     In prenex normal form:
 
 
-    <<forall x' z'. (~F(x', z) \/ ~G(z', x))>>
+    forall x' z'. (~F(x', z) \/ ~G(z', x))
 
 
 Example 8: Skolemization
@@ -461,13 +461,13 @@ let result = formula.skolemize();
 result.pprint();
 ```
 
-    <<R(F(y)) \/ (exists x. P(f_w(x))) /\ (exists n. (forall r y. (exists w. M(G(y, w))))) \/ (exists z. ~M(F(z, w)))>>
+    R(F(y)) \/ (exists x. P(f_w(x))) /\ (exists n. (forall r y. (exists w. M(G(y, w))))) \/ (exists z. ~M(F(z, w)))
 
 
     Skolemized:
 
 
-    <<R(F(y)) \/ P(f_w(c_x)) /\ M(G(y', f_w'(y'))) \/ ~M(F(f_z(w), w))>>
+    R(F(y)) \/ P(f_w(c_x)) /\ M(G(y', f_w'(y'))) \/ ~M(F(f_z(w), w))
 
 
 Example 9: Test a first order formula for validity (valid formula)
@@ -482,76 +482,79 @@ let max_depth = 10;
 Formula::davis_putnam(&formula, compute_unsat_core, max_depth);
 ```
 
+    Skolemized negation is ((~P(x) \/ ~Q(y)) \/ R(f_z(x, y)) /\ U(w)) /\ (P(c_x) /\ Q(c_y)) /\ ~R(x)
+
+
     Generating tuples for next level 0
 
 
-    Adding new formula to set: "<<(((P(c_x) /\\ Q(c_y)) /\\ ((R(f_z(c_x, c_x)) \\/ ~P(c_x)) \\/ ~Q(c_x))) /\\ ((U(c_x) \\/ ~P(c_x)) \\/ ~Q(c_x))) /\\ ~R(c_x)>>"
+    Adding new formula to set: "(((P(c_x) /\\ Q(c_y)) /\\ ((R(f_z(c_x, c_x)) \\/ ~P(c_x)) \\/ ~Q(c_x))) /\\ ((U(c_x) \\/ ~P(c_x)) \\/ ~Q(c_x))) /\\ ~R(c_x)"
 
 
-    Adding new formula to set: "<<(((P(c_x) /\\ Q(c_y)) /\\ ((R(f_z(c_x, c_y)) \\/ ~P(c_x)) \\/ ~Q(c_y))) /\\ ((U(c_x) \\/ ~P(c_x)) \\/ ~Q(c_y))) /\\ ~R(c_x)>>"
+    Adding new formula to set: "(((P(c_x) /\\ Q(c_y)) /\\ ((R(f_z(c_x, c_y)) \\/ ~P(c_x)) \\/ ~Q(c_y))) /\\ ((U(c_x) \\/ ~P(c_x)) \\/ ~Q(c_y))) /\\ ~R(c_x)"
 
 
-    Adding new formula to set: "<<(((P(c_x) /\\ Q(c_y)) /\\ ((R(f_z(c_y, c_x)) \\/ ~P(c_y)) \\/ ~Q(c_x))) /\\ ((U(c_x) \\/ ~P(c_y)) \\/ ~Q(c_x))) /\\ ~R(c_y)>>"
+    Adding new formula to set: "(((P(c_x) /\\ Q(c_y)) /\\ ((R(f_z(c_y, c_x)) \\/ ~P(c_y)) \\/ ~Q(c_x))) /\\ ((U(c_x) \\/ ~P(c_y)) \\/ ~Q(c_x))) /\\ ~R(c_y)"
 
 
-    Adding new formula to set: "<<(((P(c_x) /\\ Q(c_y)) /\\ ((R(f_z(c_y, c_y)) \\/ ~P(c_y)) \\/ ~Q(c_y))) /\\ ((U(c_x) \\/ ~P(c_y)) \\/ ~Q(c_y))) /\\ ~R(c_y)>>"
+    Adding new formula to set: "(((P(c_x) /\\ Q(c_y)) /\\ ((R(f_z(c_y, c_y)) \\/ ~P(c_y)) \\/ ~Q(c_y))) /\\ ((U(c_x) \\/ ~P(c_y)) \\/ ~Q(c_y))) /\\ ~R(c_y)"
 
 
-    Adding new formula to set: "<<(((P(c_x) /\\ Q(c_y)) /\\ ((R(f_z(c_x, c_x)) \\/ ~P(c_x)) \\/ ~Q(c_x))) /\\ ((U(c_y) \\/ ~P(c_x)) \\/ ~Q(c_x))) /\\ ~R(c_x)>>"
+    Adding new formula to set: "(((P(c_x) /\\ Q(c_y)) /\\ ((R(f_z(c_x, c_x)) \\/ ~P(c_x)) \\/ ~Q(c_x))) /\\ ((U(c_y) \\/ ~P(c_x)) \\/ ~Q(c_x))) /\\ ~R(c_x)"
 
 
-    Adding new formula to set: "<<(((P(c_x) /\\ Q(c_y)) /\\ ((R(f_z(c_x, c_y)) \\/ ~P(c_x)) \\/ ~Q(c_y))) /\\ ((U(c_y) \\/ ~P(c_x)) \\/ ~Q(c_y))) /\\ ~R(c_x)>>"
+    Adding new formula to set: "(((P(c_x) /\\ Q(c_y)) /\\ ((R(f_z(c_x, c_y)) \\/ ~P(c_x)) \\/ ~Q(c_y))) /\\ ((U(c_y) \\/ ~P(c_x)) \\/ ~Q(c_y))) /\\ ~R(c_x)"
 
 
-    Adding new formula to set: "<<(((P(c_x) /\\ Q(c_y)) /\\ ((R(f_z(c_y, c_x)) \\/ ~P(c_y)) \\/ ~Q(c_x))) /\\ ((U(c_y) \\/ ~P(c_y)) \\/ ~Q(c_x))) /\\ ~R(c_y)>>"
+    Adding new formula to set: "(((P(c_x) /\\ Q(c_y)) /\\ ((R(f_z(c_y, c_x)) \\/ ~P(c_y)) \\/ ~Q(c_x))) /\\ ((U(c_y) \\/ ~P(c_y)) \\/ ~Q(c_x))) /\\ ~R(c_y)"
 
 
-    Adding new formula to set: "<<(((P(c_x) /\\ Q(c_y)) /\\ ((R(f_z(c_y, c_y)) \\/ ~P(c_y)) \\/ ~Q(c_y))) /\\ ((U(c_y) \\/ ~P(c_y)) \\/ ~Q(c_y))) /\\ ~R(c_y)>>"
+    Adding new formula to set: "(((P(c_x) /\\ Q(c_y)) /\\ ((R(f_z(c_y, c_y)) \\/ ~P(c_y)) \\/ ~Q(c_y))) /\\ ((U(c_y) \\/ ~P(c_y)) \\/ ~Q(c_y))) /\\ ~R(c_y)"
 
 
     Generating tuples for next level 1
 
 
-    Adding new formula to set: "<<(((P(c_x) /\\ Q(c_y)) /\\ ((R(f_z(c_x, f_z(c_x, c_x))) \\/ ~P(c_x)) \\/ ~Q(f_z(c_x, c_x)))) /\\ ((U(c_x) \\/ ~P(c_x)) \\/ ~Q(f_z(c_x, c_x)))) /\\ ~R(c_x)>>"
+    Adding new formula to set: "(((P(c_x) /\\ Q(c_y)) /\\ ((R(f_z(c_x, f_z(c_x, c_x))) \\/ ~P(c_x)) \\/ ~Q(f_z(c_x, c_x)))) /\\ ((U(c_x) \\/ ~P(c_x)) \\/ ~Q(f_z(c_x, c_x)))) /\\ ~R(c_x)"
 
 
-    Adding new formula to set: "<<(((P(c_x) /\\ Q(c_y)) /\\ ((R(f_z(c_x, f_z(c_x, c_y))) \\/ ~P(c_x)) \\/ ~Q(f_z(c_x, c_y)))) /\\ ((U(c_x) \\/ ~P(c_x)) \\/ ~Q(f_z(c_x, c_y)))) /\\ ~R(c_x)>>"
+    Adding new formula to set: "(((P(c_x) /\\ Q(c_y)) /\\ ((R(f_z(c_x, f_z(c_x, c_y))) \\/ ~P(c_x)) \\/ ~Q(f_z(c_x, c_y)))) /\\ ((U(c_x) \\/ ~P(c_x)) \\/ ~Q(f_z(c_x, c_y)))) /\\ ~R(c_x)"
 
 
-    Adding new formula to set: "<<(((P(c_x) /\\ Q(c_y)) /\\ ((R(f_z(c_x, f_z(c_y, c_x))) \\/ ~P(c_x)) \\/ ~Q(f_z(c_y, c_x)))) /\\ ((U(c_x) \\/ ~P(c_x)) \\/ ~Q(f_z(c_y, c_x)))) /\\ ~R(c_x)>>"
+    Adding new formula to set: "(((P(c_x) /\\ Q(c_y)) /\\ ((R(f_z(c_x, f_z(c_y, c_x))) \\/ ~P(c_x)) \\/ ~Q(f_z(c_y, c_x)))) /\\ ((U(c_x) \\/ ~P(c_x)) \\/ ~Q(f_z(c_y, c_x)))) /\\ ~R(c_x)"
 
 
-    Adding new formula to set: "<<(((P(c_x) /\\ Q(c_y)) /\\ ((R(f_z(c_x, f_z(c_y, c_y))) \\/ ~P(c_x)) \\/ ~Q(f_z(c_y, c_y)))) /\\ ((U(c_x) \\/ ~P(c_x)) \\/ ~Q(f_z(c_y, c_y)))) /\\ ~R(c_x)>>"
+    Adding new formula to set: "(((P(c_x) /\\ Q(c_y)) /\\ ((R(f_z(c_x, f_z(c_y, c_y))) \\/ ~P(c_x)) \\/ ~Q(f_z(c_y, c_y)))) /\\ ((U(c_x) \\/ ~P(c_x)) \\/ ~Q(f_z(c_y, c_y)))) /\\ ~R(c_x)"
 
 
-    Adding new formula to set: "<<(((P(c_x) /\\ Q(c_y)) /\\ ((R(f_z(c_y, f_z(c_x, c_x))) \\/ ~P(c_y)) \\/ ~Q(f_z(c_x, c_x)))) /\\ ((U(c_x) \\/ ~P(c_y)) \\/ ~Q(f_z(c_x, c_x)))) /\\ ~R(c_y)>>"
+    Adding new formula to set: "(((P(c_x) /\\ Q(c_y)) /\\ ((R(f_z(c_y, f_z(c_x, c_x))) \\/ ~P(c_y)) \\/ ~Q(f_z(c_x, c_x)))) /\\ ((U(c_x) \\/ ~P(c_y)) \\/ ~Q(f_z(c_x, c_x)))) /\\ ~R(c_y)"
 
 
-    Adding new formula to set: "<<(((P(c_x) /\\ Q(c_y)) /\\ ((R(f_z(c_y, f_z(c_x, c_y))) \\/ ~P(c_y)) \\/ ~Q(f_z(c_x, c_y)))) /\\ ((U(c_x) \\/ ~P(c_y)) \\/ ~Q(f_z(c_x, c_y)))) /\\ ~R(c_y)>>"
+    Adding new formula to set: "(((P(c_x) /\\ Q(c_y)) /\\ ((R(f_z(c_y, f_z(c_x, c_y))) \\/ ~P(c_y)) \\/ ~Q(f_z(c_x, c_y)))) /\\ ((U(c_x) \\/ ~P(c_y)) \\/ ~Q(f_z(c_x, c_y)))) /\\ ~R(c_y)"
 
 
-    Adding new formula to set: "<<(((P(c_x) /\\ Q(c_y)) /\\ ((R(f_z(c_y, f_z(c_y, c_x))) \\/ ~P(c_y)) \\/ ~Q(f_z(c_y, c_x)))) /\\ ((U(c_x) \\/ ~P(c_y)) \\/ ~Q(f_z(c_y, c_x)))) /\\ ~R(c_y)>>"
+    Adding new formula to set: "(((P(c_x) /\\ Q(c_y)) /\\ ((R(f_z(c_y, f_z(c_y, c_x))) \\/ ~P(c_y)) \\/ ~Q(f_z(c_y, c_x)))) /\\ ((U(c_x) \\/ ~P(c_y)) \\/ ~Q(f_z(c_y, c_x)))) /\\ ~R(c_y)"
 
 
-    Adding new formula to set: "<<(((P(c_x) /\\ Q(c_y)) /\\ ((R(f_z(c_y, f_z(c_y, c_y))) \\/ ~P(c_y)) \\/ ~Q(f_z(c_y, c_y)))) /\\ ((U(c_x) \\/ ~P(c_y)) \\/ ~Q(f_z(c_y, c_y)))) /\\ ~R(c_y)>>"
+    Adding new formula to set: "(((P(c_x) /\\ Q(c_y)) /\\ ((R(f_z(c_y, f_z(c_y, c_y))) \\/ ~P(c_y)) \\/ ~Q(f_z(c_y, c_y)))) /\\ ((U(c_x) \\/ ~P(c_y)) \\/ ~Q(f_z(c_y, c_y)))) /\\ ~R(c_y)"
 
 
-    Adding new formula to set: "<<(((P(c_x) /\\ Q(c_y)) /\\ ((R(f_z(f_z(c_x, c_x), c_x)) \\/ ~P(f_z(c_x, c_x))) \\/ ~Q(c_x))) /\\ ((U(c_x) \\/ ~P(f_z(c_x, c_x))) \\/ ~Q(c_x))) /\\ ~R(f_z(c_x, c_x))>>"
+    Adding new formula to set: "(((P(c_x) /\\ Q(c_y)) /\\ ((R(f_z(f_z(c_x, c_x), c_x)) \\/ ~P(f_z(c_x, c_x))) \\/ ~Q(c_x))) /\\ ((U(c_x) \\/ ~P(f_z(c_x, c_x))) \\/ ~Q(c_x))) /\\ ~R(f_z(c_x, c_x))"
 
 
-    Adding new formula to set: "<<(((P(c_x) /\\ Q(c_y)) /\\ ((R(f_z(f_z(c_x, c_x), c_y)) \\/ ~P(f_z(c_x, c_x))) \\/ ~Q(c_y))) /\\ ((U(c_x) \\/ ~P(f_z(c_x, c_x))) \\/ ~Q(c_y))) /\\ ~R(f_z(c_x, c_x))>>"
+    Adding new formula to set: "(((P(c_x) /\\ Q(c_y)) /\\ ((R(f_z(f_z(c_x, c_x), c_y)) \\/ ~P(f_z(c_x, c_x))) \\/ ~Q(c_y))) /\\ ((U(c_x) \\/ ~P(f_z(c_x, c_x))) \\/ ~Q(c_y))) /\\ ~R(f_z(c_x, c_x))"
 
 
-    Adding new formula to set: "<<(((P(c_x) /\\ Q(c_y)) /\\ ((R(f_z(f_z(c_x, c_y), c_x)) \\/ ~P(f_z(c_x, c_y))) \\/ ~Q(c_x))) /\\ ((U(c_x) \\/ ~P(f_z(c_x, c_y))) \\/ ~Q(c_x))) /\\ ~R(f_z(c_x, c_y))>>"
+    Adding new formula to set: "(((P(c_x) /\\ Q(c_y)) /\\ ((R(f_z(f_z(c_x, c_y), c_x)) \\/ ~P(f_z(c_x, c_y))) \\/ ~Q(c_x))) /\\ ((U(c_x) \\/ ~P(f_z(c_x, c_y))) \\/ ~Q(c_x))) /\\ ~R(f_z(c_x, c_y))"
 
 
     Found 2 inconsistent ground instances of skolemized negation:
 
 
-    <<(((P(c_x) /\ Q(c_y)) /\ ((R(f_z(f_z(c_x, c_y), c_x)) \/ ~P(f_z(c_x, c_y))) \/ ~Q(c_x))) /\ ((U(c_x) \/ ~P(f_z(c_x, c_y))) \/ ~Q(c_x))) /\ ~R(f_z(c_x, c_y))>>
+    (((P(c_x) /\ Q(c_y)) /\ ((R(f_z(f_z(c_x, c_y), c_x)) \/ ~P(f_z(c_x, c_y))) \/ ~Q(c_x))) /\ ((U(c_x) \/ ~P(f_z(c_x, c_y))) \/ ~Q(c_x))) /\ ~R(f_z(c_x, c_y))
 
 
-    <<(((P(c_x) /\ Q(c_y)) /\ ((R(f_z(c_x, c_y)) \/ ~P(c_x)) \/ ~Q(c_y))) /\ ((U(c_y) \/ ~P(c_x)) \/ ~Q(c_y))) /\ ~R(c_x)>>
+    (((P(c_x) /\ Q(c_y)) /\ ((R(f_z(c_x, c_y)) \/ ~P(c_x)) \/ ~Q(c_y))) /\ ((U(c_y) \/ ~P(c_x)) \/ ~Q(c_y))) /\ ~R(c_x)
 
 
     Formula is valid.
@@ -569,130 +572,133 @@ let result = Formula::davis_putnam(&formula, compute_unsat_core, max_depth);
 println!("{:?}", result);
 ```
 
+    Skolemized negation is ~Loves(girl, friend(c_boy))
+
+
     Generating tuples for next level 0
 
 
-    Adding new formula to set: "<<~Loves(c_boy, friend(c_boy))>>"
+    Adding new formula to set: "~Loves(c_boy, friend(c_boy))"
 
 
     Generating tuples for next level 1
 
 
-    Adding new formula to set: "<<~Loves(friend(c_boy), friend(c_boy))>>"
+    Adding new formula to set: "~Loves(friend(c_boy), friend(c_boy))"
 
 
     Generating tuples for next level 2
 
 
-    Adding new formula to set: "<<~Loves(friend(friend(c_boy)), friend(c_boy))>>"
+    Adding new formula to set: "~Loves(friend(friend(c_boy)), friend(c_boy))"
 
 
     Generating tuples for next level 3
 
 
-    Adding new formula to set: "<<~Loves(friend(friend(friend(c_boy))), friend(c_boy))>>"
+    Adding new formula to set: "~Loves(friend(friend(friend(c_boy))), friend(c_boy))"
 
 
     Generating tuples for next level 4
 
 
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(c_boy)))), friend(c_boy))>>"
+    Adding new formula to set: "~Loves(friend(friend(friend(friend(c_boy)))), friend(c_boy))"
 
 
     Generating tuples for next level 5
 
 
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(c_boy))))), friend(c_boy))>>"
+    Adding new formula to set: "~Loves(friend(friend(friend(friend(friend(c_boy))))), friend(c_boy))"
 
 
     Generating tuples for next level 6
 
 
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(c_boy)))))), friend(c_boy))>>"
+    Adding new formula to set: "~Loves(friend(friend(friend(friend(friend(friend(c_boy)))))), friend(c_boy))"
 
 
     Generating tuples for next level 7
 
 
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(c_boy))))))), friend(c_boy))>>"
+    Adding new formula to set: "~Loves(friend(friend(friend(friend(friend(friend(friend(c_boy))))))), friend(c_boy))"
 
 
     Generating tuples for next level 8
 
 
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(c_boy)))))))), friend(c_boy))>>"
+    Adding new formula to set: "~Loves(friend(friend(friend(friend(friend(friend(friend(friend(c_boy)))))))), friend(c_boy))"
 
 
     Generating tuples for next level 9
 
 
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy))))))))), friend(c_boy))>>"
+    Adding new formula to set: "~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy))))))))), friend(c_boy))"
 
 
     Generating tuples for next level 10
 
 
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy)))))))))), friend(c_boy))>>"
+    Adding new formula to set: "~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy)))))))))), friend(c_boy))"
 
 
     Generating tuples for next level 11
 
 
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy))))))))))), friend(c_boy))>>"
+    Adding new formula to set: "~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy))))))))))), friend(c_boy))"
 
 
     Generating tuples for next level 12
 
 
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy)))))))))))), friend(c_boy))>>"
+    Adding new formula to set: "~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy)))))))))))), friend(c_boy))"
 
 
     Generating tuples for next level 13
 
 
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy))))))))))))), friend(c_boy))>>"
+    Adding new formula to set: "~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy))))))))))))), friend(c_boy))"
 
 
     Generating tuples for next level 14
 
 
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy)))))))))))))), friend(c_boy))>>"
+    Adding new formula to set: "~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy)))))))))))))), friend(c_boy))"
 
 
     Generating tuples for next level 15
 
 
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy))))))))))))))), friend(c_boy))>>"
+    Adding new formula to set: "~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy))))))))))))))), friend(c_boy))"
 
 
     Generating tuples for next level 16
 
 
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy)))))))))))))))), friend(c_boy))>>"
+    Adding new formula to set: "~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy)))))))))))))))), friend(c_boy))"
 
 
     Generating tuples for next level 17
 
 
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy))))))))))))))))), friend(c_boy))>>"
+    Adding new formula to set: "~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy))))))))))))))))), friend(c_boy))"
 
 
     Generating tuples for next level 18
 
 
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy)))))))))))))))))), friend(c_boy))>>"
+    Adding new formula to set: "~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy)))))))))))))))))), friend(c_boy))"
 
 
     Generating tuples for next level 19
 
 
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy))))))))))))))))))), friend(c_boy))>>"
+    Adding new formula to set: "~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy))))))))))))))))))), friend(c_boy))"
 
 
     Generating tuples for next level 20
 
 
-    Adding new formula to set: "<<~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy)))))))))))))))))))), friend(c_boy))>>"
+    Adding new formula to set: "~Loves(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(friend(c_boy)))))))))))))))))))), friend(c_boy))"
 
 
     After searching to bound depth 20, set of ground instances (of negation) is still satisfiable. Giving up.

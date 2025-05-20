@@ -204,14 +204,14 @@ mod formula_tests_general {
             &Formula::atom(&String::from("hello")),
             &Formula::and(
                 &Formula::atom(&String::from("apples")),
-                &Formula::atom(&String::from("oranges")),
+                &Formula::atom(&String::from("bananas")),
             ),
         );
         let y: Formula<String> = Formula::iff(
             &Formula::atom(&String::from("hello")),
             &Formula::and(
                 &Formula::atom(&String::from("apples")),
-                &Formula::atom(&String::from("bananas")),
+                &Formula::atom(&String::from("oranges")),
             ),
         );
         assert_ne!(x, y);
@@ -338,144 +338,157 @@ mod formula_tests_general {
 
 // ### Formula Prettifying ###
 
-fn strip_quant<T: Clone + Debug + Hash + Eq + Ord>(
-    formula: &Formula<T>,
-) -> (Vec<String>, Formula<T>) {
-    // Remove all leading quantifiers and return tuple of quantified variables
-    // and the stripped formula.
-    let formula: Formula<T> = formula.clone();
-    match formula {
-        Formula::Forall(x, p) => {
-            match *p {
-                Formula::Forall(_, _) => {
-                    let (mut xs, q) = strip_quant(&p);
-                    // NOTE: Order is reversed.
-                    xs.push(x);
-                    (xs, q)
-                }
-                _ => (vec![x], *p),
-            }
-        }
-
-        Formula::Exists(x, p) => {
-            match *p {
-                Formula::Exists(_, _) => {
-                    let (mut xs, q) = strip_quant(&p);
-                    // NOTE: Order is reversed.
-                    xs.push(x);
-                    (xs, q)
-                }
-                _ => (vec![x], *p),
-            }
-        }
-
-        _ => (vec![], formula),
-    }
-}
-
-fn maybe_bracketed(add_brackets: bool, middle: &str) -> String {
-    let mut result = String::from("");
-    if add_brackets {
-        result.push('(');
-    }
-    result.push_str(middle);
-    if add_brackets {
-        result.push(')');
-    }
-    result
-}
-
-fn get_formula<T: Clone + Debug + Hash + Eq + Ord>(
-    atom_pretty: &dyn Fn(u32, &T) -> String,
-    prec: u32,
-    formula: &Formula<T>,
-) -> String {
-    /*NOTE: This is actually Harrison's *inner* print_formula with an additional pfn argument
-     *
-     * prec is operator precidence
-     * atom_pretty is a subprinter taking a precedence and an atom (T). */
-
-    match formula {
-        Formula::False => String::from("false"),
-        Formula::True => String::from("true"),
-        Formula::Atom(t) => atom_pretty(prec, t),
-        Formula::Not(p) => maybe_bracketed(prec > 10, &get_prefix(atom_pretty, 10, "~", p)),
-        Formula::And(p, q) => maybe_bracketed(prec > 8, &get_infix(atom_pretty, 8, "/\\", p, q)),
-        Formula::Or(p, q) => maybe_bracketed(prec > 6, &get_infix(atom_pretty, 6, "\\/", p, q)),
-        Formula::Imp(p, q) => maybe_bracketed(prec > 4, &get_infix(atom_pretty, 4, "==>", p, q)),
-        Formula::Iff(p, q) => maybe_bracketed(prec > 2, &get_infix(atom_pretty, 2, "<=>", p, q)),
-        Formula::Forall(_, _) => {
-            maybe_bracketed(prec > 0, &get_quant(atom_pretty, "forall", formula))
-        }
-        Formula::Exists(_, _) => {
-            maybe_bracketed(prec > 0, &get_quant(atom_pretty, "exists", formula))
-        }
-    }
-}
-
-fn get_quant<T: Clone + Debug + Hash + Eq + Ord>(
-    atom_pretty: &dyn Fn(u32, &T) -> String,
-    qname: &str,
-    formula: &Formula<T>,
-) -> String {
-    // Note that `formula` is the entire quantified formula (not just the body).
-    let mut result = String::from("");
-
-    let (mut vars, body) = strip_quant(formula);
-    // `strip_quant` returns vars in reverse order.
-    vars.reverse();
-    result.push_str(qname);
-
-    vars.iter().for_each(|v| {
-        result.push(' ');
-        result.push_str(v);
-    });
-    result.push_str(". ");
-
-    result.push_str(&get_formula(atom_pretty, 9, &body));
-    result
-}
-
-fn get_prefix<T: Clone + Debug + Hash + Eq + Ord>(
-    atom_pretty: &dyn Fn(u32, &T) -> String,
-    prec: u32,
-    symbol: &str,
-    inner: &Formula<T>,
-) -> String {
-    let mut result = String::from(symbol);
-    result.push_str(&get_formula(atom_pretty, prec, inner));
-    result
-}
-
-fn get_infix<T: Clone + Debug + Hash + Eq + Ord>(
-    atom_pretty: &dyn Fn(u32, &T) -> String,
-    prec: u32,
-    symbol: &str,
-    left: &Formula<T>,
-    right: &Formula<T>,
-) -> String {
-    // As in the double negation case, this will lead to extra brackets in A & (B & C).
-    let mut result = String::new();
-
-    result.push_str(&get_formula(atom_pretty, prec + 1, left));
-    result.push(' ');
-    result.push_str(symbol);
-    result.push(' ');
-    result.push_str(&get_formula(atom_pretty, prec, right));
-    result
-}
-
 impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
+    fn strip_quant(formula: &Formula<T>) -> (Vec<String>, Formula<T>) {
+        // Remove all leading quantifiers and return tuple of quantified variables
+        // and the stripped formula.
+        let formula: Formula<T> = formula.clone();
+        match formula {
+            Formula::Forall(x, p) => {
+                match *p {
+                    Formula::Forall(_, _) => {
+                        let (mut xs, q) = Formula::strip_quant(&p);
+                        // NOTE: Order is reversed.
+                        xs.push(x);
+                        (xs, q)
+                    }
+                    _ => (vec![x], *p),
+                }
+            }
+
+            Formula::Exists(x, p) => {
+                match *p {
+                    Formula::Exists(_, _) => {
+                        let (mut xs, q) = Formula::strip_quant(&p);
+                        // NOTE: Order is reversed.
+                        xs.push(x);
+                        (xs, q)
+                    }
+                    _ => (vec![x], *p),
+                }
+            }
+
+            _ => (vec![], formula),
+        }
+    }
+
+    fn maybe_bracketed(add_brackets: bool, middle: &str) -> String {
+        let mut result = String::from("");
+        if add_brackets {
+            result.push('(');
+        }
+        result.push_str(middle);
+        if add_brackets {
+            result.push(')');
+        }
+        result
+    }
+
+    fn pretty_formula(
+        atom_pretty: &dyn Fn(u32, &T) -> String,
+        prec: u32,
+        formula: &Formula<T>,
+    ) -> String {
+        /*NOTE: This is actually Harrison's *inner* print_formula with an additional pfn argument
+         *
+         * `prec` : operator precedence
+         * `atom_pretty` : a subformatter taking a precedence and an atom (T). */
+
+        match formula {
+            Formula::False => String::from("false"),
+            Formula::True => String::from("true"),
+            Formula::Atom(t) => atom_pretty(prec, t),
+            Formula::Not(p) => Formula::<T>::maybe_bracketed(
+                prec > 10,
+                &Formula::pretty_prefix(atom_pretty, 10, "~", p),
+            ),
+            Formula::And(p, q) => Formula::<T>::maybe_bracketed(
+                prec > 8,
+                &Formula::pretty_infix(atom_pretty, 8, "/\\", p, q),
+            ),
+            Formula::Or(p, q) => Formula::<T>::maybe_bracketed(
+                prec > 6,
+                &Formula::pretty_infix(atom_pretty, 6, "\\/", p, q),
+            ),
+            Formula::Imp(p, q) => Formula::<T>::maybe_bracketed(
+                prec > 4,
+                &Formula::pretty_infix(atom_pretty, 4, "==>", p, q),
+            ),
+            Formula::Iff(p, q) => Formula::<T>::maybe_bracketed(
+                prec > 2,
+                &Formula::pretty_infix(atom_pretty, 2, "<=>", p, q),
+            ),
+            Formula::Forall(_, _) => Formula::<T>::maybe_bracketed(
+                prec > 0,
+                &Formula::pretty_quant(atom_pretty, "forall", formula),
+            ),
+            Formula::Exists(_, _) => Formula::<T>::maybe_bracketed(
+                prec > 0,
+                &Formula::pretty_quant(atom_pretty, "exists", formula),
+            ),
+        }
+    }
+
+    fn pretty_quant(
+        atom_pretty: &dyn Fn(u32, &T) -> String,
+        qname: &str,
+        formula: &Formula<T>,
+    ) -> String {
+        // Note that `formula` is the entire quantified formula (not just the body).
+        let mut result = String::from("");
+
+        let (mut vars, body) = Formula::strip_quant(formula);
+        // `strip_quant` returns vars in reverse order.
+        vars.reverse();
+        result.push_str(qname);
+
+        vars.iter().for_each(|v| {
+            result.push(' ');
+            result.push_str(v);
+        });
+        result.push_str(". ");
+
+        result.push_str(&Formula::pretty_formula(atom_pretty, 9, &body));
+        result
+    }
+
+    fn pretty_prefix(
+        atom_pretty: &dyn Fn(u32, &T) -> String,
+        prec: u32,
+        symbol: &str,
+        inner: &Formula<T>,
+    ) -> String {
+        let mut result = String::from(symbol);
+        result.push_str(&Formula::pretty_formula(atom_pretty, prec, inner));
+        result
+    }
+
+    fn pretty_infix(
+        atom_pretty: &dyn Fn(u32, &T) -> String,
+        prec: u32,
+        symbol: &str,
+        left: &Formula<T>,
+        right: &Formula<T>,
+    ) -> String {
+        // As in the double negation case, this will lead to extra brackets in A & (B & C).
+        let mut result = String::new();
+
+        result.push_str(&Formula::pretty_formula(atom_pretty, prec + 1, left));
+        result.push(' ');
+        result.push_str(symbol);
+        result.push(' ');
+        result.push_str(&Formula::pretty_formula(atom_pretty, prec, right));
+        result
+    }
+
     pub fn pretty_general<P: Fn(u32, &T) -> String>(&self, atom_pretty: &P) -> String {
         // atom_pretty is a sub-prettifier for atoms (type T)
         // NOTE:  It appears that both times this is passed a `atom_pretty`, that function
         // ignores the precidence argument (u32).  Maybe simplify the type accordingly?
-        let mut result = String::from("<<");
-        result.push_str(&get_formula(atom_pretty, 0, self));
-        result.push_str(">>");
-        result
+        Formula::pretty_formula(atom_pretty, 0, self)
     }
 }
+
 #[cfg(test)]
 mod generic_ast_print_tests {
     // We let T = String for testing purposes.
@@ -487,8 +500,8 @@ mod generic_ast_print_tests {
     }
 
     fn test_maybe_bracket_no_indent() {
-        let result1 = maybe_bracketed(true, "TESTING");
-        let result2 = maybe_bracketed(false, "TESTING");
+        let result1 = Formula::<String>::maybe_bracketed(true, "TESTING");
+        let result2 = Formula::<String>::maybe_bracketed(false, "TESTING");
         assert_eq!(result1, "(TESTING)");
         assert_eq!(result2, "TESTING");
     }
@@ -496,19 +509,19 @@ mod generic_ast_print_tests {
     #[test]
     fn test_strip_quant() {
         let formula1 = Formula::atom(&String::from("Hello"));
-        let result1 = strip_quant(&formula1);
+        let result1 = Formula::strip_quant(&formula1);
         let desired1 = (vec![], formula1);
         assert_eq!(result1, desired1);
 
         let inner = Formula::atom(&String::from("Hello"));
 
         let formula2 = Formula::forall("var1", &inner);
-        let result2 = strip_quant(&formula2);
+        let result2 = Formula::strip_quant(&formula2);
         let desired2 = (vec![String::from("var1")], inner.clone());
         assert_eq!(result2, desired2);
 
         let formula3 = Formula::forall("var2", &Formula::forall("var1", &inner));
-        let result3 = strip_quant(&formula3);
+        let result3 = Formula::strip_quant(&formula3);
         let desired3 = (vec![String::from("var1"), String::from("var2")], inner);
         assert_eq!(result3, desired3);
     }
@@ -525,7 +538,7 @@ mod generic_ast_print_tests {
     #[test]
     fn test_pprint_general_single_atom() {
         let formula = Formula::atom(&String::from("Hello"));
-        let desired = "<<Hello>>";
+        let desired = "Hello";
         _test_pprint_general(formula, desired);
     }
 
@@ -535,7 +548,7 @@ mod generic_ast_print_tests {
             &Formula::atom(&String::from("Hello")),
             &Formula::atom(&String::from("Goodbye")),
         );
-        let desired = "<<Hello /\\ Goodbye>>";
+        let desired = "Hello /\\ Goodbye";
         _test_pprint_general(formula, desired);
     }
 
@@ -549,7 +562,7 @@ mod generic_ast_print_tests {
             ),
             &Formula::atom(&String::from("C")),
         );
-        let desired = "<<(A \\/ B) /\\ C>>";
+        let desired = "(A \\/ B) /\\ C";
         _test_pprint_general(formula, desired);
     }
 
@@ -563,7 +576,7 @@ mod generic_ast_print_tests {
                 &Formula::atom(&String::from("B")),
             ),
         );
-        let desired = "<<C /\\ (A \\/ B)>>";
+        let desired = "C /\\ (A \\/ B)";
         _test_pprint_general(formula, desired);
     }
 
@@ -577,7 +590,7 @@ mod generic_ast_print_tests {
             ),
             &Formula::atom(&String::from("C")),
         );
-        let desired = "<<A /\\ B \\/ C>>";
+        let desired = "A /\\ B \\/ C";
         _test_pprint_general(formula, desired);
     }
 
@@ -591,7 +604,7 @@ mod generic_ast_print_tests {
                 &Formula::atom(&String::from("B")),
             ),
         );
-        let desired = "<<C \\/ A /\\ B>>";
+        let desired = "C \\/ A /\\ B";
         _test_pprint_general(formula, desired);
     }
 
@@ -604,7 +617,7 @@ mod generic_ast_print_tests {
             ),
             &Formula::atom(&String::from("C")),
         );
-        let desired = "<<(A /\\ B) /\\ C>>";
+        let desired = "(A /\\ B) /\\ C";
         _test_pprint_general(formula, desired);
     }
 
@@ -617,14 +630,14 @@ mod generic_ast_print_tests {
                 &Formula::atom(&String::from("B")),
             ),
         );
-        let desired = "<<C /\\ A /\\ B>>";
+        let desired = "C /\\ A /\\ B";
         _test_pprint_general(formula, desired);
     }
 
     #[test]
     fn test_pprint_general_simple_quantified() {
         let formula = Formula::forall("x", &Formula::atom(&String::from("Hello")));
-        let desired = "<<forall x. Hello>>";
+        let desired = "forall x. Hello";
         _test_pprint_general(formula, desired);
     }
 
@@ -637,7 +650,7 @@ mod generic_ast_print_tests {
                 &Formula::atom(&String::from("Goodbye")),
             ),
         );
-        let desired = "<<forall x. (Hello /\\ Goodbye)>>";
+        let desired = "forall x. (Hello /\\ Goodbye)";
         _test_pprint_general(formula, desired);
     }
 
@@ -647,7 +660,7 @@ mod generic_ast_print_tests {
             "var1",
             &Formula::forall("var2", &Formula::atom(&String::from("Hello"))),
         );
-        let desired = "<<forall var1 var2. Hello>>";
+        let desired = "forall var1 var2. Hello";
         _test_pprint_general(formula, desired);
     }
 
@@ -657,21 +670,21 @@ mod generic_ast_print_tests {
             &Formula::atom(&String::from("Goodbye")),
             &Formula::forall("var1", &Formula::atom(&String::from("Hello"))),
         );
-        let desired = "<<Goodbye <=> (forall var1. Hello)>>";
+        let desired = "Goodbye <=> (forall var1. Hello)";
         _test_pprint_general(formula, desired);
     }
 
     #[test]
     fn test_pprint_general_negate_atom() {
         let formula = Formula::not(&Formula::atom(&String::from("Hello")));
-        let desired = "<<~Hello>>";
+        let desired = "~Hello";
         _test_pprint_general(formula, desired);
     }
 
     #[test]
     fn test_pprint_general_double_negation() {
         let formula = Formula::not(&Formula::not(&Formula::atom(&String::from("Hello"))));
-        let desired = "<<~~Hello>>";
+        let desired = "~~Hello";
         _test_pprint_general(formula, desired);
     }
 
@@ -681,7 +694,7 @@ mod generic_ast_print_tests {
             "x",
             &Formula::atom(&String::from("Hello")),
         ));
-        let desired = "<<~(forall x. Hello)>>";
+        let desired = "~(forall x. Hello)";
         _test_pprint_general(formula, desired);
     }
 }

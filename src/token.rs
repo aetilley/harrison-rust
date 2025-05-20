@@ -9,17 +9,14 @@ pub const INFIX_RELATION_SYMBOLS: [&str; 5] = ["<", "<=", "=", ">=", ">"];
 #[derive(Logos, Debug, PartialEq, Clone)]
 #[logos(skip r"[ \t\n\f\r]+")] // Ignore Whitespace
 pub enum Token {
-    #[regex("nil|[0-9]+", |lex| lex.slice().to_string(), priority = 1)]
-    Constant(String),
+    #[regex("<nil>|[0-9]+", |lex| lex.slice().to_string())]
+    Numeral(String),
 
-    #[regex("[a-zA-Z0-9\'_]+", |lex| lex.slice().to_string(), priority = 0)]
-    Alphanumeric(String),
+    #[regex("[a-zA-Z\'_][a-zA-Z0-9\'_]*", |lex| lex.slice().to_string())]
+    Identifier(String),
 
     #[regex("<|<=|=|>=|>", |lex| lex.slice().to_string())]
     InfixRelation(String),
-
-    #[regex("[`!@#$%&|;?]+", |lex| lex.slice().to_string())]
-    Symbolic(String),
 
     #[token("forall")]
     Forall,
@@ -225,12 +222,12 @@ mod lex_tests {
         let lexer = Lexer::new(input);
         let result = Vec::from_iter(lexer);
         let desired: Vec<Spanned<Token, usize, LexicalError>> = vec![
-            Ok((0, Token::Alphanumeric("a".to_string()), 1)),
+            Ok((0, Token::Identifier("a".to_string()), 1)),
             Ok((2, Token::Plus, 3)),
             Ok((4, Token::LParen, 5)),
-            Ok((5, Token::Alphanumeric("bc".to_string()), 7)),
+            Ok((5, Token::Identifier("bc".to_string()), 7)),
             Ok((8, Token::Times, 9)),
-            Ok((10, Token::Constant("17".to_string()), 12)),
+            Ok((10, Token::Numeral("17".to_string()), 12)),
             Ok((12, Token::RParen, 13)),
         ];
         assert_eq!(result, desired);
@@ -243,7 +240,7 @@ mod lex_tests {
         let lexer = Lexer::new(input);
         let result = Vec::from_iter(lexer);
         let desired: Vec<Spanned<Token, usize, LexicalError>> = vec![
-            Ok((0, Token::Alphanumeric("a".to_string()), 1)),
+            Ok((0, Token::Identifier("a".to_string()), 1)),
             Err(LexicalError::Other),
         ];
         assert_eq!(result, desired);
@@ -255,7 +252,7 @@ mod lex_tests {
         let lexer = Lexer::new(input);
         let result = Vec::from_iter(lexer);
         let desired: Vec<Spanned<Token, usize, LexicalError>> =
-            vec![Ok((0, Token::Constant("42".to_string()), 2))];
+            vec![Ok((0, Token::Numeral("42".to_string()), 2))];
         assert_eq!(result, desired);
     }
 
@@ -265,7 +262,7 @@ mod lex_tests {
         let lexer = Lexer::new(input);
         let result = Vec::from_iter(lexer);
         let desired: Vec<Spanned<Token, usize, LexicalError>> =
-            vec![Ok((0, Token::Alphanumeric("x".to_string()), 1))];
+            vec![Ok((0, Token::Identifier("x".to_string()), 1))];
         assert_eq!(result, desired);
     }
 }

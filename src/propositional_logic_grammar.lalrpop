@@ -14,7 +14,7 @@ extern {
   enum Token {
     "forall" => Token::Forall,
     "exists" => Token::Exists,
-    "alphanum" => Token::Alphanumeric(<String>),
+    "identifier" => Token::Identifier(<String>),
     "true" => Token::True,
     "false" => Token::False,
     "(" => Token::LParen,
@@ -29,20 +29,20 @@ extern {
 }
 
 pub Prop: Prop = {
-  <prop: "alphanum"> => Prop::new(&prop),
+  <prop: "identifier"> => Prop::new(&prop),
 }
 
 // NOTE: We differ from Harrison in that our quantifiers bind tighter
 // than any binary connective.
 pub QuantifiedFormula: Formula<Prop> = {
-  "forall" <varlist: (<"alphanum">)+> "." <inner: NonBinopFormula> => {
+  "forall" <varlist: (<"identifier">)+> "." <inner: NonBinopFormula> => {
     let mut result = inner;
     for var in varlist.iter().rev() {
       result = Formula::forall(var, &result);
     }
     result
   },
-  "exists" <varlist: (<"alphanum">)+> "." <inner: NonBinopFormula> => {
+  "exists" <varlist: (<"identifier">)+> "." <inner: NonBinopFormula> => {
     let mut result = inner;
     for var in varlist.iter().rev() {
       result = Formula::exists(var, &result);
