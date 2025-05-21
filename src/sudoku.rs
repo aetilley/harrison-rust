@@ -3,7 +3,7 @@ use std::fs;
 use std::ops::RangeInclusive;
 use std::path::Path;
 
-use crate::formula::{Formula, FormulaSet};
+use crate::formula::{CNFFormulaSet, FSLiteral};
 use crate::propositional_logic::Prop;
 
 use itertools::iproduct;
@@ -49,15 +49,16 @@ pub fn parse_sudoku_dataset(path: &Path, maybe_limit: Option<usize>) -> Vec<Boar
     boards
 }
 
-pub fn _exactly_one_prop(props: &[Prop]) -> FormulaSet<Prop> {
+pub fn _exactly_one_prop(props: &[Prop]) -> CNFFormulaSet<Prop> {
     // Stating that exactly one of a collection of proposotions is true is
     // naturally expressed in CNF form.
-    let at_least_one: BTreeSet<Formula<Prop>> = props.iter().map(Formula::atom).collect();
+    let at_least_one: BTreeSet<FSLiteral<Prop>> =
+        props.iter().map(|p| FSLiteral::Pos(p.to_owned())).collect();
     let mut clauses = BTreeSet::from([at_least_one]);
     for i in 0..props.len() - 1 {
         for j in i + 1..props.len() {
-            let not_i = Formula::not(&Formula::atom(&props[i]));
-            let not_j = Formula::not(&Formula::atom(&props[j]));
+            let not_i = FSLiteral::Neg(props[i].clone());
+            let not_j = FSLiteral::Neg(props[j].clone());
             let not_both = BTreeSet::from([not_i, not_j]);
             clauses.insert(not_both);
         }
@@ -84,9 +85,9 @@ fn get_all_props(board_size: usize) -> AllProps {
     props
 }
 
-fn get_row_constraints(props: &AllProps, board_size: usize) -> FormulaSet<Prop> {
+fn get_row_constraints(props: &AllProps, board_size: usize) -> CNFFormulaSet<Prop> {
     let range: RangeInclusive<usize> = 1..=board_size;
-    let mut row_constraints: HashSet<FormulaSet<Prop>> = HashSet::new();
+    let mut row_constraints: HashSet<CNFFormulaSet<Prop>> = HashSet::new();
     for row in range.clone() {
         for val in range.clone() {
             // State that "exactly one column has the 1, exactly
@@ -95,19 +96,19 @@ fn get_row_constraints(props: &AllProps, board_size: usize) -> FormulaSet<Prop> 
                 .clone()
                 .map(|col| props[&(row, col, val)].clone())
                 .collect();
-            let constraint: FormulaSet<Prop> = _exactly_one_prop(&props);
+            let constraint: CNFFormulaSet<Prop> = _exactly_one_prop(&props);
             row_constraints.insert(constraint);
         }
     }
     // Take union
     row_constraints
         .into_iter()
-        .fold(FormulaSet::new(), |x, y| &x | &y)
+        .fold(CNFFormulaSet::new(), |x, y| &x | &y)
 }
 
-fn get_col_constraints(props: &AllProps, board_size: usize) -> FormulaSet<Prop> {
+fn get_col_constraints(props: &AllProps, board_size: usize) -> CNFFormulaSet<Prop> {
     let range: RangeInclusive<usize> = 1..=board_size;
-    let mut col_constraints: HashSet<FormulaSet<Prop>> = HashSet::new();
+    let mut col_constraints: HashSet<CNFFormulaSet<Prop>> = HashSet::new();
     for col in range.clone() {
         for val in range.clone() {
             // State that "exactly one row has the 1, exactly
@@ -116,14 +117,14 @@ fn get_col_constraints(props: &AllProps, board_size: usize) -> FormulaSet<Prop> 
                 .clone()
                 .map(|row| props[&(row, col, val)].clone())
                 .collect();
-            let constraint: FormulaSet<Prop> = _exactly_one_prop(&props);
+            let constraint: CNFFormulaSet<Prop> = _exactly_one_prop(&props);
             col_constraints.insert(constraint);
         }
     }
     // Take union
     col_constraints
         .into_iter()
-        .fold(FormulaSet::new(), |x, y| &x | &y)
+        .fold(CNFFormulaSet::new(), |x, y| &x | &y)
 }
 
 type CoordSet = HashSet<(usize, usize)>;
@@ -147,11 +148,11 @@ fn get_subboard_constraints(
     props: &AllProps,
     board_size: usize,
     subboard_size: usize,
-) -> FormulaSet<Prop> {
+) -> CNFFormulaSet<Prop> {
     let range: RangeInclusive<usize> = 1..=board_size;
     let (first_subboard_indices, subboard_offsets) =
         _get_subboard_indices_and_offsets(board_size, subboard_size);
-    let mut subboard_constraints: HashSet<FormulaSet<Prop>> = HashSet::new();
+    let mut subboard_constraints: HashSet<CNFFormulaSet<Prop>> = HashSet::new();
     for (row_offset, col_offset) in subboard_offsets {
         for val in range.clone() {
             // State that "exactly one square has the 1, exactly
@@ -160,37 +161,41 @@ fn get_subboard_constraints(
                 .iter()
                 .map(|(row, col)| props[&(row + row_offset, col + col_offset, val)].clone())
                 .collect();
-            let constraint: FormulaSet<Prop> = _exactly_one_prop(&props);
+            let constraint: CNFFormulaSet<Prop> = _exactly_one_prop(&props);
             subboard_constraints.insert(constraint);
         }
     }
     // Take union
     subboard_constraints
         .into_iter()
-        .fold(FormulaSet::new(), |x, y| &x | &y)
+        .fold(CNFFormulaSet::new(), |x, y| &x | &y)
 }
 
-fn get_numerical_constraints(props: &AllProps, board_size: usize) -> FormulaSet<Prop> {
+fn get_numerical_constraints(props: &AllProps, board_size: usize) -> CNFFormulaSet<Prop> {
     // Constraints that exactly one value holds at any given square.
     let range: RangeInclusive<usize> = 1..=board_size;
-    let mut numerical_constraints: HashSet<FormulaSet<Prop>> = HashSet::new();
+    let mut numerical_constraints: HashSet<CNFFormulaSet<Prop>> = HashSet::new();
     for row in range.clone() {
         for col in range.clone() {
             let props: Vec<Prop> = range
                 .clone()
                 .map(|val| props[&(row, col, val)].clone())
                 .collect();
-            let constraint: FormulaSet<Prop> = _exactly_one_prop(&props);
+            let constraint: CNFFormulaSet<Prop> = _exactly_one_prop(&props);
             numerical_constraints.insert(constraint);
         }
     }
     // Take union
     numerical_constraints
         .into_iter()
-        .fold(FormulaSet::new(), |x, y| &x | &y)
+        .fold(CNFFormulaSet::new(), |x, y| &x | &y)
 }
 
-fn get_start_constraints(props: &AllProps, board_size: usize, board: &Board) -> FormulaSet<Prop> {
+fn get_start_constraints(
+    props: &AllProps,
+    board_size: usize,
+    board: &Board,
+) -> CNFFormulaSet<Prop> {
     // Props for squares that have values to start must match those values.
     let range: RangeInclusive<usize> = 1..=board_size;
     let mut start_props: HashSet<Prop> = HashSet::new();
@@ -201,9 +206,9 @@ fn get_start_constraints(props: &AllProps, board_size: usize, board: &Board) -> 
             }
         }
     }
-    let start_constraint: FormulaSet<Prop> = start_props
+    let start_constraint: CNFFormulaSet<Prop> = start_props
         .into_iter()
-        .map(|atom| BTreeSet::from([Formula::atom(&atom)]))
+        .map(|prop| BTreeSet::from([FSLiteral::Pos(prop)]))
         .collect();
     start_constraint
 }
@@ -212,18 +217,18 @@ pub fn get_board_formulas(
     boards: &[Board],
     board_size: usize,
     subboard_size: usize,
-) -> Vec<FormulaSet<Prop>> {
+) -> Vec<CNFFormulaSet<Prop>> {
     // FormulaSets are in CNF
     let props = get_all_props(board_size);
 
-    let constant_constraints: FormulaSet<Prop> = [
+    let constant_constraints: CNFFormulaSet<Prop> = [
         get_row_constraints(&props, board_size),
         get_col_constraints(&props, board_size),
         get_subboard_constraints(&props, board_size, subboard_size),
         get_numerical_constraints(&props, board_size),
     ]
     .iter()
-    .fold(FormulaSet::new(), |x, y| &x | y);
+    .fold(CNFFormulaSet::new(), |x, y| &x | y);
 
     boards
         .iter()
@@ -235,7 +240,7 @@ pub fn get_board_formulas(
 mod sudoku_tests {
 
     use super::*;
-    use crate::formula::{DPLBSolver, DPLISolver};
+    use crate::formula::{DPLBSolver, DPLISolver, Formula};
     use crate::utils::run_repeatedly_and_average;
 
     #[test]
@@ -244,21 +249,21 @@ mod sudoku_tests {
         let result = _exactly_one_prop(&props);
         let desired = BTreeSet::from([
             BTreeSet::from([
-                Formula::atom(&Prop::new("P1")),
-                Formula::atom(&Prop::new("P2")),
-                Formula::atom(&Prop::new("P3")),
+                FSLiteral::Pos(Prop::new("P1")),
+                FSLiteral::Pos(Prop::new("P2")),
+                FSLiteral::Pos(Prop::new("P3")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&Prop::new("P1"))),
-                Formula::not(&Formula::atom(&Prop::new("P2"))),
+                FSLiteral::Neg(Prop::new("P1")),
+                FSLiteral::Neg(Prop::new("P2")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&Prop::new("P1"))),
-                Formula::not(&Formula::atom(&Prop::new("P3"))),
+                FSLiteral::Neg(Prop::new("P1")),
+                FSLiteral::Neg(Prop::new("P3")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&Prop::new("P2"))),
-                Formula::not(&Formula::atom(&Prop::new("P3"))),
+                FSLiteral::Neg(Prop::new("P2")),
+                FSLiteral::Neg(Prop::new("P3")),
             ]),
         ]);
         assert_eq!(result, desired);
@@ -266,7 +271,7 @@ mod sudoku_tests {
         // Trivial case
         let props: Vec<Prop> = vec![Prop::new("P1")];
         let result = _exactly_one_prop(&props);
-        let desired = BTreeSet::from([BTreeSet::from([Formula::atom(&Prop::new("P1"))])]);
+        let desired = BTreeSet::from([BTreeSet::from([FSLiteral::Pos(Prop::new("P1"))])]);
         assert_eq!(result, desired);
     }
 
@@ -278,23 +283,23 @@ mod sudoku_tests {
         let props = get_all_props(board_size);
         let result = get_start_constraints(&props, board_size, &board);
         let desired = BTreeSet::from([
-            BTreeSet::from([Formula::atom(&Prop::new("1_1_4"))]),
-            BTreeSet::from([Formula::atom(&Prop::new("1_7_8"))]),
-            BTreeSet::from([Formula::atom(&Prop::new("1_9_5"))]),
-            BTreeSet::from([Formula::atom(&Prop::new("2_2_3"))]),
-            BTreeSet::from([Formula::atom(&Prop::new("3_4_7"))]),
-            BTreeSet::from([Formula::atom(&Prop::new("4_2_2"))]),
-            BTreeSet::from([Formula::atom(&Prop::new("4_8_6"))]),
-            BTreeSet::from([Formula::atom(&Prop::new("5_5_8"))]),
-            BTreeSet::from([Formula::atom(&Prop::new("5_7_4"))]),
-            BTreeSet::from([Formula::atom(&Prop::new("6_5_1"))]),
-            BTreeSet::from([Formula::atom(&Prop::new("7_4_6"))]),
-            BTreeSet::from([Formula::atom(&Prop::new("7_6_3"))]),
-            BTreeSet::from([Formula::atom(&Prop::new("7_8_7"))]),
-            BTreeSet::from([Formula::atom(&Prop::new("8_1_5"))]),
-            BTreeSet::from([Formula::atom(&Prop::new("8_4_2"))]),
-            BTreeSet::from([Formula::atom(&Prop::new("9_1_1"))]),
-            BTreeSet::from([Formula::atom(&Prop::new("9_3_4"))]),
+            BTreeSet::from([FSLiteral::Pos(Prop::new("1_1_4"))]),
+            BTreeSet::from([FSLiteral::Pos(Prop::new("1_7_8"))]),
+            BTreeSet::from([FSLiteral::Pos(Prop::new("1_9_5"))]),
+            BTreeSet::from([FSLiteral::Pos(Prop::new("2_2_3"))]),
+            BTreeSet::from([FSLiteral::Pos(Prop::new("3_4_7"))]),
+            BTreeSet::from([FSLiteral::Pos(Prop::new("4_2_2"))]),
+            BTreeSet::from([FSLiteral::Pos(Prop::new("4_8_6"))]),
+            BTreeSet::from([FSLiteral::Pos(Prop::new("5_5_8"))]),
+            BTreeSet::from([FSLiteral::Pos(Prop::new("5_7_4"))]),
+            BTreeSet::from([FSLiteral::Pos(Prop::new("6_5_1"))]),
+            BTreeSet::from([FSLiteral::Pos(Prop::new("7_4_6"))]),
+            BTreeSet::from([FSLiteral::Pos(Prop::new("7_6_3"))]),
+            BTreeSet::from([FSLiteral::Pos(Prop::new("7_8_7"))]),
+            BTreeSet::from([FSLiteral::Pos(Prop::new("8_1_5"))]),
+            BTreeSet::from([FSLiteral::Pos(Prop::new("8_4_2"))]),
+            BTreeSet::from([FSLiteral::Pos(Prop::new("9_1_1"))]),
+            BTreeSet::from([FSLiteral::Pos(Prop::new("9_3_4"))]),
         ]);
         assert_eq!(result, desired);
     }
@@ -306,36 +311,36 @@ mod sudoku_tests {
         let result = get_row_constraints(&props, board_size);
         let desired = BTreeSet::from([
             BTreeSet::from([
-                Formula::atom(&Prop::new("1_1_1")),
-                Formula::atom(&Prop::new("1_2_1")),
+                FSLiteral::Pos(Prop::new("1_1_1")),
+                FSLiteral::Pos(Prop::new("1_2_1")),
             ]),
             BTreeSet::from([
-                Formula::atom(&Prop::new("1_1_2")),
-                Formula::atom(&Prop::new("1_2_2")),
+                FSLiteral::Pos(Prop::new("1_1_2")),
+                FSLiteral::Pos(Prop::new("1_2_2")),
             ]),
             BTreeSet::from([
-                Formula::atom(&Prop::new("2_1_1")),
-                Formula::atom(&Prop::new("2_2_1")),
+                FSLiteral::Pos(Prop::new("2_1_1")),
+                FSLiteral::Pos(Prop::new("2_2_1")),
             ]),
             BTreeSet::from([
-                Formula::atom(&Prop::new("2_1_2")),
-                Formula::atom(&Prop::new("2_2_2")),
+                FSLiteral::Pos(Prop::new("2_1_2")),
+                FSLiteral::Pos(Prop::new("2_2_2")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&Prop::new("1_1_1"))),
-                Formula::not(&Formula::atom(&Prop::new("1_2_1"))),
+                FSLiteral::Neg(Prop::new("1_1_1")),
+                FSLiteral::Neg(Prop::new("1_2_1")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&Prop::new("1_1_2"))),
-                Formula::not(&Formula::atom(&Prop::new("1_2_2"))),
+                FSLiteral::Neg(Prop::new("1_1_2")),
+                FSLiteral::Neg(Prop::new("1_2_2")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&Prop::new("2_1_1"))),
-                Formula::not(&Formula::atom(&Prop::new("2_2_1"))),
+                FSLiteral::Neg(Prop::new("2_1_1")),
+                FSLiteral::Neg(Prop::new("2_2_1")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&Prop::new("2_1_2"))),
-                Formula::not(&Formula::atom(&Prop::new("2_2_2"))),
+                FSLiteral::Neg(Prop::new("2_1_2")),
+                FSLiteral::Neg(Prop::new("2_2_2")),
             ]),
         ]);
         assert_eq!(result, desired);
@@ -348,36 +353,36 @@ mod sudoku_tests {
         let result = get_col_constraints(&props, board_size);
         let desired = BTreeSet::from([
             BTreeSet::from([
-                Formula::atom(&Prop::new("1_1_1")),
-                Formula::atom(&Prop::new("2_1_1")),
+                FSLiteral::Pos(Prop::new("1_1_1")),
+                FSLiteral::Pos(Prop::new("2_1_1")),
             ]),
             BTreeSet::from([
-                Formula::atom(&Prop::new("1_1_2")),
-                Formula::atom(&Prop::new("2_1_2")),
+                FSLiteral::Pos(Prop::new("1_1_2")),
+                FSLiteral::Pos(Prop::new("2_1_2")),
             ]),
             BTreeSet::from([
-                Formula::atom(&Prop::new("1_2_1")),
-                Formula::atom(&Prop::new("2_2_1")),
+                FSLiteral::Pos(Prop::new("1_2_1")),
+                FSLiteral::Pos(Prop::new("2_2_1")),
             ]),
             BTreeSet::from([
-                Formula::atom(&Prop::new("1_2_2")),
-                Formula::atom(&Prop::new("2_2_2")),
+                FSLiteral::Pos(Prop::new("1_2_2")),
+                FSLiteral::Pos(Prop::new("2_2_2")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&Prop::new("1_1_1"))),
-                Formula::not(&Formula::atom(&Prop::new("2_1_1"))),
+                FSLiteral::Neg(Prop::new("1_1_1")),
+                FSLiteral::Neg(Prop::new("2_1_1")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&Prop::new("1_1_2"))),
-                Formula::not(&Formula::atom(&Prop::new("2_1_2"))),
+                FSLiteral::Neg(Prop::new("1_1_2")),
+                FSLiteral::Neg(Prop::new("2_1_2")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&Prop::new("1_2_1"))),
-                Formula::not(&Formula::atom(&Prop::new("2_2_1"))),
+                FSLiteral::Neg(Prop::new("1_2_1")),
+                FSLiteral::Neg(Prop::new("2_2_1")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&Prop::new("1_2_2"))),
-                Formula::not(&Formula::atom(&Prop::new("2_2_2"))),
+                FSLiteral::Neg(Prop::new("1_2_2")),
+                FSLiteral::Neg(Prop::new("2_2_2")),
             ]),
         ]);
         assert_eq!(result, desired);
@@ -445,14 +450,14 @@ mod sudoku_tests {
         let result = get_subboard_constraints(&props, board_size, subboard_size);
 
         let desired = BTreeSet::from([
-            BTreeSet::from([Formula::atom(&Prop::new("1_1_1"))]),
-            BTreeSet::from([Formula::atom(&Prop::new("1_1_2"))]),
-            BTreeSet::from([Formula::atom(&Prop::new("1_2_1"))]),
-            BTreeSet::from([Formula::atom(&Prop::new("1_2_2"))]),
-            BTreeSet::from([Formula::atom(&Prop::new("2_1_1"))]),
-            BTreeSet::from([Formula::atom(&Prop::new("2_1_2"))]),
-            BTreeSet::from([Formula::atom(&Prop::new("2_2_1"))]),
-            BTreeSet::from([Formula::atom(&Prop::new("2_2_2"))]),
+            BTreeSet::from([FSLiteral::Pos(Prop::new("1_1_1"))]),
+            BTreeSet::from([FSLiteral::Pos(Prop::new("1_1_2"))]),
+            BTreeSet::from([FSLiteral::Pos(Prop::new("1_2_1"))]),
+            BTreeSet::from([FSLiteral::Pos(Prop::new("1_2_2"))]),
+            BTreeSet::from([FSLiteral::Pos(Prop::new("2_1_1"))]),
+            BTreeSet::from([FSLiteral::Pos(Prop::new("2_1_2"))]),
+            BTreeSet::from([FSLiteral::Pos(Prop::new("2_2_1"))]),
+            BTreeSet::from([FSLiteral::Pos(Prop::new("2_2_2"))]),
         ]);
 
         assert_eq!(result, desired);
@@ -465,36 +470,36 @@ mod sudoku_tests {
         let result = get_numerical_constraints(&props, board_size);
         let desired = BTreeSet::from([
             BTreeSet::from([
-                Formula::atom(&Prop::new("1_1_1")),
-                Formula::atom(&Prop::new("1_1_2")),
+                FSLiteral::Pos(Prop::new("1_1_1")),
+                FSLiteral::Pos(Prop::new("1_1_2")),
             ]),
             BTreeSet::from([
-                Formula::atom(&Prop::new("1_2_1")),
-                Formula::atom(&Prop::new("1_2_2")),
+                FSLiteral::Pos(Prop::new("1_2_1")),
+                FSLiteral::Pos(Prop::new("1_2_2")),
             ]),
             BTreeSet::from([
-                Formula::atom(&Prop::new("2_1_1")),
-                Formula::atom(&Prop::new("2_1_2")),
+                FSLiteral::Pos(Prop::new("2_1_1")),
+                FSLiteral::Pos(Prop::new("2_1_2")),
             ]),
             BTreeSet::from([
-                Formula::atom(&Prop::new("2_2_1")),
-                Formula::atom(&Prop::new("2_2_2")),
+                FSLiteral::Pos(Prop::new("2_2_1")),
+                FSLiteral::Pos(Prop::new("2_2_2")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&Prop::new("1_1_1"))),
-                Formula::not(&Formula::atom(&Prop::new("1_1_2"))),
+                FSLiteral::Neg(Prop::new("1_1_1")),
+                FSLiteral::Neg(Prop::new("1_1_2")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&Prop::new("1_2_1"))),
-                Formula::not(&Formula::atom(&Prop::new("1_2_2"))),
+                FSLiteral::Neg(Prop::new("1_2_1")),
+                FSLiteral::Neg(Prop::new("1_2_2")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&Prop::new("2_1_1"))),
-                Formula::not(&Formula::atom(&Prop::new("2_1_2"))),
+                FSLiteral::Neg(Prop::new("2_1_1")),
+                FSLiteral::Neg(Prop::new("2_1_2")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&Prop::new("2_2_1"))),
-                Formula::not(&Formula::atom(&Prop::new("2_2_2"))),
+                FSLiteral::Neg(Prop::new("2_2_1")),
+                FSLiteral::Neg(Prop::new("2_2_2")),
             ]),
         ]);
         assert_eq!(result, desired);
@@ -526,7 +531,7 @@ mod sudoku_tests {
         let mut solver = DPLISolver::new(&start_clauses);
         let is_sat = solver.solve();
         assert!(is_sat);
-        let formula = Formula::formulaset_to_cnf(start_clauses);
+        let formula = Formula::formulaset_to_cnf_formula(start_clauses);
         assert!(formula.eval(&solver.get_valuation().unwrap()));
     }
 
@@ -539,7 +544,7 @@ mod sudoku_tests {
         let mut solver = DPLBSolver::new(&start_clauses);
         let is_sat = solver.solve();
         assert!(is_sat);
-        let formula = Formula::formulaset_to_cnf(start_clauses);
+        let formula = Formula::formulaset_to_cnf_formula(start_clauses);
         assert!(formula.eval(&solver.get_valuation().unwrap()));
         run_repeatedly_and_average(
             || {

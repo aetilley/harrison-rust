@@ -50,7 +50,7 @@ Example 1: Simple formula
 let formula = Formula::<Prop>::parse("C \\/ D <=> (~A /\\ B)").unwrap();
 formula.pprint();
 println!("{}", formula.get_truthtable());
-let cnf = Formula::cnf(&formula);
+let cnf = Formula::to_cnf(&formula);
 cnf.pprint();
 
 println!("Is satisfiable?: {}", formula.dpll_sat());
@@ -283,7 +283,7 @@ println!("(Sukoku sentence has {num_props} propositional variables)");
 let is_sat = run_and_time(|| solver.solve());
 println!("Is satisfiable?: {is_sat}");
 
-let formula = Formula::formulaset_to_cnf(clauses);
+let formula = Formula::formulaset_to_cnf_formula(clauses);
 let check = formula.eval(&solver.get_valuation().unwrap());
 println!("Check: Solution satisfies original constraints?: {check}");
 ```
@@ -291,7 +291,7 @@ println!("Check: Solution satisfies original constraints?: {check}");
     (Sukoku sentence has 729 propositional variables)
 
 
-    Run time is 5.543409625s.
+    Run time is 3.793525375s.
 
 
     
@@ -706,3 +706,8 @@ println!("{:?}", result);
 
     BoundReached(20)
 
+
+
+```Rust
+
+```

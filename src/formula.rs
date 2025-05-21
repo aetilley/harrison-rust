@@ -676,14 +676,14 @@ mod generic_ast_print_tests {
 
     #[test]
     fn test_pprint_general_negate_atom() {
-        let formula = Formula::not(&Formula::atom(&String::from("Hello")));
+        let formula = Formula::not(&Formula::atom(&"Hello".to_string()));
         let desired = "~Hello";
         _test_pprint_general(formula, desired);
     }
 
     #[test]
     fn test_pprint_general_double_negation() {
-        let formula = Formula::not(&Formula::not(&Formula::atom(&String::from("Hello"))));
+        let formula = Formula::not(&Formula::not(&Formula::atom(&"Hello".to_string())));
         let desired = "~~Hello";
         _test_pprint_general(formula, desired);
     }
@@ -928,8 +928,8 @@ mod formula_tests_simplify_and_eval {
         let result = Formula::forall(
             "x",
             &Formula::imp(
-                &Formula::not(&Formula::atom(&"x".to_string())),
-                &Formula::exists("y", &Formula::not(&Formula::atom(&"y".to_string()))),
+                &Formula::not(&Formula::atom(&String::from("x"))),
+                &Formula::exists("y", &Formula::not(&Formula::atom(&String::from("y")))),
             ),
         );
 
@@ -1047,16 +1047,9 @@ mod formula_tests_simplify_and_eval {
     }
 }
 
-// Normal Forms
+// ##### Normal Forms #####
 
-// `FormulaSet`: a set representations of Formulas in disjunctive or conjunctive normal form
-// (we need to specify which in order to have a unique meaning)..
-// The inner sets are the clauses, and the outer set represents their disjunction
-// (for DNF) for conjunction (for CNF).
-// We use BTreeSet here so that we can rely on an ordering
-// for tests.
-pub type FormulaSet<T> = BTreeSet<BTreeSet<Formula<T>>>;
-
+// NNF
 impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
     pub fn raw_nnf(&self) -> Formula<T> {
         // Negation normal form
@@ -1121,13 +1114,90 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
             _ => self.clone(),
         }
     }
+}
 
-    pub fn _set_distrib_and_over_or(
-        formula1: &FormulaSet<T>,
-        formula2: &FormulaSet<T>,
-    ) -> FormulaSet<T> {
-        // FIX do this w/ maps?
-        let mut result = FormulaSet::new();
+// Representation of literal to be used with FormulaSet.
+// Since we don't want to allow any other type of Formula
+// in FormulaSet clauses.
+// Pos corresponds to an atom, and Neg to a negated atom.
+#[derive(Debug, Clone, Eq, Hash, PartialEq, PartialOrd, Ord)]
+pub enum FSLiteral<T> {
+    Pos(T),
+    Neg(T),
+}
+
+impl<T: Debug + Clone + Hash + Eq + Ord> FSLiteral<T> {
+    pub fn is_neg(&self) -> bool {
+        matches!(self, FSLiteral::Neg(_))
+    }
+
+    fn is_pos(&self) -> bool {
+        // NOTE: that the way _negative and _positive are defined,
+        // every non-literal will count as `_positive`.
+        !self.is_neg()
+    }
+
+    pub fn negate(&self) -> FSLiteral<T> {
+        match self {
+            FSLiteral::Neg(p) => FSLiteral::Pos(p.to_owned()),
+            FSLiteral::Pos(p) => FSLiteral::Neg(p.to_owned()),
+        }
+    }
+
+    pub fn to_formula(&self) -> Formula<T> {
+        match self {
+            FSLiteral::Pos(p) => Formula::atom(p),
+            FSLiteral::Neg(p) => Formula::not(&Formula::atom(p)),
+        }
+    }
+
+    pub fn list_conj(items: &[FSLiteral<T>]) -> Formula<T> {
+        // The conjunction of all `items`.
+        if items.is_empty() {
+            Formula::True
+        } else {
+            items
+                .iter()
+                .map(|lit| lit.to_formula())
+                .reduce(|x, y| Formula::and(&x, &y))
+                .unwrap()
+        }
+    }
+
+    pub fn list_disj(items: &[FSLiteral<T>]) -> Formula<T> {
+        // The conjunction of all `items`.
+        if items.is_empty() {
+            Formula::False
+        } else {
+            items
+                .iter()
+                .map(|lit| lit.to_formula())
+                .reduce(|x, y| Formula::or(&x, &y))
+                .unwrap()
+        }
+    }
+}
+
+// `FormulaSet`: a set representations of Formulas in disjunctive or conjunctive normal form
+// (we need to specify which in order to have a unique meaning)..
+// The inner sets are the clauses, and the outer set represents their disjunction
+// (for DNF) for conjunction (for CNF).
+// We use BTreeSet here so that we can rely on an ordering
+// for tests.
+pub type Clause<T> = BTreeSet<FSLiteral<T>>;
+
+// Although under the hood these are the same, it is crucial to be explicit about what
+// representation of a formula they are assuming.
+pub type AbstractFormulaSet<T> = BTreeSet<Clause<T>>;
+pub type CNFFormulaSet<T> = BTreeSet<Clause<T>>;
+pub type DNFFormulaSet<T> = BTreeSet<Clause<T>>;
+
+impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
+    pub fn set_distrib_and_over_or(
+        formula1: &DNFFormulaSet<T>,
+        formula2: &DNFFormulaSet<T>,
+    ) -> DNFFormulaSet<T> {
+        let mut result = DNFFormulaSet::new();
         for conj1 in formula1 {
             for conj2 in formula2 {
                 result.insert(conj1 | conj2);
@@ -1136,60 +1206,55 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
         result
     }
 
-    fn _purednf(&self) -> FormulaSet<T> {
+    fn purednf(&self) -> DNFFormulaSet<T> {
         // DNF by converting formulas to set of sets representation.
         let simplified = self.simplify_recursive(&Formula::psimplify_step);
         let nnf = simplified.raw_nnf();
 
         match nnf {
-            Formula::False => FormulaSet::new(),
+            Formula::False => DNFFormulaSet::new(),
             Formula::True => BTreeSet::from([BTreeSet::new()]),
-            Formula::Atom(_) | Formula::Not(_) => BTreeSet::from([BTreeSet::from([nnf.clone()])]),
-            Formula::And(p, q) => Formula::_set_distrib_and_over_or(&p._purednf(), &q._purednf()),
-            Formula::Or(p, q) => &p._purednf() | &q._purednf(),
+            Formula::Atom(t) => BTreeSet::from([BTreeSet::from([FSLiteral::Pos(t)])]),
+            Formula::Not(t) => {
+                if let Formula::Atom(s) = *t {
+                    BTreeSet::from([BTreeSet::from([FSLiteral::Neg(s)])])
+                } else {
+                    panic!("Only atoms should be negated in nnf")
+                }
+            }
+            Formula::And(p, q) => Formula::set_distrib_and_over_or(&p.purednf(), &q.purednf()),
+            Formula::Or(p, q) => &p.purednf() | &q.purednf(),
             _ => panic!("Unrecognized formula type {nnf:?} for _puredfn."),
         }
     }
 
-    fn _purecnf(&self) -> FormulaSet<T> {
+    fn purecnf(&self) -> CNFFormulaSet<T> {
         // CNF by converting formulas to set of sets representation.
-        // NOTE that representation of the result is not the same as the representation of
-        // intermediate results.
-        let negation_in_purednf: FormulaSet<T> = Formula::not(self)._purednf();
+        let negation_in_purednf: CNFFormulaSet<T> = Formula::not(self).purednf();
         // distribute matching negation from outside (and assuming dual representation).
-        let result: FormulaSet<T> = negation_in_purednf
+        let result: CNFFormulaSet<T> = negation_in_purednf
             .iter()
             .map(|conjunction| conjunction.iter().map(|lit| lit.negate()).collect())
             .collect();
         result
     }
 
-    fn positive(formula: &Formula<T>) -> bool {
-        // NOTE: that the way _negative and _positive are defined,
-        // every non-literal will count as `_positive`.
-        !Formula::negative(formula)
-    }
-
-    fn _contradictory_lits(lits: &BTreeSet<Formula<T>>) -> bool {
+    fn contradictory_lits(clause: &Clause<T>) -> bool {
         // Whether `lits` contains two literals of the form `p` and `~p`.
-        let pos: BTreeSet<Formula<T>> = lits
-            .iter()
-            .filter(|x| Formula::positive(x))
-            .cloned()
-            .collect();
+        let pos: HashSet<FSLiteral<T>> = clause.iter().filter(|x| x.is_pos()).cloned().collect();
 
-        let neg: BTreeSet<Formula<T>> = lits
+        let neg: HashSet<FSLiteral<T>> = clause
             .iter()
-            .filter(|x| Formula::negative(x))
+            .filter(|x| x.is_neg())
             .map(|lit| lit.negate())
             .collect();
 
         pos.intersection(&neg).count() != 0
     }
 
-    fn _strip_supersets(formula: &FormulaSet<T>) -> FormulaSet<T> {
+    fn strip_supersets(formula: &CNFFormulaSet<T>) -> CNFFormulaSet<T> {
         // Remove all inner sets that contain other inner sets.
-        let mut result = FormulaSet::new();
+        let mut result = CNFFormulaSet::new();
         for conj1 in formula {
             let mut keep = true;
             for conj2 in formula {
@@ -1208,44 +1273,47 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
         result
     }
 
-    pub fn _strip_contradictory(formula_set: &FormulaSet<T>) -> FormulaSet<T> {
-        // filter by non contradictory_lits
+    pub fn strip_contradictory(formula_set: &AbstractFormulaSet<T>) -> AbstractFormulaSet<T> {
+        // If a either type of FormulaSet has has contradictory lits, the clause should be removed.
+        // since it's either False /\\ ... (for DNF) or True \\/ ... (for CNF).
         formula_set
             .iter()
-            .filter(|x| !Formula::_contradictory_lits(x))
+            .filter(|x| !Formula::contradictory_lits(x))
             .cloned()
             .collect()
     }
 
-    pub fn formulaset_to_dnf(formula_set: FormulaSet<T>) -> Formula<T> {
+    pub fn formulaset_to_dnf_formula(formula_set: DNFFormulaSet<T>) -> Formula<T> {
+        // Interprets the formula set a
         let partial: Vec<Formula<T>> = formula_set
             .into_iter()
             .map(Vec::from_iter)
-            .map(|conj| Formula::list_conj(&conj))
+            .map(|conj| FSLiteral::list_conj(&conj))
             .collect();
         Formula::list_disj(&partial)
     }
 
-    pub fn formulaset_to_cnf(formula_set: FormulaSet<T>) -> Formula<T> {
+    pub fn formulaset_to_cnf_formula(formula_set: CNFFormulaSet<T>) -> Formula<T> {
         let partial: Vec<Formula<T>> = formula_set
             .into_iter()
             .map(Vec::from_iter)
-            .map(|conj| Formula::list_disj(&conj))
+            .map(|disj| FSLiteral::list_disj(&disj))
             .collect();
         Formula::list_conj(&partial)
     }
 
-    fn _is_disjunction_of_literals(&self) -> bool {
+    fn is_disjunction_of_literals(&self) -> bool {
         match self {
             Formula::Atom(_) => true,
             Formula::Not(p) if matches!(**p, Formula::Atom(_)) => true,
-            Formula::Or(p, q) => p._is_disjunction_of_literals() && q._is_disjunction_of_literals(),
+            Formula::Or(p, q) => p.is_disjunction_of_literals() && q.is_disjunction_of_literals(),
             _ => false,
         }
     }
 
     pub fn is_cnf(&self) -> bool {
-        if Formula::_is_disjunction_of_literals(self) {
+        // The one-clause case.
+        if Formula::is_disjunction_of_literals(self) {
             return true;
         }
         match self {
@@ -1254,37 +1322,37 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
         }
     }
 
-    pub fn dnf_formulaset(&self) -> FormulaSet<T> {
+    pub fn to_dnf_formulaset(&self) -> DNFFormulaSet<T> {
         // Note that a formula is a non-satisfiable iff this function returns Formula::False
         // (the empty disjunction).
-        let formula_set = self._purednf();
-        Formula::_strip_contradictory(&Formula::_strip_supersets(&formula_set))
+        let formula_set = self.purednf();
+        Formula::strip_contradictory(&Formula::strip_supersets(&formula_set))
     }
 
-    pub fn cnf_formulaset(&self) -> FormulaSet<T> {
+    pub fn to_cnf_formulaset(&self) -> CNFFormulaSet<T> {
         // Note that a formula is a tautology iff this function returns Formula::True
         // (the empty conjunction)
-        let formula_set = self._purecnf();
-        Formula::_strip_contradictory(&Formula::_strip_supersets(&formula_set))
+        let formula_set = self.purecnf();
+        Formula::strip_contradictory(&Formula::strip_supersets(&formula_set))
     }
 
-    pub fn cnf(&self) -> Formula<T> {
+    pub fn to_cnf(&self) -> Formula<T> {
         // Note that a formula is a tautology iff this function returns Formula::True
         // (the empty conjunction)
-        let formula_set = self.cnf_formulaset();
-        Formula::formulaset_to_cnf(formula_set)
+        let formula_set = self.to_cnf_formulaset();
+        Formula::formulaset_to_cnf_formula(formula_set)
     }
 
-    pub fn dnf(&self) -> Formula<T> {
+    pub fn to_dnf(&self) -> Formula<T> {
         // Note that a formula is a non-satisfiable iff this function returns Formula::False
         // (the empty disjunction).
-        let formula_set = self.dnf_formulaset();
-        Formula::formulaset_to_dnf(formula_set)
+        let formula_set = self.to_dnf_formulaset();
+        Formula::formulaset_to_dnf_formula(formula_set)
     }
 }
 
 #[cfg(test)]
-mod normal_form_tests {
+mod nnf_tests {
     use super::*;
 
     #[test]
@@ -1319,7 +1387,7 @@ mod normal_form_tests {
         let desired = Formula::exists(
             "z",
             &Formula::and(
-                &Formula::exists("A", &Formula::not(&Formula::atom(&"A".to_string()))),
+                &Formula::exists("A", &Formula::not(&Formula::atom(&("A".to_string())))),
                 &Formula::or(
                     &Formula::and(
                         &Formula::atom(&"B".to_string()),
@@ -1374,50 +1442,55 @@ mod normal_form_tests {
         );
         assert_eq!(formula.raw_nenf(), desired);
     }
+}
+
+#[cfg(test)]
+mod formula_set_test {
+    use super::*;
 
     #[test]
     fn test_set_distrib_and_over_or() {
         let formula1 = BTreeSet::from([
             BTreeSet::from([
-                Formula::atom(&String::from("A")),
-                Formula::atom(&String::from("B")),
+                FSLiteral::Pos(String::from("A")),
+                FSLiteral::Pos(String::from("B")),
             ]),
             BTreeSet::from([
-                Formula::atom(&String::from("B")),
-                Formula::atom(&String::from("C")),
+                FSLiteral::Pos(String::from("B")),
+                FSLiteral::Pos(String::from("C")),
             ]),
         ]);
         let formula2 = BTreeSet::from([
-            BTreeSet::from([Formula::atom(&String::from("A"))]),
+            BTreeSet::from([FSLiteral::Pos(String::from("A"))]),
             BTreeSet::from([
-                Formula::atom(&String::from("D")),
-                Formula::atom(&String::from("C")),
+                FSLiteral::Pos(String::from("D")),
+                FSLiteral::Pos(String::from("C")),
             ]),
         ]);
 
         let desired = BTreeSet::from([
             BTreeSet::from([
-                Formula::atom(&String::from("A")),
-                Formula::atom(&String::from("B")),
+                FSLiteral::Pos(String::from("A")),
+                FSLiteral::Pos(String::from("B")),
             ]),
             BTreeSet::from([
-                Formula::atom(&String::from("A")),
-                Formula::atom(&String::from("B")),
-                Formula::atom(&String::from("D")),
-                Formula::atom(&String::from("C")),
+                FSLiteral::Pos(String::from("A")),
+                FSLiteral::Pos(String::from("B")),
+                FSLiteral::Pos(String::from("D")),
+                FSLiteral::Pos(String::from("C")),
             ]),
             BTreeSet::from([
-                Formula::atom(&String::from("B")),
-                Formula::atom(&String::from("C")),
-                Formula::atom(&String::from("A")),
+                FSLiteral::Pos(String::from("B")),
+                FSLiteral::Pos(String::from("C")),
+                FSLiteral::Pos(String::from("A")),
             ]),
             BTreeSet::from([
-                Formula::atom(&String::from("B")),
-                Formula::atom(&String::from("C")),
-                Formula::atom(&String::from("D")),
+                FSLiteral::Pos(String::from("B")),
+                FSLiteral::Pos(String::from("C")),
+                FSLiteral::Pos(String::from("D")),
             ]),
         ]);
-        let result = Formula::_set_distrib_and_over_or(&formula1, &formula2);
+        let result = Formula::set_distrib_and_over_or(&formula1, &formula2);
         assert_eq!(result, desired);
     }
 
@@ -1443,30 +1516,30 @@ mod normal_form_tests {
             ),
         );
 
-        let result = formula._purednf();
+        let result = formula.purednf();
         let desired = BTreeSet::from([
-            BTreeSet::from([Formula::atom(&String::from("A"))]),
+            BTreeSet::from([FSLiteral::Pos(String::from("A"))]),
             BTreeSet::from([
-                Formula::atom(&String::from("A")),
-                Formula::atom(&String::from("D")),
-                Formula::atom(&String::from("C")),
+                FSLiteral::Pos(String::from("A")),
+                FSLiteral::Pos(String::from("D")),
+                FSLiteral::Pos(String::from("C")),
             ]),
             BTreeSet::from([
-                Formula::atom(&String::from("B")),
-                Formula::atom(&String::from("C")),
-                Formula::atom(&String::from("A")),
+                FSLiteral::Pos(String::from("B")),
+                FSLiteral::Pos(String::from("C")),
+                FSLiteral::Pos(String::from("A")),
             ]),
             BTreeSet::from([
-                Formula::atom(&String::from("B")),
-                Formula::atom(&String::from("C")),
-                Formula::atom(&String::from("D")),
+                FSLiteral::Pos(String::from("B")),
+                FSLiteral::Pos(String::from("C")),
+                FSLiteral::Pos(String::from("D")),
             ]),
         ]);
         assert_eq!(result, desired);
 
         // Trivial:
-        let result_true = Formula::<String>::True._purednf();
-        let result_false = Formula::<String>::False._purednf();
+        let result_true = Formula::<String>::True.purednf();
+        let result_false = Formula::<String>::False.purednf();
         assert_eq!(result_true, BTreeSet::from([BTreeSet::from([])]));
         assert_eq!(result_false, BTreeSet::from([]));
     }
@@ -1498,86 +1571,86 @@ mod normal_form_tests {
 
         let desired = BTreeSet::from([
             BTreeSet::from([
-                Formula::atom(&String::from("A")),
-                Formula::atom(&String::from("B")),
+                FSLiteral::Pos(String::from("A")),
+                FSLiteral::Pos(String::from("B")),
             ]),
             BTreeSet::from([
-                Formula::atom(&String::from("A")),
-                Formula::atom(&String::from("C")),
+                FSLiteral::Pos(String::from("A")),
+                FSLiteral::Pos(String::from("C")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&String::from("A"))),
-                Formula::atom(&String::from("D")),
+                FSLiteral::Neg(String::from("A")),
+                FSLiteral::Pos(String::from("D")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&String::from("A"))),
-                Formula::atom(&String::from("C")),
+                FSLiteral::Neg(String::from("A")),
+                FSLiteral::Pos(String::from("C")),
             ]),
         ]);
-        assert_eq!(formula._purecnf(), desired);
+        assert_eq!(formula.purecnf(), desired);
 
-        let result_true = (Formula::<String>::True)._purecnf();
-        let result_false = (Formula::<String>::False)._purecnf();
+        let result_true = (Formula::<String>::True).purecnf();
+        let result_false = (Formula::<String>::False).purecnf();
         assert_eq!(result_false, BTreeSet::from([BTreeSet::from([])]));
         assert_eq!(result_true, BTreeSet::from([]));
     }
     #[test]
     fn test_contradictory_lits() {
         let lits1 = BTreeSet::from([
-            Formula::atom(&String::from("A")),
-            Formula::atom(&String::from("B")),
+            FSLiteral::Pos(String::from("A")),
+            FSLiteral::Pos(String::from("B")),
         ]);
         let lits2 = BTreeSet::from([
-            Formula::atom(&String::from("A")),
-            Formula::atom(&String::from("B")),
-            Formula::not(&Formula::atom(&String::from("A"))),
+            FSLiteral::Pos(String::from("A")),
+            FSLiteral::Pos(String::from("B")),
+            FSLiteral::Neg(String::from("A")),
         ]);
 
-        assert!(!Formula::_contradictory_lits(&lits1));
-        assert!(Formula::_contradictory_lits(&lits2));
+        assert!(!Formula::contradictory_lits(&lits1));
+        assert!(Formula::contradictory_lits(&lits2));
     }
 
     #[test]
     fn test_strip_supersets() {
         let formula = BTreeSet::from([
             BTreeSet::from([
-                Formula::atom(&String::from("A")),
-                Formula::atom(&String::from("B")),
-                Formula::atom(&String::from("D")),
-                Formula::atom(&String::from("C")),
+                FSLiteral::Pos(String::from("A")),
+                FSLiteral::Pos(String::from("B")),
+                FSLiteral::Pos(String::from("D")),
+                FSLiteral::Pos(String::from("C")),
             ]),
             BTreeSet::from([
-                Formula::atom(&String::from("B")),
-                Formula::atom(&String::from("C")),
-                Formula::atom(&String::from("A")),
+                FSLiteral::Pos(String::from("B")),
+                FSLiteral::Pos(String::from("C")),
+                FSLiteral::Pos(String::from("A")),
             ]),
             BTreeSet::from([
-                Formula::atom(&String::from("A")),
-                Formula::atom(&String::from("B")),
-                Formula::atom(&String::from("D")),
-                Formula::atom(&String::from("C")),
-                Formula::atom(&String::from("E")),
+                FSLiteral::Pos(String::from("A")),
+                FSLiteral::Pos(String::from("B")),
+                FSLiteral::Pos(String::from("D")),
+                FSLiteral::Pos(String::from("C")),
+                FSLiteral::Pos(String::from("E")),
             ]),
             BTreeSet::from([
-                Formula::atom(&String::from("B")),
-                Formula::atom(&String::from("C")),
-                Formula::atom(&String::from("E")),
+                FSLiteral::Pos(String::from("B")),
+                FSLiteral::Pos(String::from("C")),
+                FSLiteral::Pos(String::from("E")),
             ]),
         ]);
 
         let desired = BTreeSet::from([
             BTreeSet::from([
-                Formula::atom(&String::from("B")),
-                Formula::atom(&String::from("C")),
-                Formula::atom(&String::from("A")),
+                FSLiteral::Pos(String::from("B")),
+                FSLiteral::Pos(String::from("C")),
+                FSLiteral::Pos(String::from("A")),
             ]),
             BTreeSet::from([
-                Formula::atom(&String::from("B")),
-                Formula::atom(&String::from("C")),
-                Formula::atom(&String::from("E")),
+                FSLiteral::Pos(String::from("B")),
+                FSLiteral::Pos(String::from("C")),
+                FSLiteral::Pos(String::from("E")),
             ]),
         ]);
-        let result = Formula::_strip_supersets(&formula);
+        let result = Formula::strip_supersets(&formula);
         assert_eq!(result, desired);
     }
 
@@ -1599,7 +1672,7 @@ mod normal_form_tests {
                 ),
             ),
         );
-        let result = formula.dnf();
+        let result = formula.to_dnf();
         let desired = Formula::or(
             &Formula::and(
                 &Formula::atom(&String::from("A")),
@@ -1625,7 +1698,7 @@ mod normal_form_tests {
             &Formula::not(&Formula::atom(&String::from("P"))),
         );
 
-        assert_eq!(formula.dnf(), Formula::False);
+        assert_eq!(formula.to_dnf(), Formula::False);
     }
 
     #[test]
@@ -1635,7 +1708,7 @@ mod normal_form_tests {
             &Formula::atom(&String::from("P")),
             &Formula::not(&Formula::atom(&String::from("P"))),
         );
-        assert_eq!(formula.cnf(), Formula::True);
+        assert_eq!(formula.to_cnf(), Formula::True);
     }
 
     #[test]
@@ -1685,7 +1758,7 @@ mod normal_form_tests {
                 &Formula::not(&Formula::atom(&String::from("A"))),
             ),
         );
-        assert_eq!(formula.cnf(), desired);
+        assert_eq!(formula.to_cnf(), desired);
     }
 
     #[test]
@@ -1728,7 +1801,7 @@ pub type ErrInner = &'static str;
 //
 // ### Davis-Putnam (DP)
 impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
-    fn _one_literal_rule(clauses: &FormulaSet<T>) -> Result<FormulaSet<T>, ErrInner> {
+    fn _one_literal_rule(clauses: &CNFFormulaSet<T>) -> Result<CNFFormulaSet<T>, ErrInner> {
         // If there is a singleton clause (containing one literal) then the only
         // satisfying interpretations are those where that literal is true.
         // Thus we can remove all clauses that contain that literal (they will be true)
@@ -1736,15 +1809,15 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
         // that negation (that disjunct cannot be true).
         for clause in clauses {
             if clause.len() == 1 {
-                let clause_vec: Vec<Formula<T>> = Vec::from_iter(clause.clone());
+                let clause_vec: Vec<FSLiteral<T>> = Vec::from_iter(clause.clone());
                 let literal = clause_vec[0].clone();
                 let negation = literal.negate();
-                let result: FormulaSet<T> = clauses
+                let result: CNFFormulaSet<T> = clauses
                     .iter()
                     .filter(|clause| !clause.contains(&literal))
                     .cloned()
                     .collect();
-                let result: FormulaSet<T> = result
+                let result: CNFFormulaSet<T> = result
                     .iter()
                     .map(|clause| {
                         clause
@@ -1759,32 +1832,34 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
         Err("No unit clauses found.")
     }
 
-    fn _affirmative_negative_rule(clauses: &FormulaSet<T>) -> Result<FormulaSet<T>, ErrInner> {
+    fn _affirmative_negative_rule(
+        clauses: &CNFFormulaSet<T>,
+    ) -> Result<CNFFormulaSet<T>, ErrInner> {
         // Remove all clauses that contain literals that occur either all positively or
         // all negatively.
-        let all_literals: BTreeSet<Formula<T>> =
+        let all_literals: BTreeSet<FSLiteral<T>> =
             clauses.iter().fold(BTreeSet::new(), |x, y| &x | y);
-        let (negative, positive): (BTreeSet<Formula<T>>, BTreeSet<Formula<T>>) =
-            all_literals.into_iter().partition(Formula::negative);
+        let (negative, positive): (Clause<T>, Clause<T>) =
+            all_literals.into_iter().partition(FSLiteral::is_neg);
         // The atoms whose negations appear in a clause.
-        let unnegated: BTreeSet<Formula<T>> = negative
+        let unnegated: BTreeSet<FSLiteral<T>> = negative
             .into_iter()
-            .map(|neg| Formula::negate(&neg))
+            .map(|neg| FSLiteral::negate(&neg))
             .collect();
-        let positive_only: BTreeSet<Formula<T>> =
+        let positive_only: BTreeSet<FSLiteral<T>> =
             positive.difference(&unnegated).cloned().collect();
-        let negative_only: BTreeSet<Formula<T>> =
+        let negative_only: BTreeSet<FSLiteral<T>> =
             unnegated.difference(&positive).cloned().collect();
-        let renegated: BTreeSet<Formula<T>> = negative_only
+        let renegated: BTreeSet<FSLiteral<T>> = negative_only
             .into_iter()
-            .map(|neg| Formula::negate(&neg))
+            .map(|neg| FSLiteral::negate(&neg))
             .collect();
-        let pure: BTreeSet<Formula<T>> = &positive_only | &renegated;
+        let pure: BTreeSet<FSLiteral<T>> = &positive_only | &renegated;
 
         if pure.is_empty() {
             Err("No strictly positively or strictly negatively occurring literals.")
         } else {
-            let value: FormulaSet<T> = clauses
+            let value: CNFFormulaSet<T> = clauses
                 .iter()
                 .filter(|clause| {
                     clause
@@ -1799,23 +1874,24 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
     }
 
     // For _resolution_rule (DP only).
-    fn _resolve_atom(clauses: &FormulaSet<T>, literal: &Formula<T>) -> FormulaSet<T> {
+    fn resolve_atom(clauses: &CNFFormulaSet<T>, literal: &FSLiteral<T>) -> CNFFormulaSet<T> {
         // Given a `literal` p appearing both positively in some clauses p V C_i
         // and negatively in others ~p V D_j, remove all such clauses and replace them with
         // all possible C_i V D_j.
-        let clauses = Formula::_strip_contradictory(clauses);
-        let (contains_literal, doesnt_contain_literal): (FormulaSet<T>, FormulaSet<T>) = clauses
-            .into_iter()
-            .partition(|clause| clause.contains(literal));
-        let negated = &Formula::negate(literal);
+        let clauses = Formula::strip_contradictory(clauses);
+        let (contains_literal, doesnt_contain_literal): (CNFFormulaSet<T>, CNFFormulaSet<T>) =
+            clauses
+                .into_iter()
+                .partition(|clause| clause.contains(literal));
+        let negated = &FSLiteral::negate(literal);
         // We'll come back to `contains_neither` at the end.
-        let (contains_negation, contains_neither): (FormulaSet<T>, FormulaSet<T>) =
+        let (contains_negation, contains_neither): (CNFFormulaSet<T>, CNFFormulaSet<T>) =
             doesnt_contain_literal
                 .into_iter()
                 .partition(|clause| clause.contains(negated));
 
         // Now get copies of the clauses with p and ~p removed.
-        let literal_complements: FormulaSet<T> = contains_literal
+        let literal_complements: CNFFormulaSet<T> = contains_literal
             .iter()
             .map(|clause| {
                 clause
@@ -1824,7 +1900,7 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
                     .collect()
             })
             .collect();
-        let negation_complements: FormulaSet<T> = contains_negation
+        let negation_complements: CNFFormulaSet<T> = contains_negation
             .iter()
             .map(|clause| {
                 clause
@@ -1833,7 +1909,7 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
                     .collect()
             })
             .collect();
-        let mut result = FormulaSet::new();
+        let mut result = CNFFormulaSet::new();
 
         // Collect unions of all stripped positive and stripped negative pairs.
         for literal_comp in literal_complements.iter() {
@@ -1841,18 +1917,18 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
                 result.insert(literal_comp | negation_comp);
             }
         }
-        &Formula::_strip_contradictory(&result) | &contains_neither
+        &Formula::strip_contradictory(&result) | &contains_neither
     }
 
-    fn _counts_containing_literal_and_negation(
-        clauses: &FormulaSet<T>,
-        literal: &Formula<T>,
+    fn counts_containing_literal_and_negation(
+        clauses: &CNFFormulaSet<T>,
+        literal: &FSLiteral<T>,
     ) -> (usize, usize) {
         let num_containing_lit = clauses
             .iter()
             .filter(|clause| clause.contains(literal))
             .count();
-        let negated = &Formula::negate(literal);
+        let negated = &FSLiteral::negate(literal);
         let num_containing_neg = clauses
             .iter()
             .filter(|clause| clause.contains(negated))
@@ -1860,8 +1936,8 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
         (num_containing_lit, num_containing_neg)
     }
 
-    fn _atom_resolution_cost(clauses: &FormulaSet<T>, literal: &Formula<T>) -> isize {
-        let (pos, neg) = Formula::_counts_containing_literal_and_negation(clauses, literal);
+    fn atom_resolution_cost(clauses: &CNFFormulaSet<T>, literal: &FSLiteral<T>) -> isize {
+        let (pos, neg) = Formula::counts_containing_literal_and_negation(clauses, literal);
 
         let num_containing_lit = pos as isize;
         let num_containing_neg = neg as isize;
@@ -1869,37 +1945,37 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
         num_containing_lit * num_containing_neg - (num_containing_lit + num_containing_neg)
     }
 
-    pub fn _find_min<F>(obj: &F, domain: &BTreeSet<Formula<T>>) -> Option<Formula<T>>
+    pub fn _find_min<F>(obj: &F, domain: &BTreeSet<FSLiteral<T>>) -> Option<FSLiteral<T>>
     where
-        F: Fn(&Formula<T>) -> isize,
+        F: Fn(&FSLiteral<T>) -> isize,
     {
-        let comp = |f1: &&Formula<T>, f2: &&Formula<T>| -> Ordering { obj(f1).cmp(&obj(f2)) };
+        let comp = |f1: &&FSLiteral<T>, f2: &&FSLiteral<T>| -> Ordering { obj(f1).cmp(&obj(f2)) };
         domain.iter().min_by(comp).cloned()
     }
 
-    pub fn _find_max<F>(obj: &F, domain: &BTreeSet<Formula<T>>) -> Option<Formula<T>>
+    pub fn _find_max<F>(obj: &F, domain: &BTreeSet<FSLiteral<T>>) -> Option<FSLiteral<T>>
     where
-        F: Fn(&Formula<T>) -> isize,
+        F: Fn(&FSLiteral<T>) -> isize,
     {
-        let comp = |f1: &&Formula<T>, f2: &&Formula<T>| -> Ordering { obj(f1).cmp(&obj(f2)) };
+        let comp = |f1: &&FSLiteral<T>, f2: &&FSLiteral<T>| -> Ordering { obj(f1).cmp(&obj(f2)) };
         domain.iter().max_by(comp).cloned()
     }
 
-    fn _resolution_rule(clauses: &FormulaSet<T>) -> FormulaSet<T> {
+    fn _resolution_rule(clauses: &CNFFormulaSet<T>) -> CNFFormulaSet<T> {
         // Resolve whichever atom is cheapest.
-        let positive_literals: BTreeSet<Formula<T>> = clauses
+        let positive_literals: BTreeSet<FSLiteral<T>> = clauses
             .iter()
             .fold(BTreeSet::new(), |x, y| &x | y)
             .into_iter()
-            .filter(|literal| !Formula::negative(literal))
+            .filter(|literal| !FSLiteral::is_neg(literal))
             .collect();
-        let obj = |literal: &Formula<T>| Formula::_atom_resolution_cost(clauses, literal);
+        let obj = |literal: &FSLiteral<T>| Formula::atom_resolution_cost(clauses, literal);
         let literal = Formula::_find_min(&obj, &positive_literals)
             .expect("positive_literals should be non-empty");
-        Formula::_resolve_atom(clauses, &literal)
+        Formula::resolve_atom(clauses, &literal)
     }
 
-    pub fn dp(clauses: &FormulaSet<T>) -> bool {
+    pub fn dp(clauses: &CNFFormulaSet<T>) -> bool {
         // The Davis-Putnam (1960) procedure.
         // Intended to be run on a FormulaSet<T> representing a CNF formula.
         if clauses.is_empty() {
@@ -1919,7 +1995,7 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
     }
 
     pub fn dp_sat(&self) -> bool {
-        Formula::dp(&Formula::cnf_formulaset(self))
+        Formula::dp(&Formula::to_cnf_formulaset(self))
     }
     pub fn dp_taut(&self) -> bool {
         !Formula::dp_sat(&Formula::negate(self))
@@ -1933,26 +2009,26 @@ mod dp_tests {
     #[test]
     fn test_one_literal_rule() {
         let formula_set = BTreeSet::from([
-            BTreeSet::from([Formula::atom(&String::from("A"))]),
+            BTreeSet::from([FSLiteral::Pos(String::from("A"))]),
             BTreeSet::from([
-                Formula::atom(&String::from("B")),
-                Formula::atom(&String::from("C")),
+                FSLiteral::Pos(String::from("B")),
+                FSLiteral::Pos(String::from("C")),
             ]),
             BTreeSet::from([
-                Formula::atom(&String::from("A")),
-                Formula::atom(&String::from("C")),
+                FSLiteral::Pos(String::from("A")),
+                FSLiteral::Pos(String::from("C")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&String::from("A"))),
-                Formula::atom(&String::from("C")),
+                FSLiteral::Neg(String::from("A")),
+                FSLiteral::Pos(String::from("C")),
             ]),
         ]);
         let desired = BTreeSet::from([
             BTreeSet::from([
-                Formula::atom(&String::from("B")),
-                Formula::atom(&String::from("C")),
+                FSLiteral::Pos(String::from("B")),
+                FSLiteral::Pos(String::from("C")),
             ]),
-            BTreeSet::from([Formula::atom(&String::from("C"))]),
+            BTreeSet::from([FSLiteral::Pos(String::from("C"))]),
         ]);
 
         let result = Formula::_one_literal_rule(&formula_set);
@@ -1960,16 +2036,16 @@ mod dp_tests {
 
         let formula_set_no_unit = BTreeSet::from([
             BTreeSet::from([
-                Formula::atom(&String::from("B")),
-                Formula::atom(&String::from("C")),
+                FSLiteral::Pos(String::from("B")),
+                FSLiteral::Pos(String::from("C")),
             ]),
             BTreeSet::from([
-                Formula::atom(&String::from("A")),
-                Formula::atom(&String::from("C")),
+                FSLiteral::Pos(String::from("A")),
+                FSLiteral::Pos(String::from("C")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&String::from("A"))),
-                Formula::atom(&String::from("C")),
+                FSLiteral::Neg(String::from("A")),
+                FSLiteral::Pos(String::from("C")),
             ]),
         ]);
         let result = Formula::_one_literal_rule(&formula_set_no_unit);
@@ -1978,7 +2054,7 @@ mod dp_tests {
 
     #[test]
     fn test_one_literal_rule_single_atom() {
-        let formula_set = BTreeSet::from([BTreeSet::from([Formula::atom(&String::from("A"))])]);
+        let formula_set = BTreeSet::from([BTreeSet::from([FSLiteral::Pos(String::from("A"))])]);
         let result = Formula::_one_literal_rule(&formula_set);
         let desired = BTreeSet::new();
         assert_eq!(result, Ok(desired))
@@ -1986,9 +2062,7 @@ mod dp_tests {
 
     #[test]
     fn test_one_literal_rule_single_negated() {
-        let formula_set = BTreeSet::from([BTreeSet::from([Formula::not(&Formula::atom(
-            &String::from("A"),
-        ))])]);
+        let formula_set = BTreeSet::from([BTreeSet::from([FSLiteral::Neg(String::from("A"))])]);
         let result = Formula::_one_literal_rule(&formula_set);
         let desired = BTreeSet::new();
         assert_eq!(result, Ok(desired))
@@ -1997,35 +2071,35 @@ mod dp_tests {
     #[test]
     fn test_affirmative_negative_rule_1() {
         let formula_set = BTreeSet::from([
-            BTreeSet::from([Formula::atom(&String::from("A"))]),
+            BTreeSet::from([FSLiteral::Pos(String::from("A"))]),
             BTreeSet::from([
-                Formula::atom(&String::from("A")),
-                Formula::atom(&String::from("C")),
+                FSLiteral::Pos(String::from("A")),
+                FSLiteral::Pos(String::from("C")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&String::from("A"))),
-                Formula::atom(&String::from("D")),
+                FSLiteral::Neg(String::from("A")),
+                FSLiteral::Pos(String::from("D")),
             ]),
         ]);
-        let desired = BTreeSet::from([BTreeSet::from([Formula::atom(&String::from("A"))])]);
+        let desired = BTreeSet::from([BTreeSet::from([FSLiteral::Pos(String::from("A"))])]);
         let result = Formula::_affirmative_negative_rule(&formula_set);
-        assert_eq!(result, Ok(desired))
+        assert_eq!(result, Ok(desired));
     }
 
     #[test]
     fn test_affirmative_negative_rule_2() {
         let formula_set = BTreeSet::from([
             BTreeSet::from([
-                Formula::atom(&String::from("A")),
-                Formula::not(&Formula::atom(&String::from("C"))),
+                FSLiteral::Pos(String::from("A")),
+                FSLiteral::Neg(String::from("C")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&String::from("A"))),
-                Formula::atom(&String::from("B")),
+                FSLiteral::Neg(String::from("A")),
+                FSLiteral::Pos(String::from("B")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&String::from("B"))),
-                Formula::atom(&String::from("C")),
+                FSLiteral::Neg(String::from("B")),
+                FSLiteral::Pos(String::from("C")),
             ]),
         ]);
         let result = Formula::_affirmative_negative_rule(&formula_set);
@@ -2035,52 +2109,49 @@ mod dp_tests {
 
     #[test]
     fn test_affirmative_negative_rule_3() {
-        let formula_set = BTreeSet::from([BTreeSet::from([Formula::not(&Formula::atom(
-            &String::from("A"),
-        ))])]);
+        let formula_set = BTreeSet::from([BTreeSet::from([FSLiteral::Neg(String::from("A"))])]);
         let result = Formula::_affirmative_negative_rule(&formula_set);
-
         assert_eq!(result, Ok(BTreeSet::new()))
     }
     #[test]
     fn test_resolve_atom() {
         let formula_set = BTreeSet::from([
             BTreeSet::from([
-                Formula::atom(&String::from("A")),
-                Formula::atom(&String::from("E")),
+                FSLiteral::Pos(String::from("A")),
+                FSLiteral::Pos(String::from("E")),
             ]),
             BTreeSet::from([
-                Formula::atom(&String::from("A")),
-                Formula::not(&Formula::atom(&String::from("C"))),
+                FSLiteral::Pos(String::from("A")),
+                FSLiteral::Neg(String::from("C")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&String::from("A"))),
-                Formula::atom(&String::from("B")),
-                Formula::atom(&String::from("D")),
+                FSLiteral::Neg(String::from("A")),
+                FSLiteral::Pos(String::from("B")),
+                FSLiteral::Pos(String::from("D")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&String::from("B"))),
-                Formula::atom(&String::from("C")),
+                FSLiteral::Neg(String::from("B")),
+                FSLiteral::Pos(String::from("C")),
             ]),
         ]);
-        let atom: Formula<String> = Formula::atom(&String::from("A"));
-        let result = Formula::_resolve_atom(&formula_set, &atom);
+        let atom: FSLiteral<String> = FSLiteral::Pos(String::from("A"));
+        let result = Formula::resolve_atom(&formula_set, &atom);
         // {{E}, {~C}} X  {{B, D}}
-        let desired_product: FormulaSet<String> = BTreeSet::from([
+        let desired_product: CNFFormulaSet<String> = BTreeSet::from([
             BTreeSet::from([
-                Formula::atom(&String::from("E")),
-                Formula::atom(&String::from("B")),
-                Formula::atom(&String::from("D")),
+                FSLiteral::Pos(String::from("E")),
+                FSLiteral::Pos(String::from("B")),
+                FSLiteral::Pos(String::from("D")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&String::from("C"))),
-                Formula::atom(&String::from("B")),
-                Formula::atom(&String::from("D")),
+                FSLiteral::Neg(String::from("C")),
+                FSLiteral::Pos(String::from("B")),
+                FSLiteral::Pos(String::from("D")),
             ]),
         ]);
-        let desired_rest: FormulaSet<String> = BTreeSet::from([BTreeSet::from([
-            Formula::not(&Formula::atom(&String::from("B"))),
-            Formula::atom(&String::from("C")),
+        let desired_rest: CNFFormulaSet<String> = BTreeSet::from([BTreeSet::from([
+            FSLiteral::Neg(String::from("B")),
+            FSLiteral::Pos(String::from("C")),
         ])]);
         let desired = &desired_product | &desired_rest;
         assert_eq!(result, desired)
@@ -2089,14 +2160,14 @@ mod dp_tests {
     #[test]
     fn test_find_min() {
         // Just use the (negative of the) length of the formula for a test optimum.
-        let opt = |formula: &Formula<String>| -(format!("{formula:?}").len() as isize);
+        let opt = |formula: &FSLiteral<String>| -(format!("{formula:?}").len() as isize);
         let domain = BTreeSet::from([
-            Formula::True,
-            Formula::atom(&String::from("A")),
-            Formula::or(&Formula::atom(&String::from("A")), &Formula::False),
+            FSLiteral::Pos(String::from("AB")),
+            FSLiteral::Pos(String::from("ABC")),
+            FSLiteral::Pos(String::from("A")),
         ]);
         let result = Formula::_find_min(&opt, &domain).unwrap();
-        let desired = Formula::or(&Formula::atom(&String::from("A")), &Formula::False);
+        let desired = FSLiteral::Pos(String::from("ABC"));
         assert_eq!(result, desired);
     }
 
@@ -2104,26 +2175,26 @@ mod dp_tests {
     fn test_counts_containing_literal_and_negation() {
         let formula_set = BTreeSet::from([
             BTreeSet::from([
-                Formula::atom(&String::from("A")),
-                Formula::atom(&String::from("E")),
+                FSLiteral::Pos(String::from("A")),
+                FSLiteral::Pos(String::from("E")),
             ]),
             BTreeSet::from([
-                Formula::atom(&String::from("A")),
-                Formula::not(&Formula::atom(&String::from("C"))),
+                FSLiteral::Pos(String::from("A")),
+                FSLiteral::Neg(String::from("C")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&String::from("A"))),
-                Formula::atom(&String::from("B")),
-                Formula::atom(&String::from("D")),
+                FSLiteral::Neg(String::from("A")),
+                FSLiteral::Pos(String::from("B")),
+                FSLiteral::Pos(String::from("D")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&String::from("B"))),
-                Formula::atom(&String::from("C")),
+                FSLiteral::Neg(String::from("B")),
+                FSLiteral::Pos(String::from("C")),
             ]),
         ]);
-        let result = Formula::_counts_containing_literal_and_negation(
+        let result = Formula::counts_containing_literal_and_negation(
             &formula_set,
-            &Formula::atom(&String::from("A")),
+            &FSLiteral::Pos(String::from("A")),
         );
         // (2 * 1) - 2 - 1 = -1
         let desired: (usize, usize) = (2, 1);
@@ -2134,24 +2205,24 @@ mod dp_tests {
     fn test_resolution_rule() {
         let formula_set = BTreeSet::from([
             BTreeSet::from([
-                Formula::atom(&String::from("A")),
-                Formula::not(&Formula::atom(&String::from("C"))),
+                FSLiteral::Pos(String::from("A")),
+                FSLiteral::Neg(String::from("C")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&String::from("D"))),
-                Formula::atom(&String::from("C")),
+                FSLiteral::Neg(String::from("D")),
+                FSLiteral::Pos(String::from("C")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&String::from("A"))),
-                Formula::atom(&String::from("D")),
+                FSLiteral::Neg(String::from("A")),
+                FSLiteral::Pos(String::from("D")),
             ]),
             BTreeSet::from([
-                Formula::atom(&String::from("A")),
-                Formula::atom(&String::from("C")),
+                FSLiteral::Pos(String::from("A")),
+                FSLiteral::Pos(String::from("C")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&String::from("A"))),
-                Formula::not(&Formula::atom(&String::from("C"))),
+                FSLiteral::Neg(String::from("A")),
+                FSLiteral::Neg(String::from("C")),
             ]),
         ]);
 
@@ -2162,8 +2233,8 @@ mod dp_tests {
         // C: 2 * 1 - 2 - 1 = 0
         // D  1 * 1 - 1 - 1 = -1
 
-        let desired_atom: Formula<String> = Formula::atom(&String::from("D"));
-        let desired = Formula::_resolve_atom(&formula_set, &desired_atom);
+        let desired_atom = FSLiteral::Pos(String::from("D"));
+        let desired = Formula::resolve_atom(&formula_set, &desired_atom);
 
         assert_eq!(result, desired)
     }
@@ -2172,24 +2243,24 @@ mod dp_tests {
     fn test_dp() {
         let formula_set = BTreeSet::from([
             BTreeSet::from([
-                Formula::atom(&String::from("A")),
-                Formula::not(&Formula::atom(&String::from("C"))),
+                FSLiteral::Pos(String::from("A")),
+                FSLiteral::Neg(String::from("C")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&String::from("D"))),
-                Formula::atom(&String::from("C")),
+                FSLiteral::Neg(String::from("D")),
+                FSLiteral::Pos(String::from("C")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&String::from("A"))),
-                Formula::atom(&String::from("D")),
+                FSLiteral::Neg(String::from("A")),
+                FSLiteral::Pos(String::from("D")),
             ]),
             BTreeSet::from([
-                Formula::atom(&String::from("A")),
-                Formula::atom(&String::from("C")),
+                FSLiteral::Pos(String::from("A")),
+                FSLiteral::Pos(String::from("C")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&String::from("A"))),
-                Formula::not(&Formula::atom(&String::from("C"))),
+                FSLiteral::Neg(String::from("A")),
+                FSLiteral::Neg(String::from("C")),
             ]),
         ]);
 
@@ -2200,7 +2271,7 @@ mod dp_tests {
 
     #[test]
     fn test_dp_simple() {
-        let formula_set = BTreeSet::from([BTreeSet::from([Formula::atom(&String::from("A"))])]);
+        let formula_set = BTreeSet::from([BTreeSet::from([FSLiteral::Pos(String::from("A"))])]);
         assert!(Formula::dp(&formula_set));
     }
 
@@ -2217,13 +2288,13 @@ mod dp_tests {
 
 // DPLL
 impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
-    pub fn _posneg_count(clauses: &FormulaSet<T>, literal: &Formula<T>) -> usize {
+    pub fn posneg_count(clauses: &CNFFormulaSet<T>, literal: &FSLiteral<T>) -> usize {
         let (num_containing_lit, num_containing_neg) =
-            Formula::_counts_containing_literal_and_negation(clauses, literal);
+            Formula::counts_containing_literal_and_negation(clauses, literal);
         num_containing_lit + num_containing_neg
     }
 
-    pub fn dpll(clauses: &FormulaSet<T>) -> bool {
+    pub fn dpll(clauses: &CNFFormulaSet<T>) -> bool {
         // The Davis-Putnam-Logemann-Loveland (1962) procedure.
         if clauses.is_empty() {
             return true;
@@ -2241,19 +2312,19 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
         // Splitting creates *two* formulas for DPLL of sizes
         // N + 1 each, but the next call to DPLL will call the unit clause rule
         // which will reduce each.
-        let positive_literals: BTreeSet<Formula<T>> = clauses
+        let positive_literals: BTreeSet<FSLiteral<T>> = clauses
             .iter()
             .fold(BTreeSet::new(), |x, y| &x | y)
             .into_iter()
-            .filter(|literal| !Formula::negative(literal))
+            .filter(|literal| !FSLiteral::is_neg(literal))
             .collect();
         // Use atom with max posneg_count
         let atom = Formula::_find_max(
-            &|atom| Formula::_posneg_count(clauses, atom) as isize,
+            &|atom| Formula::posneg_count(clauses, atom) as isize,
             &positive_literals,
         )
         .expect("Positive literals should not be empty");
-        let negated = Formula::negate(&atom);
+        let negated = FSLiteral::negate(&atom);
         let mut with_atom = clauses.clone();
         with_atom.insert(BTreeSet::from([atom]));
         let mut with_negated = clauses.clone();
@@ -2262,7 +2333,7 @@ impl<T: Debug + Clone + Hash + Eq + Ord> Formula<T> {
     }
 
     pub fn dpll_sat(&self) -> bool {
-        Formula::dpll(&Formula::cnf_formulaset(self))
+        Formula::dpll(&Formula::to_cnf_formulaset(self))
     }
     pub fn dpll_taut(&self) -> bool {
         !Formula::dpll_sat(&Formula::negate(self))
@@ -2277,24 +2348,24 @@ mod dpll_tests {
     fn test_dpll() {
         let formula_set = BTreeSet::from([
             BTreeSet::from([
-                Formula::atom(&String::from("A")),
-                Formula::not(&Formula::atom(&String::from("C"))),
+                FSLiteral::Pos(String::from("A")),
+                FSLiteral::Neg(String::from("C")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&String::from("D"))),
-                Formula::atom(&String::from("C")),
+                FSLiteral::Neg(String::from("D")),
+                FSLiteral::Pos(String::from("C")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&String::from("A"))),
-                Formula::atom(&String::from("D")),
+                FSLiteral::Neg(String::from("A")),
+                FSLiteral::Pos(String::from("D")),
             ]),
             BTreeSet::from([
-                Formula::atom(&String::from("A")),
-                Formula::atom(&String::from("C")),
+                FSLiteral::Pos(String::from("A")),
+                FSLiteral::Pos(String::from("C")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&String::from("A"))),
-                Formula::not(&Formula::atom(&String::from("C"))),
+                FSLiteral::Neg(String::from("A")),
+                FSLiteral::Neg(String::from("C")),
             ]),
         ]);
 
@@ -2324,45 +2395,45 @@ pub enum Mix {
 
 pub type Valuation<T> = BTreeMap<T, bool>;
 
-pub type Trail<T> = Vec<(Formula<T>, Mix)>;
+pub type Trail<T> = Vec<(FSLiteral<T>, Mix)>;
 
 fn get_valuation_from_trail<T: Debug + Clone + Hash + Eq + Ord>(trail: &Trail<T>) -> Valuation<T> {
-    fn _get_atom_prop<T: Debug + Clone + Hash + Eq + Ord>(atom: Formula<T>) -> T {
-        match atom {
-            Formula::Atom(prop) => prop,
-            _ => panic!(),
+    fn get_valuation_pair<T: Debug + Clone + Hash + Eq + Ord>(lit: &FSLiteral<T>) -> (T, bool) {
+        match lit {
+            FSLiteral::Pos(t) => (t.to_owned(), true),
+            FSLiteral::Neg(t) => (t.to_owned(), false),
         }
     }
 
     trail
         .iter()
-        .map(|(lit, _)| (_get_atom_prop(_lit_abs(lit)), !Formula::negative(lit)))
+        .map(|(lit, _)| get_valuation_pair(lit))
         .collect()
 }
 
-fn _lit_abs<T: Debug + Clone + Hash + Eq + Ord>(lit: &Formula<T>) -> Formula<T> {
+fn lit_abs<T: Debug + Clone + Hash + Eq + Ord>(lit: &FSLiteral<T>) -> FSLiteral<T> {
     let result = match lit {
-        Formula::Not(p) => p,
-        _ => lit,
+        FSLiteral::Neg(p) => FSLiteral::Pos(p.to_owned()),
+        _ => lit.to_owned(),
     };
     result.clone()
 }
 
 fn unit_subpropagate<T: Debug + Clone + Hash + Eq + Ord>(
-    clauses: FormulaSet<T>,
-    mut trail_set: BTreeSet<Formula<T>>,
+    clauses: CNFFormulaSet<T>,
+    mut trail_set: BTreeSet<FSLiteral<T>>,
     mut trail: Trail<T>,
-) -> (FormulaSet<T>, BTreeSet<Formula<T>>, Trail<T>) {
+) -> (CNFFormulaSet<T>, BTreeSet<FSLiteral<T>>, Trail<T>) {
     // Note:  takes ownership.
     // Filter out disjuncts that disagree with `trail_set`
     // from clauses.  If there are any new resulting unit clauses
     // add these to `trail` and `trail_set` and repeat.
-    let reduced_clauses: FormulaSet<T> = clauses
+    let reduced_clauses: CNFFormulaSet<T> = clauses
         .into_iter()
         .map(|clause| {
             clause
                 .into_iter()
-                .filter(|disjunct| !trail_set.contains(&Formula::negate(disjunct)))
+                .filter(|disjunct| !trail_set.contains(&FSLiteral::negate(disjunct)))
                 .collect()
         })
         .collect();
@@ -2371,7 +2442,7 @@ fn unit_subpropagate<T: Debug + Clone + Hash + Eq + Ord>(
         return (BTreeSet::from([BTreeSet::new()]), trail_set, trail);
     }
 
-    let new_units: BTreeSet<Formula<T>> = reduced_clauses
+    let new_units: BTreeSet<FSLiteral<T>> = reduced_clauses
         .iter()
         .filter(|clause| clause.len() == 1 && !trail_set.contains(clause.first().unwrap()))
         .map(|clause| clause.first().unwrap().clone())
@@ -2396,31 +2467,31 @@ fn unit_subpropagate<T: Debug + Clone + Hash + Eq + Ord>(
 }
 
 pub struct DPLISolver<T: Debug + Clone + Hash + Eq + Ord> {
-    clauses: FormulaSet<T>,
+    clauses: CNFFormulaSet<T>,
     trail: Trail<T>,
-    unassigned: PriorityQueue<Formula<T>, usize>,
+    unassigned: PriorityQueue<FSLiteral<T>, usize>,
     sat: Option<bool>,
-    scores: HashMap<Formula<T>, usize>,
+    scores: HashMap<FSLiteral<T>, usize>,
 }
 
 impl<T: Debug + Clone + Hash + Eq + Ord> DPLISolver<T> {
-    pub fn new(clauses: &FormulaSet<T>) -> DPLISolver<T> {
-        let props: HashSet<Formula<T>> = clauses
+    pub fn new(clauses: &CNFFormulaSet<T>) -> DPLISolver<T> {
+        let props: HashSet<FSLiteral<T>> = clauses
             .iter()
             .fold(BTreeSet::new(), |x, y| &x | y)
             .iter()
-            .map(_lit_abs)
+            .map(lit_abs)
             .collect();
 
-        let scores: HashMap<Formula<T>, usize> = props
+        let scores: HashMap<FSLiteral<T>, usize> = props
             .into_iter()
             .map(|prop| {
-                let count = Formula::_posneg_count(clauses, &prop);
+                let count = Formula::posneg_count(clauses, &prop);
                 (prop, count)
             })
             .collect();
 
-        let unassigned: PriorityQueue<Formula<T>, usize> = scores.clone().into_iter().collect();
+        let unassigned: PriorityQueue<FSLiteral<T>, usize> = scores.clone().into_iter().collect();
 
         let trail = Trail::with_capacity(unassigned.len());
 
@@ -2443,17 +2514,17 @@ impl<T: Debug + Clone + Hash + Eq + Ord> DPLISolver<T> {
         self.scores.len()
     }
 
-    fn trail_pop(&mut self) -> Option<Formula<T>> {
+    fn trail_pop(&mut self) -> Option<FSLiteral<T>> {
         // Pop and add back to `self.unassigned`.
         let (lit, _mix) = self.trail.pop()?;
-        let abs = _lit_abs(&lit);
+        let abs = lit_abs(&lit);
         self.unassigned.push(abs.clone(), self.scores[&abs]);
         Some(lit)
     }
 
-    fn unit_propagate(&self) -> (FormulaSet<T>, Trail<T>) {
+    fn unit_propagate(&self) -> (CNFFormulaSet<T>, Trail<T>) {
         // Kick off recursive unit_subpropagation with a `trail_set` matching the incoming `trail`.
-        let trail_set: BTreeSet<Formula<T>> =
+        let trail_set: BTreeSet<FSLiteral<T>> =
             self.trail.clone().into_iter().map(|pair| pair.0).collect();
         let (reduced_clauses, _, extended_trail) =
             unit_subpropagate(self.clauses.clone(), trail_set, self.trail.clone());
@@ -2478,11 +2549,12 @@ impl<T: Debug + Clone + Hash + Eq + Ord> DPLISolver<T> {
             match self.trail.last() {
                 // Switch parity of our last guess.  Marking as Deduced this time.
                 Some((lit, Mix::Guessed)) => {
-                    assert!(!Formula::negative(lit));
+                    assert!(!FSLiteral::is_neg(lit));
                     let lit_clone = lit.clone();
                     // We don't call trail_pop here because we are going to use (its negation) again right after.
                     self.trail.pop();
-                    self.trail.push((Formula::negate(&lit_clone), Mix::Deduced));
+                    self.trail
+                        .push((FSLiteral::negate(&lit_clone), Mix::Deduced));
                     self._dpli()
                 }
                 // If there were no more Guesses, the clauses are not satisfiable.
@@ -2498,7 +2570,7 @@ impl<T: Debug + Clone + Hash + Eq + Ord> DPLISolver<T> {
             let xlen = extended_trail.len();
             let num_new = xlen - self.trail.len();
             for (prop, _mix) in &extended_trail[xlen - num_new..] {
-                self.unassigned.remove(&_lit_abs(prop));
+                self.unassigned.remove(&lit_abs(prop));
             }
             self.trail = extended_trail;
 
@@ -2546,34 +2618,34 @@ mod dpli_solver_tests {
         let mut solver = get_empty_solver();
 
         solver.trail = vec![
-            (Formula::atom(&String::from("E")), Mix::Deduced),
-            (Formula::atom(&String::from("D")), Mix::Guessed),
-            (Formula::atom(&String::from("C")), Mix::Deduced),
-            (Formula::atom(&String::from("B")), Mix::Deduced),
-            (Formula::atom(&String::from("A")), Mix::Guessed),
+            (FSLiteral::Pos(String::from("E")), Mix::Deduced),
+            (FSLiteral::Pos(String::from("D")), Mix::Guessed),
+            (FSLiteral::Pos(String::from("C")), Mix::Deduced),
+            (FSLiteral::Pos(String::from("B")), Mix::Deduced),
+            (FSLiteral::Pos(String::from("A")), Mix::Guessed),
         ];
 
         // The following is just so we don't get a lookup error.
         solver.scores = HashMap::from([
-            (Formula::atom(&String::from("E")), 0),
-            (Formula::atom(&String::from("D")), 0),
-            (Formula::atom(&String::from("C")), 0),
-            (Formula::atom(&String::from("B")), 0),
-            (Formula::atom(&String::from("A")), 0),
+            (FSLiteral::Pos(String::from("E")), 0),
+            (FSLiteral::Pos(String::from("D")), 0),
+            (FSLiteral::Pos(String::from("C")), 0),
+            (FSLiteral::Pos(String::from("B")), 0),
+            (FSLiteral::Pos(String::from("A")), 0),
         ]);
 
         solver.backtrack();
 
         assert_eq!(
             solver.trail.last(),
-            Some(&(Formula::atom(&String::from("A")), Mix::Guessed))
+            Some(&(FSLiteral::Pos(String::from("A")), Mix::Guessed))
         );
         let desired_trail = vec![
-            (Formula::atom(&String::from("E")), Mix::Deduced),
-            (Formula::atom(&String::from("D")), Mix::Guessed),
-            (Formula::atom(&String::from("C")), Mix::Deduced),
-            (Formula::atom(&String::from("B")), Mix::Deduced),
-            (Formula::atom(&String::from("A")), Mix::Guessed),
+            (FSLiteral::Pos(String::from("E")), Mix::Deduced),
+            (FSLiteral::Pos(String::from("D")), Mix::Guessed),
+            (FSLiteral::Pos(String::from("C")), Mix::Deduced),
+            (FSLiteral::Pos(String::from("B")), Mix::Deduced),
+            (FSLiteral::Pos(String::from("A")), Mix::Guessed),
         ];
         assert_eq!(solver.trail, desired_trail);
 
@@ -2581,11 +2653,11 @@ mod dpli_solver_tests {
         solver.backtrack();
         assert_eq!(
             solver.trail.last(),
-            Some(&(Formula::atom(&String::from("D")), Mix::Guessed))
+            Some(&(FSLiteral::Pos(String::from("D")), Mix::Guessed))
         );
         let desired_trail = vec![
-            (Formula::atom(&String::from("E")), Mix::Deduced),
-            (Formula::atom(&String::from("D")), Mix::Guessed),
+            (FSLiteral::Pos(String::from("E")), Mix::Deduced),
+            (FSLiteral::Pos(String::from("D")), Mix::Guessed),
         ];
         assert_eq!(solver.trail, desired_trail);
 
@@ -2600,74 +2672,70 @@ mod dpli_solver_tests {
     fn test_unit_propagate() {
         let mut solver = get_empty_solver();
 
-        let clauses: FormulaSet<String> = BTreeSet::from([
+        let clauses: CNFFormulaSet<String> = BTreeSet::from([
             BTreeSet::from([
-                Formula::not(&Formula::atom(&String::from("A"))),
-                Formula::atom(&String::from("B")),
+                FSLiteral::Neg(String::from("A")),
+                FSLiteral::Pos(String::from("B")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&String::from("B"))),
-                Formula::not(&Formula::atom(&String::from("A"))),
-                Formula::not(&Formula::atom(&String::from("D"))),
+                FSLiteral::Neg(String::from("B")),
+                FSLiteral::Neg(String::from("A")),
+                FSLiteral::Neg(String::from("D")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&String::from("B"))),
-                Formula::atom(&String::from("E")),
-                Formula::atom(&String::from("D")),
-                Formula::not(&Formula::atom(&String::from("C"))),
+                FSLiteral::Neg(String::from("B")),
+                FSLiteral::Pos(String::from("E")),
+                FSLiteral::Pos(String::from("D")),
+                FSLiteral::Neg(String::from("C")),
             ]),
         ]);
         let trail: Trail<String> = Vec::from([
-            (Formula::atom(&String::from("A")), Mix::Guessed),
-            (Formula::atom(&String::from("Z")), Mix::Deduced),
+            (FSLiteral::Pos(String::from("A")), Mix::Guessed),
+            (FSLiteral::Pos(String::from("Z")), Mix::Deduced),
         ]);
         solver.clauses = clauses;
         solver.trail = trail;
         let (result_clauses, result_trail) = solver.unit_propagate();
 
-        let desired_clauses: FormulaSet<String> = BTreeSet::from([
-            BTreeSet::from([Formula::atom(&String::from("B"))]),
-            BTreeSet::from([Formula::not(&Formula::atom(&String::from("D")))]),
+        let desired_clauses: CNFFormulaSet<String> = BTreeSet::from([
+            BTreeSet::from([FSLiteral::Pos(String::from("B"))]),
+            BTreeSet::from([FSLiteral::Neg(String::from("D"))]),
             BTreeSet::from([
-                Formula::atom(&String::from("E")),
-                Formula::not(&Formula::atom(&String::from("C"))),
+                FSLiteral::Pos(String::from("E")),
+                FSLiteral::Neg(String::from("C")),
             ]),
         ]);
         let desired_trail: Trail<String> = Vec::from([
-            (Formula::atom(&String::from("A")), Mix::Guessed),
-            (Formula::atom(&String::from("Z")), Mix::Deduced),
-            (Formula::atom(&String::from("B")), Mix::Deduced),
-            (
-                Formula::not(&Formula::atom(&String::from("D"))),
-                Mix::Deduced,
-            ),
+            (FSLiteral::Pos(String::from("A")), Mix::Guessed),
+            (FSLiteral::Pos(String::from("Z")), Mix::Deduced),
+            (FSLiteral::Pos(String::from("B")), Mix::Deduced),
+            (FSLiteral::Neg(String::from("D")), Mix::Deduced),
         ]);
         assert_eq!(result_clauses, desired_clauses);
         assert_eq!(result_trail, desired_trail);
     }
-
     #[test]
     fn test_dpli_1() {
         let formula_set = BTreeSet::from([
             BTreeSet::from([
-                Formula::atom(&String::from("A")),
-                Formula::not(&Formula::atom(&String::from("C"))),
+                FSLiteral::Pos(String::from("A")),
+                FSLiteral::Neg(String::from("C")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&String::from("D"))),
-                Formula::atom(&String::from("C")),
+                FSLiteral::Neg(String::from("D")),
+                FSLiteral::Pos(String::from("C")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&String::from("A"))),
-                Formula::atom(&String::from("D")),
+                FSLiteral::Neg(String::from("A")),
+                FSLiteral::Pos(String::from("D")),
             ]),
             BTreeSet::from([
-                Formula::atom(&String::from("A")),
-                Formula::atom(&String::from("C")),
+                FSLiteral::Pos(String::from("A")),
+                FSLiteral::Pos(String::from("C")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&String::from("A"))),
-                Formula::not(&Formula::atom(&String::from("C"))),
+                FSLiteral::Neg(String::from("A")),
+                FSLiteral::Neg(String::from("C")),
             ]),
         ]);
 
@@ -2683,24 +2751,24 @@ mod dpli_solver_tests {
     fn test_dpli_2() {
         let formula_set = BTreeSet::from([
             BTreeSet::from([
-                Formula::atom(&String::from("A")),
-                Formula::not(&Formula::atom(&String::from("C"))),
+                FSLiteral::Pos(String::from("A")),
+                FSLiteral::Neg(String::from("C")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&String::from("D"))),
-                Formula::atom(&String::from("C")),
+                FSLiteral::Neg(String::from("D")),
+                FSLiteral::Pos(String::from("C")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&String::from("A"))),
-                Formula::atom(&String::from("D")),
+                FSLiteral::Neg(String::from("A")),
+                FSLiteral::Pos(String::from("D")),
             ]),
             BTreeSet::from([
-                Formula::atom(&String::from("A")),
-                Formula::atom(&String::from("C")),
+                FSLiteral::Pos(String::from("A")),
+                FSLiteral::Pos(String::from("C")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&String::from("A"))),
-                Formula::atom(&String::from("C")),
+                FSLiteral::Neg(String::from("A")),
+                FSLiteral::Pos(String::from("C")),
             ]),
         ]);
         let mut solver = DPLISolver::new(&formula_set);
@@ -2720,26 +2788,26 @@ mod dpli_solver_tests {
     fn test_dpli_3() {
         let formula_set = BTreeSet::from([
             BTreeSet::from([
-                Formula::not(&Formula::atom(&String::from("A"))),
-                Formula::atom(&String::from("E")),
+                FSLiteral::Neg(String::from("A")),
+                FSLiteral::Pos(String::from("E")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&String::from("D"))),
-                Formula::not(&Formula::atom(&String::from("C"))),
+                FSLiteral::Neg(String::from("D")),
+                FSLiteral::Neg(String::from("C")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&String::from("A"))),
-                Formula::atom(&String::from("D")),
+                FSLiteral::Neg(String::from("A")),
+                FSLiteral::Pos(String::from("D")),
             ]),
             BTreeSet::from([
-                Formula::atom(&String::from("A")),
-                Formula::atom(&String::from("C")),
+                FSLiteral::Pos(String::from("A")),
+                FSLiteral::Pos(String::from("C")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&String::from("A"))),
-                Formula::atom(&String::from("C")),
+                FSLiteral::Neg(String::from("A")),
+                FSLiteral::Pos(String::from("C")),
             ]),
-            BTreeSet::from([Formula::not(&Formula::atom(&String::from("E")))]),
+            BTreeSet::from([FSLiteral::Neg(String::from("E"))]),
         ]);
         let mut solver = DPLISolver::new(&formula_set);
         let result = solver.solve();
@@ -2759,31 +2827,31 @@ mod dpli_solver_tests {
 // Backjumping / Conflict clause learning
 
 pub struct DPLBSolver<T: Debug + Clone + Hash + Eq + Ord> {
-    clauses: FormulaSet<T>,
+    clauses: CNFFormulaSet<T>,
     trail: Trail<T>,
-    unassigned: PriorityQueue<Formula<T>, usize>,
+    unassigned: PriorityQueue<FSLiteral<T>, usize>,
     sat: Option<bool>,
-    scores: HashMap<Formula<T>, usize>, // read only
+    scores: HashMap<FSLiteral<T>, usize>, // read only
 }
 
 impl<T: Debug + Clone + Hash + Eq + Ord> DPLBSolver<T> {
-    pub fn new(clauses: &FormulaSet<T>) -> DPLBSolver<T> {
-        let props: HashSet<Formula<T>> = clauses
+    pub fn new(clauses: &CNFFormulaSet<T>) -> DPLBSolver<T> {
+        let props: HashSet<FSLiteral<T>> = clauses
             .iter()
             .fold(BTreeSet::new(), |x, y| &x | y)
             .iter()
-            .map(_lit_abs)
+            .map(lit_abs)
             .collect();
 
-        let scores: HashMap<Formula<T>, usize> = props
+        let scores: HashMap<FSLiteral<T>, usize> = props
             .into_iter()
             .map(|prop| {
-                let count = Formula::_posneg_count(clauses, &prop);
+                let count = Formula::posneg_count(clauses, &prop);
                 (prop, count)
             })
             .collect();
 
-        let unassigned: PriorityQueue<Formula<T>, usize> = scores.clone().into_iter().collect();
+        let unassigned: PriorityQueue<FSLiteral<T>, usize> = scores.clone().into_iter().collect();
 
         let trail = Trail::<T>::with_capacity(unassigned.len());
 
@@ -2800,10 +2868,10 @@ impl<T: Debug + Clone + Hash + Eq + Ord> DPLBSolver<T> {
         self.scores.len()
     }
 
-    fn trail_pop(&mut self) -> Option<Formula<T>> {
+    fn trail_pop(&mut self) -> Option<FSLiteral<T>> {
         // Pop and add back to `self.unassigned`.
         let (lit, _mix) = self.trail.pop()?;
-        let abs = _lit_abs(&lit);
+        let abs = lit_abs(&lit);
         self.unassigned.push(abs.clone(), self.scores[&abs]);
         Some(lit)
     }
@@ -2814,9 +2882,9 @@ impl<T: Debug + Clone + Hash + Eq + Ord> DPLBSolver<T> {
         self.sat = None;
     }
 
-    fn unit_propagate(&self) -> (FormulaSet<T>, Trail<T>) {
+    fn unit_propagate(&self) -> (CNFFormulaSet<T>, Trail<T>) {
         // Kick of recursive unit_subpropagation with a `trail_set` matching the incoming `self.trail`.
-        let trail_set: BTreeSet<Formula<T>> =
+        let trail_set: BTreeSet<FSLiteral<T>> =
             self.trail.iter().map(|pair| pair.0.clone()).collect();
         let (reduced_clauses, _, extended_trail) =
             unit_subpropagate(self.clauses.clone(), trail_set, self.trail.clone());
@@ -2831,7 +2899,7 @@ impl<T: Debug + Clone + Hash + Eq + Ord> DPLBSolver<T> {
         }
     }
 
-    fn backjump(&mut self, p: &Formula<T>) {
+    fn backjump(&mut self, p: &FSLiteral<T>) {
         // To be called when `p` is inconsistent with `trail`./
         let orig_trail = self.trail.clone();
         let orig_unassigned = self.unassigned.clone();
@@ -2864,7 +2932,7 @@ impl<T: Debug + Clone + Hash + Eq + Ord> DPLBSolver<T> {
             match self.trail.last() {
                 // Switch parity of our last guess.  Marking as Deduced this time.
                 Some((lit, Mix::Guessed)) => {
-                    assert!(!Formula::negative(lit));
+                    assert!(lit.is_pos());
                     let lit_clone = lit.clone();
                     self.trail_pop();
                     // Keep going back and removing Guesses (keeping lit_clone) until we get to a satisfiable trail.
@@ -2874,15 +2942,16 @@ impl<T: Debug + Clone + Hash + Eq + Ord> DPLBSolver<T> {
                     // p.  Note that those guesses are jointly consistent (were one to conjoin them),
                     // but not if we were to add `val`.
                     //
-                    let mut constraint: BTreeSet<Formula<T>> = self
+                    let mut constraint: BTreeSet<FSLiteral<T>> = self
                         .trail
                         .iter()
                         .filter(|(_, mix)| mix == &Mix::Guessed)
-                        .map(|(val, _)| Formula::negate(val))
+                        .map(|(val, _)| FSLiteral::negate(val))
                         .collect();
-                    constraint.insert(Formula::negate(&lit_clone));
+                    constraint.insert(FSLiteral::negate(&lit_clone));
                     self.clauses.insert(constraint);
-                    self.trail.push((Formula::negate(&lit_clone), Mix::Deduced));
+                    self.trail
+                        .push((FSLiteral::negate(&lit_clone), Mix::Deduced));
                     self.unassigned.remove(&lit_clone).unwrap();
                     self._dplb()
                 }
@@ -2894,7 +2963,7 @@ impl<T: Debug + Clone + Hash + Eq + Ord> DPLBSolver<T> {
             let xlen = extended_trail.len();
             let num_new = xlen - self.trail.len();
             for (prop, _mix) in &extended_trail[xlen - num_new..] {
-                self.unassigned.remove(&_lit_abs(prop)).unwrap();
+                self.unassigned.remove(&lit_abs(prop)).unwrap();
             }
             self.trail = extended_trail;
 
@@ -2933,48 +3002,45 @@ mod dplb_solver_tests {
 
     #[test]
     fn test_backjump() {
-        let clauses: FormulaSet<String> = BTreeSet::from([
+        let clauses: CNFFormulaSet<String> = BTreeSet::from([
             BTreeSet::from([
-                Formula::not(&Formula::atom(&String::from("A"))),
-                Formula::atom(&String::from("B")),
+                FSLiteral::Neg(String::from("A")),
+                FSLiteral::Pos(String::from("B")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&String::from("B"))),
-                Formula::not(&Formula::atom(&String::from("A"))),
-                Formula::not(&Formula::atom(&String::from("D"))),
+                FSLiteral::Neg(String::from("B")),
+                FSLiteral::Neg(String::from("A")),
+                FSLiteral::Neg(String::from("D")),
             ]),
             BTreeSet::from([
-                Formula::atom(&String::from("D")),
-                Formula::not(&Formula::atom(&String::from("Z"))),
+                FSLiteral::Pos(String::from("D")),
+                FSLiteral::Neg(String::from("Z")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&String::from("M"))),
-                Formula::not(&Formula::atom(&String::from("Y"))),
+                FSLiteral::Neg(String::from("M")),
+                FSLiteral::Neg(String::from("Y")),
             ]),
         ]);
 
         let scores = HashMap::from([
-            (Formula::atom(&String::from("A")), 0),
-            (Formula::atom(&String::from("B")), 0),
-            (Formula::atom(&String::from("D")), 0),
-            (Formula::atom(&String::from("F")), 0),
-            (Formula::atom(&String::from("R")), 0),
-            (Formula::atom(&String::from("Z")), 0),
-            (Formula::atom(&String::from("M")), 0),
-            (Formula::atom(&String::from("N")), 0),
-            (Formula::atom(&String::from("Y")), 0),
+            (FSLiteral::Pos(String::from("A")), 0),
+            (FSLiteral::Pos(String::from("B")), 0),
+            (FSLiteral::Pos(String::from("D")), 0),
+            (FSLiteral::Pos(String::from("F")), 0),
+            (FSLiteral::Pos(String::from("R")), 0),
+            (FSLiteral::Pos(String::from("Z")), 0),
+            (FSLiteral::Pos(String::from("M")), 0),
+            (FSLiteral::Pos(String::from("N")), 0),
+            (FSLiteral::Pos(String::from("Y")), 0),
         ]);
 
-        let p = Formula::atom(&String::from("A"));
+        let p = FSLiteral::Pos(String::from("A"));
         let trail: Trail<String> = Vec::from([
-            (Formula::atom(&String::from("N")), Mix::Deduced),
-            (
-                Formula::not(&Formula::atom(&String::from("M"))),
-                Mix::Guessed,
-            ),
-            (Formula::atom(&String::from("Z")), Mix::Guessed),
-            (Formula::atom(&String::from("F")), Mix::Guessed),
-            (Formula::atom(&String::from("R")), Mix::Deduced),
+            (FSLiteral::Pos(String::from("N")), Mix::Deduced),
+            (FSLiteral::Neg(String::from("M")), Mix::Guessed),
+            (FSLiteral::Pos(String::from("Z")), Mix::Guessed),
+            (FSLiteral::Pos(String::from("F")), Mix::Guessed),
+            (FSLiteral::Pos(String::from("R")), Mix::Deduced),
         ]);
 
         let mut solver = DPLBSolver::new(&clauses);
@@ -2984,12 +3050,9 @@ mod dplb_solver_tests {
         solver.backjump(&p);
 
         let desired: Trail<String> = Vec::from([
-            (Formula::atom(&String::from("N")), Mix::Deduced),
-            (
-                Formula::not(&Formula::atom(&String::from("M"))),
-                Mix::Guessed,
-            ),
-            (Formula::atom(&String::from("Z")), Mix::Guessed),
+            (FSLiteral::Pos(String::from("N")), Mix::Deduced),
+            (FSLiteral::Neg(String::from("M")), Mix::Guessed),
+            (FSLiteral::Pos(String::from("Z")), Mix::Guessed),
         ]);
         assert_eq!(solver.trail, desired);
     }
@@ -2998,24 +3061,24 @@ mod dplb_solver_tests {
     fn test_dplb_1() {
         let formula_set = BTreeSet::from([
             BTreeSet::from([
-                Formula::atom(&String::from("A")),
-                Formula::not(&Formula::atom(&String::from("C"))),
+                FSLiteral::Pos(String::from("A")),
+                FSLiteral::Neg(String::from("C")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&String::from("D"))),
-                Formula::atom(&String::from("C")),
+                FSLiteral::Neg(String::from("D")),
+                FSLiteral::Pos(String::from("C")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&String::from("A"))),
-                Formula::atom(&String::from("D")),
+                FSLiteral::Neg(String::from("A")),
+                FSLiteral::Pos(String::from("D")),
             ]),
             BTreeSet::from([
-                Formula::atom(&String::from("A")),
-                Formula::atom(&String::from("C")),
+                FSLiteral::Pos(String::from("A")),
+                FSLiteral::Pos(String::from("C")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&String::from("A"))),
-                Formula::not(&Formula::atom(&String::from("C"))),
+                FSLiteral::Neg(String::from("A")),
+                FSLiteral::Neg(String::from("C")),
             ]),
         ]);
 
@@ -3031,24 +3094,24 @@ mod dplb_solver_tests {
     fn test_dplb_2() {
         let formula_set = BTreeSet::from([
             BTreeSet::from([
-                Formula::atom(&String::from("A")),
-                Formula::not(&Formula::atom(&String::from("C"))),
+                FSLiteral::Pos(String::from("A")),
+                FSLiteral::Neg(String::from("C")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&String::from("D"))),
-                Formula::atom(&String::from("C")),
+                FSLiteral::Neg(String::from("D")),
+                FSLiteral::Pos(String::from("C")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&String::from("A"))),
-                Formula::atom(&String::from("D")),
+                FSLiteral::Neg(String::from("A")),
+                FSLiteral::Pos(String::from("D")),
             ]),
             BTreeSet::from([
-                Formula::atom(&String::from("A")),
-                Formula::atom(&String::from("C")),
+                FSLiteral::Pos(String::from("A")),
+                FSLiteral::Pos(String::from("C")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&String::from("A"))),
-                Formula::atom(&String::from("C")),
+                FSLiteral::Neg(String::from("A")),
+                FSLiteral::Pos(String::from("C")),
             ]),
         ]);
         let mut solver = DPLBSolver::new(&formula_set);
@@ -3068,26 +3131,26 @@ mod dplb_solver_tests {
     fn test_dplb_3() {
         let formula_set = BTreeSet::from([
             BTreeSet::from([
-                Formula::not(&Formula::atom(&String::from("A"))),
-                Formula::atom(&String::from("E")),
+                FSLiteral::Neg(String::from("A")),
+                FSLiteral::Pos(String::from("E")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&String::from("D"))),
-                Formula::not(&Formula::atom(&String::from("C"))),
+                FSLiteral::Neg(String::from("D")),
+                FSLiteral::Neg(String::from("C")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&String::from("A"))),
-                Formula::atom(&String::from("D")),
+                FSLiteral::Neg(String::from("A")),
+                FSLiteral::Pos(String::from("D")),
             ]),
             BTreeSet::from([
-                Formula::atom(&String::from("A")),
-                Formula::atom(&String::from("C")),
+                FSLiteral::Pos(String::from("A")),
+                FSLiteral::Pos(String::from("C")),
             ]),
             BTreeSet::from([
-                Formula::not(&Formula::atom(&String::from("A"))),
-                Formula::atom(&String::from("C")),
+                FSLiteral::Neg(String::from("A")),
+                FSLiteral::Pos(String::from("C")),
             ]),
-            BTreeSet::from([Formula::not(&Formula::atom(&String::from("E")))]),
+            BTreeSet::from([FSLiteral::Neg(String::from("E"))]),
         ]);
         let mut solver = DPLBSolver::new(&formula_set);
         let result = solver.solve();

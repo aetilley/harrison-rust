@@ -7,7 +7,7 @@ use std::fmt::Debug;
 use std::hash::Hash;
 
 use crate::first_order_logic_grammar::{PredFormulaParser, TermParser};
-use crate::formula::{Formula, FormulaSet};
+use crate::formula::{AbstractFormulaSet, CNFFormulaSet, DNFFormulaSet, FSLiteral, Formula};
 use crate::token::INFIX_RELATION_SYMBOLS;
 use crate::token::{Lexer, LexicalError, Token};
 
@@ -1322,6 +1322,23 @@ impl Formula<Pred> {
     }
 }
 
+impl FSLiteral<Pred> {
+    pub fn subst(&self, inst: &Instantiation) -> FSLiteral<Pred> {
+        match self {
+            FSLiteral::Pos(Pred { name, terms }) => {
+                let new_args: Vec<Term> = terms.iter().map(|term| term.subst(inst)).collect();
+                let inner = Pred::new(name, &new_args);
+                FSLiteral::Pos(inner)
+            }
+            FSLiteral::Neg(Pred { name, terms }) => {
+                let new_args: Vec<Term> = terms.iter().map(|term| term.subst(inst)).collect();
+                let inner = Pred::new(name, &new_args);
+                FSLiteral::Neg(inner)
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod test_formula_variables {
 
@@ -1932,11 +1949,26 @@ impl Formula<Pred> {
             .collect()
     }
 
+    fn subst_in_formulaset(
+        formula: &AbstractFormulaSet<Pred>,
+        instantiation: &Instantiation,
+    ) -> AbstractFormulaSet<Pred> {
+        formula
+            .iter()
+            .map(|clause| {
+                clause
+                    .iter()
+                    .map(|literal| literal.subst(instantiation))
+                    .collect()
+            })
+            .collect()
+    }
+
     fn subst_tuple_into_formulaset(
-        formula: &FormulaSet<Pred>,
+        formula: &AbstractFormulaSet<Pred>,
         free_variables: &[String],
         tuple: &[Term],
-    ) -> FormulaSet<Pred> {
+    ) -> AbstractFormulaSet<Pred> {
         let instantiation: Instantiation = Formula::make_instantiation(free_variables, tuple);
         // First substitute in the ground instances for `instantiation`.
         Formula::subst_in_formulaset(formula, &instantiation)
@@ -1948,20 +1980,21 @@ impl Formula<Pred> {
         // since they don't change...
         augment_ground_instances: &GroundInstancesAugmenter,
         sat_test: SatTest,
-        formula: &FormulaSet<Pred>,
+        formula: &AbstractFormulaSet<Pred>,
         constants: &HashSet<(String, usize)>,
         functions: &HashSet<(String, usize)>,
         free_variables: &Vec<String>,
         next_level: usize,
-        ground_instances_so_far: &FormulaSet<Pred>,
+        ground_instances_so_far: &AbstractFormulaSet<Pred>,
         mut tuples_tried: HashSet<Vec<Term>>,
         mut tuples_left_at_level: BTreeSet<Vec<Term>>,
         max_depth: usize,
         tuple_cache: &mut HashMap<(usize, usize), BTreeSet<Vec<Term>>>,
     ) -> HerbrandResult
     where
-        SatTest: Fn(&FormulaSet<Pred>) -> bool,
-        GroundInstancesAugmenter: Fn(&FormulaSet<Pred>, &FormulaSet<Pred>) -> FormulaSet<Pred>,
+        SatTest: Fn(&AbstractFormulaSet<Pred>) -> bool,
+        GroundInstancesAugmenter:
+            Fn(&AbstractFormulaSet<Pred>, &AbstractFormulaSet<Pred>) -> AbstractFormulaSet<Pred>,
     {
         // `augment_ground_instances`:  Updates ground_instances_so_far for a given tuple
         // of ground terms. Note that this will depend on whether a FormulaSet<Pred> is a
@@ -2032,12 +2065,12 @@ impl Formula<Pred> {
             let next_tuple: Vec<Term> = tuples_left_at_level.pop_first().unwrap();
 
             // First substitute in the ground instances for `instantiation`.
-            let new_ground_instance: FormulaSet<Pred> =
+            let new_ground_instance: AbstractFormulaSet<Pred> =
                 Formula::subst_tuple_into_formulaset(formula, free_variables, &next_tuple);
 
             println!(
                 "Adding new formula to set: {:?}",
-                Formula::formulaset_to_cnf(new_ground_instance.clone()).pretty()
+                Formula::formulaset_to_cnf_formula(new_ground_instance.clone()).pretty()
             );
             let augmented_instances =
                 augment_ground_instances(&new_ground_instance, ground_instances_so_far);
@@ -2063,45 +2096,30 @@ impl Formula<Pred> {
         }
     }
 
-    fn subst_in_formulaset(
-        formula: &FormulaSet<Pred>,
-        instantiation: &Instantiation,
-    ) -> FormulaSet<Pred> {
-        formula
-            .iter()
-            .map(|clause| {
-                clause
-                    .iter()
-                    .map(|literal| literal.subst(instantiation))
-                    .collect()
-            })
-            .collect()
-    }
-
     fn augement_dnf_formulaset(
-        new_formula: &FormulaSet<Pred>,
-        ground_instances_so_far: &FormulaSet<Pred>,
-    ) -> FormulaSet<Pred> {
+        new_formula: &DNFFormulaSet<Pred>,
+        ground_instances_so_far: &DNFFormulaSet<Pred>,
+    ) -> DNFFormulaSet<Pred> {
         // Combine with existing ground instances
-        let aggregate = Formula::_set_distrib_and_over_or(new_formula, ground_instances_so_far);
-        Formula::_strip_contradictory(&aggregate)
+        let aggregate = Formula::set_distrib_and_over_or(new_formula, ground_instances_so_far);
+        Formula::strip_contradictory(&aggregate)
     }
 
     #[allow(clippy::too_many_arguments)]
     fn gilmore_loop(
-        formula: &FormulaSet<Pred>,
+        formula: &DNFFormulaSet<Pred>,
         constants: &HashSet<(String, usize)>,
         functions: &HashSet<(String, usize)>,
         free_variables: &Vec<String>,
         next_level: usize,
-        ground_instances_so_far: &FormulaSet<Pred>,
+        ground_instances_so_far: &DNFFormulaSet<Pred>,
         tuples_tried: HashSet<Vec<Term>>,
         tuples_left_at_level: BTreeSet<Vec<Term>>,
         max_depth: usize,
     ) -> HerbrandResult {
         // USES DNF FormulaSet representations throughout.
         //
-        fn sat_test(formula: &FormulaSet<Pred>) -> bool {
+        fn sat_test(formula: &DNFFormulaSet<Pred>) -> bool {
             !formula.is_empty()
         }
 
@@ -2109,7 +2127,7 @@ impl Formula<Pred> {
 
         Formula::herbrand_loop(
             &Formula::augement_dnf_formulaset,
-            |formula: &FormulaSet<Pred>| !formula.is_empty(),
+            |formula: &DNFFormulaSet<Pred>| !formula.is_empty(),
             formula,
             constants,
             functions,
@@ -2137,14 +2155,14 @@ impl Formula<Pred> {
         // The following does a strip of clauses with contradictory literals,
         // so that the satisfiability is equivalent to being non-empty.
         // This is an invariant we maintain throughout, even as we add to the accumulator.
-        let dnf_formula = negation_skolemized.dnf_formulaset();
+        let dnf_formula = negation_skolemized.to_dnf_formulaset();
         Formula::gilmore_loop(
             &dnf_formula,
             &constants,
             &functions,
             &free_variables,
             0,
-            &FormulaSet::from([BTreeSet::new()]),
+            &DNFFormulaSet::from([BTreeSet::new()]),
             HashSet::new(),
             BTreeSet::new(),
             max_depth,
@@ -2154,21 +2172,21 @@ impl Formula<Pred> {
     // Davis-Putnam approach
     //
     fn augment_cnf_formulaset(
-        new_formula: &FormulaSet<Pred>,
-        ground_instances_so_far: &FormulaSet<Pred>,
-    ) -> FormulaSet<Pred> {
+        new_formula: &CNFFormulaSet<Pred>,
+        ground_instances_so_far: &CNFFormulaSet<Pred>,
+    ) -> CNFFormulaSet<Pred> {
         // Simply conjoin all new CNF clauses.
         new_formula | ground_instances_so_far
     }
 
     #[allow(clippy::too_many_arguments)]
     fn dp_loop(
-        formula: &FormulaSet<Pred>,
+        formula: &CNFFormulaSet<Pred>,
         constants: &HashSet<(String, usize)>,
         functions: &HashSet<(String, usize)>,
         free_variables: &Vec<String>,
         next_level: usize,
-        ground_instances_so_far: &FormulaSet<Pred>,
+        ground_instances_so_far: &CNFFormulaSet<Pred>,
         tuples_tried: HashSet<Vec<Term>>,
         tuples_left_at_level: BTreeSet<Vec<Term>>,
         max_depth: usize,
@@ -2194,7 +2212,7 @@ impl Formula<Pred> {
     }
 
     fn _get_dp_unsat_core_cnf(
-        formula: &FormulaSet<Pred>,
+        formula: &CNFFormulaSet<Pred>,
         free_variables: &Vec<String>,
         mut unknown: BTreeSet<Vec<Term>>,
         mut needed: BTreeSet<Vec<Term>>,
@@ -2216,7 +2234,7 @@ impl Formula<Pred> {
         let new_union = needed
             .union(&unknown)
             .map(|tuple| Formula::subst_tuple_into_formulaset(formula, free_variables, tuple))
-            .fold(FormulaSet::new(), |acc, new| {
+            .fold(CNFFormulaSet::new(), |acc, new| {
                 Formula::augment_cnf_formulaset(&new, &acc)
             });
 
@@ -2241,7 +2259,7 @@ impl Formula<Pred> {
         let (constants, functions) = Formula::herbrand_functions(&negation_skolemized);
         let mut free_variables = Vec::from_iter(negation_skolemized.free_variables());
         free_variables.sort();
-        let cnf_formula = negation_skolemized.cnf_formulaset();
+        let cnf_formula = negation_skolemized.to_cnf_formulaset();
 
         let mut result = Formula::dp_loop(
             &cnf_formula,
@@ -2249,7 +2267,7 @@ impl Formula<Pred> {
             &functions,
             &free_variables,
             0,
-            &FormulaSet::new(),
+            &CNFFormulaSet::new(),
             HashSet::new(),
             BTreeSet::new(),
             max_depth,
@@ -2270,7 +2288,7 @@ impl Formula<Pred> {
                     .map(|tuple| {
                         Formula::subst_tuple_into_formulaset(&cnf_formula, &free_variables, tuple)
                     })
-                    .map(Formula::formulaset_to_cnf)
+                    .map(Formula::formulaset_to_cnf_formula)
                     .collect();
 
                 println!(
@@ -2558,17 +2576,17 @@ mod herbrand_tests {
     #[test]
     fn test_herbloop() {
         fn augment_cnf_formulaset(
-            new_formula: &FormulaSet<Pred>,
-            ground_instances_so_far: &FormulaSet<Pred>,
-        ) -> FormulaSet<Pred> {
+            new_formula: &CNFFormulaSet<Pred>,
+            ground_instances_so_far: &CNFFormulaSet<Pred>,
+        ) -> CNFFormulaSet<Pred> {
             new_formula | ground_instances_so_far
         }
 
-        fn sat_test(formula: &FormulaSet<Pred>) -> bool {
+        fn sat_test(formula: &CNFFormulaSet<Pred>) -> bool {
             // Just check for a random singleton clause.
             let target_clause = Formula::<Pred>::parse("~P(g(f(42, 42))) \\/  F(g(42))")
                 .unwrap()
-                .cnf_formulaset()
+                .to_cnf_formulaset()
                 .pop_first()
                 .unwrap();
             !formula.contains(&target_clause)
@@ -2576,7 +2594,7 @@ mod herbrand_tests {
 
         let formula = Formula::<Pred>::parse("~P(g(x)) \\/ F(y)")
             .unwrap()
-            .cnf_formulaset();
+            .to_cnf_formulaset();
 
         let constants = HashSet::from([("42".to_string(), 0)]);
         let functions = HashSet::from([("f".to_string(), 2), ("g".to_string(), 1)]);
@@ -2584,7 +2602,7 @@ mod herbrand_tests {
         let free_variables = vec!["x".to_string(), "y".to_string()];
         let next_level = 0;
         // CNF representation of True
-        let ground_instances_so_far: FormulaSet<Pred> = BTreeSet::new();
+        let ground_instances_so_far: CNFFormulaSet<Pred> = BTreeSet::new();
         let tuples_tried: HashSet<Vec<Term>> = HashSet::new();
         let tuples_left_at_level: BTreeSet<Vec<Term>> = BTreeSet::new();
         let max_depth = 100;
@@ -2666,7 +2684,7 @@ mod herbrand_tests {
     fn test_gilmore_loop() {
         let formula = Formula::<Pred>::parse("~P(g(x)) /\\ P(y)")
             .unwrap()
-            .dnf_formulaset();
+            .to_dnf_formulaset();
 
         let constants = HashSet::from([("42".to_string(), 0)]);
         let functions = HashSet::from([("f".to_string(), 2), ("g".to_string(), 1)]);
@@ -2674,7 +2692,7 @@ mod herbrand_tests {
         let free_variables = vec!["x".to_string(), "y".to_string()];
         let next_level = 0;
         // DNF representation of True
-        let ground_instances_so_far: FormulaSet<Pred> = BTreeSet::from([BTreeSet::new()]);
+        let ground_instances_so_far: DNFFormulaSet<Pred> = BTreeSet::from([BTreeSet::new()]);
         let tuples_tried: HashSet<Vec<Term>> = HashSet::new();
         let tuples_left_at_level: BTreeSet<Vec<Term>> = BTreeSet::new();
         let max_depth = 100;
@@ -2726,7 +2744,7 @@ mod herbrand_tests {
     fn test_dp_loop() {
         let formula = Formula::<Pred>::parse("~P(g(x)) /\\ P(y)")
             .unwrap()
-            .cnf_formulaset();
+            .to_cnf_formulaset();
 
         let constants = HashSet::from([("42".to_string(), 0)]);
         let functions = HashSet::from([("f".to_string(), 2), ("g".to_string(), 1)]);
@@ -2734,7 +2752,7 @@ mod herbrand_tests {
         let free_variables = vec!["x".to_string(), "y".to_string()];
         let next_level = 0;
         // CNF representation of True
-        let ground_instances_so_far: FormulaSet<Pred> = BTreeSet::new();
+        let ground_instances_so_far: CNFFormulaSet<Pred> = BTreeSet::new();
         let tuples_tried: HashSet<Vec<Term>> = HashSet::new();
         let tuples_left_at_level: BTreeSet<Vec<Term>> = BTreeSet::new();
 
@@ -2766,7 +2784,7 @@ mod herbrand_tests {
     fn test_get_dp_unsat_core() {
         let formula = Formula::<Pred>::parse("P(x) /\\ ~P(f_y(x))")
             .unwrap()
-            .cnf_formulaset();
+            .to_cnf_formulaset();
         let free_variables = vec!["x".to_string()];
         let unknown = BTreeSet::from([
             vec![Term::parset("f_y(c)").unwrap()],

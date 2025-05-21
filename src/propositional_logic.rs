@@ -7,7 +7,7 @@ use std::cmp;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Debug;
 
-use crate::formula::{Formula, Valuation};
+use crate::formula::{CNFFormulaSet, Formula, Valuation};
 use crate::propositional_logic_grammar::PropFormulaParser;
 use crate::token::{Lexer, LexicalError, Token};
 
@@ -707,17 +707,17 @@ impl Formula<Prop> {
         let nenf = self.nenf();
         let n = Formula::_max_taken_index(&nenf);
         let (formula, defs, _) = reducer(&nenf, &HashMap::new(), n);
-        let atom_cnf_formulaset: FormulaSet = formula.cnf_formulaset();
-        let def_formulaset: FormulaSet = defs
+        let atom_cnf_formulaset: CNFFormulaSet<Prop> = formula.to_cnf_formulaset();
+        let def_formulaset: CNFFormulaSet<Prop> = defs
             .iter()
             .map(|value| value.1 .1.clone())
-            .map(|formula| formula.cnf_formulaset())
-            .fold(FormulaSet::new(), |x, y| &x | &y);
-        let result_formulaset: FormulaSet = &atom_cnf_formulaset | &def_formulaset;
-        let cleaned = Formula::_strip_contradictory(&result_formulaset);
+            .map(|formula| formula.to_cnf_formulaset())
+            .fold(BTreeSet::new(), |x, y| &x | &y);
+        let result_formulaset: CNFFormulaSet<Prop> = &atom_cnf_formulaset | &def_formulaset;
+        let cleaned = Formula::strip_contradictory(&result_formulaset);
         // Note that we do not call `_strip_redundant` here because on
         // long formulas it would be slow. (`_strip_contradictory` is Theta(|formula|).)
-        Formula::formulaset_to_cnf(cleaned)
+        Formula::formulaset_to_cnf_formula(cleaned)
     }
 
     fn def_cnf_full(&self) -> Formula<Prop> {
