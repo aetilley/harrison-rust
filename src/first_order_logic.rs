@@ -1940,7 +1940,7 @@ impl Formula<Pred> {
         result
     }
 
-    fn make_instantiation(free_variables: &[String], terms: &[Term]) -> Instantiation {
+    pub fn make_instantiation(free_variables: &[String], terms: &[Term]) -> Instantiation {
         // Map corresponding `free_variables` to `terms`.
         assert_eq!(free_variables.len(), terms.len());
         free_variables
@@ -1965,7 +1965,7 @@ impl Formula<Pred> {
             .collect()
     }
 
-    fn subst_tuple_into_formulaset(
+    pub fn subst_tuple_into_formulaset(
         formula: &AbstractFormulaSet<Pred>,
         free_variables: &[String],
         tuple: &[Term],
