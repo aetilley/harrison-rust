@@ -234,7 +234,7 @@ pub fn get_board_formulas(
 mod sudoku_tests {
 
     use super::*;
-    use crate::formula::{DPLBSolver, DPLISolver, Formula};
+    use crate::formula::{DPLISolver, Formula};
     use crate::utils::run_repeatedly_and_average;
     const SUBBOARD_SIZE: usize = 3;
     // Note, paths are relative to top level package dir.
@@ -529,7 +529,7 @@ mod sudoku_tests {
         let boards: Vec<Board> = parse_sudoku_dataset(path, Some(2));
         let start_clauses = get_board_formulas(&boards, BOARD_SIZE, SUBBOARD_SIZE)[0].clone();
         let mut solver = DPLISolver::new(&start_clauses);
-        let is_sat = solver.solve();
+        let is_sat = solver.dplb_solve();
         assert!(is_sat);
         let formula = Formula::formulaset_to_cnf_formula(start_clauses);
         assert!(formula.eval(&solver.get_valuation().unwrap()));
@@ -541,14 +541,14 @@ mod sudoku_tests {
         let path: &Path = Path::new(PATH);
         let boards: Vec<Board> = parse_sudoku_dataset(path, Some(2));
         let start_clauses = get_board_formulas(&boards, BOARD_SIZE, SUBBOARD_SIZE)[1].clone();
-        let mut solver = DPLBSolver::new(&start_clauses);
-        let is_sat = solver.solve();
+        let mut solver = DPLISolver::new(&start_clauses);
+        let is_sat = solver.dplb_solve();
         assert!(is_sat);
         let formula = Formula::formulaset_to_cnf_formula(start_clauses);
         assert!(formula.eval(&solver.get_valuation().unwrap()));
         run_repeatedly_and_average(
             || {
-                solver.solve();
+                solver.dplb_solve();
             },
             10,
         );

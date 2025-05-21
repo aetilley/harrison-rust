@@ -2587,7 +2587,7 @@ impl<T: Debug + Clone + Hash + Eq + Ord> DPLISolver<T> {
         }
     }
 
-    pub fn solve(&mut self) -> bool {
+    pub fn dpli_solve(&mut self) -> bool {
         self._reset();
         let sat = self._dpli();
         self.sat = Some(sat);
@@ -2599,6 +2599,96 @@ impl<T: Debug + Clone + Hash + Eq + Ord> DPLISolver<T> {
             Some(true) => Some(get_valuation_from_trail(&self.trail)),
             _ => None,
         }
+    }
+
+    // Backjumping / Conflict clause learning
+
+    fn backjump(&mut self, p: &FSLiteral<T>) {
+        // To be called when `p` is inconsistent with `trail`./
+        let orig_trail = self.trail.clone();
+        let orig_unassigned = self.unassigned.clone();
+        self.backtrack();
+        if let Some((_, Mix::Guessed)) = self.trail.last() {
+            // Temporarity put p on the trail for purposes of calling
+            // unit_propagate.
+            self.trail_pop();
+            self.trail.push((p.clone(), Mix::Guessed));
+            self.unassigned.remove(p).unwrap();
+            let (reduced_clauses, _) = self.unit_propagate();
+            self.trail_pop();
+            if reduced_clauses.contains(&BTreeSet::new()) {
+                self.backjump(p);
+                return;
+            }
+        }
+        self.trail = orig_trail;
+        self.unassigned = orig_unassigned;
+    }
+
+    fn _dplb(&mut self) -> bool {
+        // Start by unit propagating.  If this results in a contradiction, backtrack.
+        //
+        let (simplified_clauses, extended_trail) = self.unit_propagate();
+
+        if simplified_clauses.contains(&BTreeSet::new()) {
+            // Reach a contradiction.  Must backtrack.
+            self.backtrack();
+            match self.trail.last() {
+                // Switch parity of our last guess.  Marking as Deduced this time.
+                Some((lit, Mix::Guessed)) => {
+                    assert!(lit.is_pos());
+                    let lit_clone = lit.clone();
+                    self.trail_pop();
+                    // Keep going back and removing Guesses (keeping lit_clone) until we get to a satisfiable trail.
+                    self.backjump(&lit_clone);
+
+                    // A clause of the negations of all guesses up till but not including
+                    // p.  Note that those guesses are jointly consistent (were one to conjoin them),
+                    // but not if we were to add `val`.
+                    //
+                    let mut constraint: BTreeSet<FSLiteral<T>> = self
+                        .trail
+                        .iter()
+                        .filter(|(_, mix)| mix == &Mix::Guessed)
+                        .map(|(val, _)| FSLiteral::negate(val))
+                        .collect();
+                    constraint.insert(FSLiteral::negate(&lit_clone));
+                    self.clauses.insert(constraint);
+                    self.trail
+                        .push((FSLiteral::negate(&lit_clone), Mix::Deduced));
+                    self.unassigned.remove(&lit_clone).unwrap();
+                    self._dplb()
+                }
+
+                _ => false,
+            }
+        } else {
+            // Above propagation was consistent.  Choose another variable to guess.
+            let xlen = extended_trail.len();
+            let num_new = xlen - self.trail.len();
+            for (prop, _mix) in &extended_trail[xlen - num_new..] {
+                self.unassigned.remove(&lit_abs(prop)).unwrap();
+            }
+            self.trail = extended_trail;
+
+            match self.unassigned.pop() {
+                Some(optimum) => {
+                    self.trail.push((optimum.0, Mix::Guessed));
+                    self._dplb()
+                }
+                None => {
+                    // Done.  Satisfiable.
+                    true
+                }
+            }
+        }
+    }
+
+    pub fn dplb_solve(&mut self) -> bool {
+        self._reset();
+        let sat = self._dplb();
+        self.sat = Some(sat);
+        sat
     }
 }
 
@@ -2738,7 +2828,7 @@ mod dpli_solver_tests {
         ]);
 
         let mut solver = DPLISolver::new(&formula_set);
-        let result = solver.solve();
+        let result = solver.dpli_solve();
         assert!(!result);
         assert_eq!(solver.sat, Some(false));
         let valuation = solver.get_valuation();
@@ -2770,7 +2860,7 @@ mod dpli_solver_tests {
             ]),
         ]);
         let mut solver = DPLISolver::new(&formula_set);
-        let result = solver.solve();
+        let result = solver.dpli_solve();
         assert!(result);
         assert_eq!(solver.sat, Some(true));
         let valuation = solver.get_valuation();
@@ -2808,7 +2898,7 @@ mod dpli_solver_tests {
             BTreeSet::from([FSLiteral::Neg(String::from("E"))]),
         ]);
         let mut solver = DPLISolver::new(&formula_set);
-        let result = solver.solve();
+        let result = solver.dpli_solve();
         assert!(result);
         assert_eq!(solver.sat, Some(true));
         let valuation = solver.get_valuation();
@@ -2820,183 +2910,6 @@ mod dpli_solver_tests {
         ]);
         assert_eq!(valuation, Some(desired_valuation));
     }
-}
-
-// Backjumping / Conflict clause learning
-
-pub struct DPLBSolver<T: Debug + Clone + Hash + Eq + Ord> {
-    clauses: CNFFormulaSet<T>,
-    trail: Trail<T>,
-    unassigned: PriorityQueue<FSLiteral<T>, usize>,
-    sat: Option<bool>,
-    scores: HashMap<FSLiteral<T>, usize>, // read only
-}
-
-impl<T: Debug + Clone + Hash + Eq + Ord> DPLBSolver<T> {
-    pub fn new(clauses: &CNFFormulaSet<T>) -> DPLBSolver<T> {
-        let props: HashSet<FSLiteral<T>> = clauses
-            .iter()
-            .fold(BTreeSet::new(), |x, y| &x | y)
-            .iter()
-            .map(lit_abs)
-            .collect();
-
-        let scores: HashMap<FSLiteral<T>, usize> = props
-            .into_iter()
-            .map(|prop| {
-                let count = Formula::posneg_count(clauses, &prop);
-                (prop, count)
-            })
-            .collect();
-
-        let unassigned: PriorityQueue<FSLiteral<T>, usize> = scores.clone().into_iter().collect();
-
-        let trail = Trail::<T>::with_capacity(unassigned.len());
-
-        DPLBSolver {
-            clauses: clauses.clone(),
-            trail,
-            unassigned,
-            sat: None,
-            scores,
-        }
-    }
-
-    pub fn num_props(&self) -> usize {
-        self.scores.len()
-    }
-
-    fn trail_pop(&mut self) -> Option<FSLiteral<T>> {
-        // Pop and add back to `self.unassigned`.
-        let (lit, _mix) = self.trail.pop()?;
-        let abs = lit_abs(&lit);
-        self.unassigned.push(abs.clone(), self.scores[&abs]);
-        Some(lit)
-    }
-
-    fn _reset(&mut self) {
-        self.trail.clear();
-        self.unassigned = self.scores.clone().into_iter().collect();
-        self.sat = None;
-    }
-
-    fn unit_propagate(&self) -> (CNFFormulaSet<T>, Trail<T>) {
-        // Kick of recursive unit_subpropagation with a `trail_set` matching the incoming `self.trail`.
-        let trail_set: BTreeSet<FSLiteral<T>> =
-            self.trail.iter().map(|pair| pair.0.clone()).collect();
-        let (reduced_clauses, _, extended_trail) =
-            unit_subpropagate(self.clauses.clone(), trail_set, self.trail.clone());
-        (reduced_clauses, extended_trail)
-    }
-
-    fn backtrack(&mut self) {
-        // Pop until we get to a Guessed value or the empty trail.
-        if let Some((_, Mix::Deduced)) = self.trail.last() {
-            self.trail_pop();
-            self.backtrack()
-        }
-    }
-
-    fn backjump(&mut self, p: &FSLiteral<T>) {
-        // To be called when `p` is inconsistent with `trail`./
-        let orig_trail = self.trail.clone();
-        let orig_unassigned = self.unassigned.clone();
-        self.backtrack();
-        if let Some((_, Mix::Guessed)) = self.trail.last() {
-            // Temporarity put p on the trail for purposes of calling
-            // unit_propagate.
-            self.trail_pop();
-            self.trail.push((p.clone(), Mix::Guessed));
-            self.unassigned.remove(p).unwrap();
-            let (reduced_clauses, _) = self.unit_propagate();
-            self.trail_pop();
-            if reduced_clauses.contains(&BTreeSet::new()) {
-                self.backjump(p);
-                return;
-            }
-        }
-        self.trail = orig_trail;
-        self.unassigned = orig_unassigned;
-    }
-
-    fn _dplb(&mut self) -> bool {
-        // Start by unit propagating.  If this results in a contradiction, backtrack.
-        //
-        let (simplified_clauses, extended_trail) = self.unit_propagate();
-
-        if simplified_clauses.contains(&BTreeSet::new()) {
-            // Reach a contradiction.  Must backtrack.
-            self.backtrack();
-            match self.trail.last() {
-                // Switch parity of our last guess.  Marking as Deduced this time.
-                Some((lit, Mix::Guessed)) => {
-                    assert!(lit.is_pos());
-                    let lit_clone = lit.clone();
-                    self.trail_pop();
-                    // Keep going back and removing Guesses (keeping lit_clone) until we get to a satisfiable trail.
-                    self.backjump(&lit_clone);
-
-                    // A clause of the negations of all guesses up till but not including
-                    // p.  Note that those guesses are jointly consistent (were one to conjoin them),
-                    // but not if we were to add `val`.
-                    //
-                    let mut constraint: BTreeSet<FSLiteral<T>> = self
-                        .trail
-                        .iter()
-                        .filter(|(_, mix)| mix == &Mix::Guessed)
-                        .map(|(val, _)| FSLiteral::negate(val))
-                        .collect();
-                    constraint.insert(FSLiteral::negate(&lit_clone));
-                    self.clauses.insert(constraint);
-                    self.trail
-                        .push((FSLiteral::negate(&lit_clone), Mix::Deduced));
-                    self.unassigned.remove(&lit_clone).unwrap();
-                    self._dplb()
-                }
-
-                _ => false,
-            }
-        } else {
-            // Above propagation was consistent.  Choose another variable to guess.
-            let xlen = extended_trail.len();
-            let num_new = xlen - self.trail.len();
-            for (prop, _mix) in &extended_trail[xlen - num_new..] {
-                self.unassigned.remove(&lit_abs(prop)).unwrap();
-            }
-            self.trail = extended_trail;
-
-            match self.unassigned.pop() {
-                Some(optimum) => {
-                    self.trail.push((optimum.0, Mix::Guessed));
-                    self._dplb()
-                }
-                None => {
-                    // Done.  Satisfiable.
-                    true
-                }
-            }
-        }
-    }
-
-    pub fn solve(&mut self) -> bool {
-        self._reset();
-        let sat = self._dplb();
-        self.sat = Some(sat);
-        sat
-    }
-
-    pub fn get_valuation(&self) -> Option<Valuation<T>> {
-        match self.sat {
-            Some(true) => Some(get_valuation_from_trail(&self.trail)),
-            _ => None,
-        }
-    }
-}
-
-#[cfg(test)]
-mod dplb_solver_tests {
-
-    use super::*;
 
     #[test]
     fn test_backjump() {
@@ -3041,7 +2954,7 @@ mod dplb_solver_tests {
             (FSLiteral::Pos(String::from("R")), Mix::Deduced),
         ]);
 
-        let mut solver = DPLBSolver::new(&clauses);
+        let mut solver = DPLISolver::new(&clauses);
         solver.trail = trail;
         solver.scores = scores;
 
@@ -3080,8 +2993,8 @@ mod dplb_solver_tests {
             ]),
         ]);
 
-        let mut solver = DPLBSolver::new(&formula_set);
-        let result = solver.solve();
+        let mut solver = DPLISolver::new(&formula_set);
+        let result = solver.dplb_solve();
         assert!(!result);
         assert_eq!(solver.sat, Some(false));
         let valuation = solver.get_valuation();
@@ -3112,8 +3025,8 @@ mod dplb_solver_tests {
                 FSLiteral::Pos(String::from("C")),
             ]),
         ]);
-        let mut solver = DPLBSolver::new(&formula_set);
-        let result = solver.solve();
+        let mut solver = DPLISolver::new(&formula_set);
+        let result = solver.dplb_solve();
         assert!(result);
         assert_eq!(solver.sat, Some(true));
         let valuation = solver.get_valuation();
@@ -3150,8 +3063,8 @@ mod dplb_solver_tests {
             ]),
             BTreeSet::from([FSLiteral::Neg(String::from("E"))]),
         ]);
-        let mut solver = DPLBSolver::new(&formula_set);
-        let result = solver.solve();
+        let mut solver = DPLISolver::new(&formula_set);
+        let result = solver.dplb_solve();
         assert!(result);
         assert_eq!(solver.sat, Some(true));
         let valuation = solver.get_valuation();

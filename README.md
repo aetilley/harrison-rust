@@ -1,14 +1,14 @@
 A Rust library for SAT solving and automated theorem proving. This package is a work in progress, but the following are supported:
 
-1) datatypes/parsing/printing operations
-2) eval
-3) standard DNF/CNF algorithms,
+1) Datatypes/parsing/printing operations
+2) Eval
+3) Standard DNF/CNF algorithms,
 4) Definitional CNF (preserving equisatisfiability) for propositional logic.
-5) the DP and "naive" DPLL algorithms for testing satisfiability
-6) Basic Iterative DPLL as well as Backjumping/Conflict clause learning solvers DPLI and DPLU respectively.
+5) The classic DP and DPLL algorithms for testing satisfiability
+6) Basic Iterative DPLL as well as Backjumping/Conflict clause learning.
 7) Prenex normal form
 8) Skolemization
-9) Herbrand methods of first-order validity checking (Gilmore and Davis-Putnam)
+9) A semi-decision procedure for first-order validity checking (Gilmore and Davis-Putnam)
 
 To run the Jupyter notebook `README.ipynb`, you will need both Jupyter
 https://jupyter-notebook.readthedocs.io/en/stable/
@@ -18,7 +18,7 @@ and a Jupyter Rust kernel, e.g. https://github.com/evcxr/evcxr/blob/main/evcxr_j
 `README.md` is generated from `README.ipynb` by running 
 ```jupyter nbconvert --execute --to markdown README.ipynb```
 
-Acknowlegement:  This libarary was highly informed by John Harrison's text on Automated Theorem Proving (which uses Ocaml).  
+Acknowlegement:  This library was highly informed by John Harrison's text on Automated Theorem Proving (which uses Ocaml).  
 
 (Harrison, J. (2009). Handbook of Practical Logic and Automated Reasoning. Cambridge: Cambridge University Press)
 
@@ -37,7 +37,7 @@ use std::io::stdout;
 use std::path::Path;
 
 use harrison_rust::first_order_logic::{FOValuation, Interpretation, Language, Pred};
-use harrison_rust::formula::{DPLBSolver, Formula};
+use harrison_rust::formula::{DPLISolver, Formula};
 use harrison_rust::propositional_logic::Prop;
 use harrison_rust::sudoku::{get_board_formulas, parse_sudoku_dataset, Board};
 use harrison_rust::utils::run_and_time;
@@ -277,10 +277,10 @@ let path_str: &str = "./data/sudoku.txt";
 let path: &Path = Path::new(path_str);
 let boards: Vec<Board> = parse_sudoku_dataset(path, Some(1));
 let clauses = get_board_formulas(&boards, 9, 3)[0].clone();
-let mut solver = DPLBSolver::new(&clauses);
+let mut solver = DPLISolver::new(&clauses);
 let num_props = solver.num_props();
 println!("(Sukoku sentence has {num_props} propositional variables)");
-let is_sat = run_and_time(|| solver.solve());
+let is_sat = run_and_time(|| solver.dplb_solve());
 println!("Is satisfiable?: {is_sat}");
 
 let formula = Formula::formulaset_to_cnf_formula(clauses);
@@ -291,7 +291,7 @@ println!("Check: Solution satisfies original constraints?: {check}");
     (Sukoku sentence has 729 propositional variables)
 
 
-    Run time is 3.793525375s.
+    Run time is 5.664883334s.
 
 
     
