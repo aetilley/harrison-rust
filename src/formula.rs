@@ -175,6 +175,7 @@ mod formula_tests_general {
         assert_eq!(x, z);
     }
 
+    #[test]
     fn test_formula_equality_2() {
         let x: Formula<String> = Formula::<String>::False;
         let z: Formula<String> = Formula::<String>::True;
@@ -495,10 +496,7 @@ mod generic_ast_print_tests {
 
     use super::*;
 
-    fn init() {
-        let _ = env_logger::builder().is_test(true).try_init();
-    }
-
+    #[test]
     fn test_maybe_bracket_no_indent() {
         let result1 = Formula::<String>::maybe_bracketed(true, "TESTING");
         let result2 = Formula::<String>::maybe_bracketed(false, "TESTING");

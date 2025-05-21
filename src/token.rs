@@ -82,16 +82,6 @@ impl fmt::Display for Token {
     }
 }
 
-pub fn lex(input: &str) -> Vec<String> {
-    // let token_stream: SpannedIter<'input, Token> = Token::lexer(input).spanned();
-    let mut lexer = Token::lexer(input);
-    let mut result = vec![];
-    while lexer.next().is_some() {
-        result.push(String::from(lexer.slice()));
-    }
-    result
-}
-
 // #######  For LALRPOP Parser #########
 //
 // lalrpop parser needs an iterator of the following type as input
@@ -132,8 +122,14 @@ impl Iterator for Lexer<'_> {
 mod lex_tests {
     use super::*;
 
-    fn init() {
-        let _ = env_logger::builder().is_test(true).try_init();
+    pub fn lex(input: &str) -> Vec<String> {
+        // let token_stream: SpannedIter<'input, Token> = Token::lexer(input).spanned();
+        let mut lexer = Token::lexer(input);
+        let mut result = vec![];
+        while lexer.next().is_some() {
+            result.push(String::from(lexer.slice()));
+        }
+        result
     }
 
     #[test]

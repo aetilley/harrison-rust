@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 pub mod applications_propositional;
 pub mod first_order_logic;
 pub mod formula;

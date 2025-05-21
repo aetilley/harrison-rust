@@ -161,6 +161,7 @@ mod term_parse_tests {
         assert_eq!(result, desired);
     }
 
+    #[test]
     fn test_parset_1() {
         let result = Term::parset("bar(B, baz(C))").unwrap();
         let desired = Term::fun(
@@ -649,10 +650,10 @@ type RelType<DomainType> = dyn Fn(&[DomainType]) -> bool;
 
 pub struct Interpretation<DomainType: Hash + Clone + Eq + Debug + 'static> {
     // Need a lifetime parameter due to the trait bounds in func/rel.
-    lang: Language,
-    domain: HashSet<DomainType>,
-    func: HashMap<String, Box<FuncType<DomainType>>>,
-    rel: HashMap<String, Box<RelType<DomainType>>>,
+    pub lang: Language,
+    pub domain: HashSet<DomainType>,
+    pub func: HashMap<String, Box<FuncType<DomainType>>>,
+    pub rel: HashMap<String, Box<RelType<DomainType>>>,
 }
 
 impl<DomainType: Hash + Clone + Eq + Debug> Interpretation<DomainType> {
@@ -729,7 +730,7 @@ impl<DomainType: Hash + Clone + Eq + Debug> Interpretation<DomainType> {
     }
 }
 
-mod test_utils {
+pub mod test_utils {
 
     use super::*;
 
@@ -1197,7 +1198,7 @@ impl Pred {
 
 // ### Variables ###
 impl Formula<Pred> {
-    fn variables(&self) -> HashSet<String> {
+    pub fn variables(&self) -> HashSet<String> {
         match self {
             Formula::True | Formula::False => HashSet::new(),
             Formula::Atom(pred) => pred.variables(),
@@ -2105,42 +2106,6 @@ impl Formula<Pred> {
         Formula::strip_contradictory(&aggregate)
     }
 
-    #[allow(clippy::too_many_arguments)]
-    fn gilmore_loop(
-        formula: &DNFFormulaSet<Pred>,
-        constants: &HashSet<(String, usize)>,
-        functions: &HashSet<(String, usize)>,
-        free_variables: &Vec<String>,
-        next_level: usize,
-        ground_instances_so_far: &DNFFormulaSet<Pred>,
-        tuples_tried: HashSet<Vec<Term>>,
-        tuples_left_at_level: BTreeSet<Vec<Term>>,
-        max_depth: usize,
-    ) -> HerbrandResult {
-        // USES DNF FormulaSet representations throughout.
-        //
-        fn sat_test(formula: &DNFFormulaSet<Pred>) -> bool {
-            !formula.is_empty()
-        }
-
-        let tuple_cache = &mut HashMap::new();
-
-        Formula::herbrand_loop(
-            &Formula::augement_dnf_formulaset,
-            |formula: &DNFFormulaSet<Pred>| !formula.is_empty(),
-            formula,
-            constants,
-            functions,
-            free_variables,
-            next_level,
-            ground_instances_so_far,
-            tuples_tried,
-            tuples_left_at_level,
-            max_depth,
-            tuple_cache,
-        )
-    }
-
     pub fn gilmore(formula: &Formula<Pred>, max_depth: usize) -> HerbrandResult {
         // Tautology test by checking whether the negation is unsatisfiable.
         // USES DNF FormulaSet representations throughout.
@@ -2156,7 +2121,10 @@ impl Formula<Pred> {
         // so that the satisfiability is equivalent to being non-empty.
         // This is an invariant we maintain throughout, even as we add to the accumulator.
         let dnf_formula = negation_skolemized.to_dnf_formulaset();
-        Formula::gilmore_loop(
+
+        Formula::herbrand_loop(
+            &Formula::augement_dnf_formulaset,
+            |formula: &DNFFormulaSet<Pred>| !formula.is_empty(),
             &dnf_formula,
             &constants,
             &functions,
@@ -2166,6 +2134,7 @@ impl Formula<Pred> {
             HashSet::new(),
             BTreeSet::new(),
             max_depth,
+            &mut HashMap::new(),
         )
     }
 
@@ -2177,38 +2146,6 @@ impl Formula<Pred> {
     ) -> CNFFormulaSet<Pred> {
         // Simply conjoin all new CNF clauses.
         new_formula | ground_instances_so_far
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn dp_loop(
-        formula: &CNFFormulaSet<Pred>,
-        constants: &HashSet<(String, usize)>,
-        functions: &HashSet<(String, usize)>,
-        free_variables: &Vec<String>,
-        next_level: usize,
-        ground_instances_so_far: &CNFFormulaSet<Pred>,
-        tuples_tried: HashSet<Vec<Term>>,
-        tuples_left_at_level: BTreeSet<Vec<Term>>,
-        max_depth: usize,
-    ) -> HerbrandResult {
-        // USES CNF FormulaSet representations throughout.
-
-        let tuple_cache = &mut HashMap::new();
-
-        Formula::herbrand_loop(
-            &Formula::augment_cnf_formulaset,
-            Formula::dpll,
-            formula,
-            constants,
-            functions,
-            free_variables,
-            next_level,
-            ground_instances_so_far,
-            tuples_tried,
-            tuples_left_at_level,
-            max_depth,
-            tuple_cache,
-        )
     }
 
     fn _get_dp_unsat_core_cnf(
@@ -2261,7 +2198,9 @@ impl Formula<Pred> {
         free_variables.sort();
         let cnf_formula = negation_skolemized.to_cnf_formulaset();
 
-        let mut result = Formula::dp_loop(
+        let mut result = Formula::herbrand_loop(
+            &Formula::augment_cnf_formulaset,
+            Formula::dpll,
             &cnf_formula,
             &constants,
             &functions,
@@ -2271,6 +2210,7 @@ impl Formula<Pred> {
             HashSet::new(),
             BTreeSet::new(),
             max_depth,
+            &mut HashMap::new(),
         );
         match result.clone() {
             HerbrandResult::ValidityProved(mut tuples) => {
@@ -2681,46 +2621,6 @@ mod herbrand_tests {
     }
 
     #[test]
-    fn test_gilmore_loop() {
-        let formula = Formula::<Pred>::parse("~P(g(x)) /\\ P(y)")
-            .unwrap()
-            .to_dnf_formulaset();
-
-        let constants = HashSet::from([("42".to_string(), 0)]);
-        let functions = HashSet::from([("f".to_string(), 2), ("g".to_string(), 1)]);
-
-        let free_variables = vec!["x".to_string(), "y".to_string()];
-        let next_level = 0;
-        // DNF representation of True
-        let ground_instances_so_far: DNFFormulaSet<Pred> = BTreeSet::from([BTreeSet::new()]);
-        let tuples_tried: HashSet<Vec<Term>> = HashSet::new();
-        let tuples_left_at_level: BTreeSet<Vec<Term>> = BTreeSet::new();
-        let max_depth = 100;
-
-        let result = Formula::gilmore_loop(
-            &formula,
-            &constants,
-            &functions,
-            &free_variables,
-            next_level,
-            &ground_instances_so_far,
-            tuples_tried,
-            tuples_left_at_level,
-            max_depth,
-        );
-
-        let tuples = match result {
-            HerbrandResult::ValidityProved(tuples) => tuples,
-            _ => panic!("Expected Validity proved in this test"),
-        };
-
-        assert!(tuples.contains(&vec![
-            Term::parset("42").unwrap(),
-            Term::parset("g(42)").unwrap()
-        ]));
-    }
-
-    #[test]
     fn test_gilmore() {
         let formula = Formula::<Pred>::parse("exists x. forall y. (P(x) ==> P(y))").unwrap();
         let max_depth = 100;
@@ -2741,46 +2641,6 @@ mod herbrand_tests {
     }
 
     #[test]
-    fn test_dp_loop() {
-        let formula = Formula::<Pred>::parse("~P(g(x)) /\\ P(y)")
-            .unwrap()
-            .to_cnf_formulaset();
-
-        let constants = HashSet::from([("42".to_string(), 0)]);
-        let functions = HashSet::from([("f".to_string(), 2), ("g".to_string(), 1)]);
-
-        let free_variables = vec!["x".to_string(), "y".to_string()];
-        let next_level = 0;
-        // CNF representation of True
-        let ground_instances_so_far: CNFFormulaSet<Pred> = BTreeSet::new();
-        let tuples_tried: HashSet<Vec<Term>> = HashSet::new();
-        let tuples_left_at_level: BTreeSet<Vec<Term>> = BTreeSet::new();
-
-        let max_depth = 100;
-
-        let result = Formula::dp_loop(
-            &formula,
-            &constants,
-            &functions,
-            &free_variables,
-            next_level,
-            &ground_instances_so_far,
-            tuples_tried,
-            tuples_left_at_level,
-            max_depth,
-        );
-        let tuples = match result {
-            HerbrandResult::ValidityProved(tuples) => tuples,
-            _ => panic!("Expected Validity proved in this test"),
-        };
-
-        assert!(tuples.contains(&vec![
-            Term::parset("42").unwrap(),
-            Term::parset("g(42)").unwrap()
-        ]));
-    }
-
-    // #[test]
     fn test_get_dp_unsat_core() {
         let formula = Formula::<Pred>::parse("P(x) /\\ ~P(f_y(x))")
             .unwrap()
@@ -2790,7 +2650,7 @@ mod herbrand_tests {
             vec![Term::parset("f_y(c)").unwrap()],
             vec![Term::parset("g(f_y(c))").unwrap()],
             vec![Term::parset("g(c)").unwrap()],
-            vec![Term::parset("(c)").unwrap()],
+            vec![Term::parset("c").unwrap()],
             vec![Term::parset("d").unwrap()],
         ]);
         let needed = BTreeSet::new();

@@ -40,10 +40,6 @@ impl Prop {
 mod prop_basic_tests {
     use super::*;
 
-    fn init() {
-        let _ = env_logger::builder().is_test(true).try_init();
-    }
-
     #[test]
     fn test_print_propvar() {
         let prop = Prop::new("SomeProp");
@@ -68,10 +64,6 @@ impl Formula<Prop> {
 #[cfg(test)]
 mod prop_parse_tests {
     use super::*;
-
-    fn init() {
-        let _ = env_logger::builder().is_test(true).try_init();
-    }
 
     // Convenience to save us some typing.
     fn prop(name: &str) -> Prop {
@@ -267,10 +259,6 @@ impl Formula<Prop> {
 #[cfg(test)]
 mod prop_formula_print_tests {
     use super::*;
-
-    fn init() {
-        let _ = env_logger::builder().is_test(true).try_init();
-    }
 
     #[test]
     fn test_pretty() {
@@ -519,7 +507,7 @@ false false false | true
 pub type FormulaSet = BTreeSet<BTreeSet<Formula<Prop>>>;
 
 impl Formula<Prop> {
-    fn psubst(&self, subfn: &HashMap<Prop, Formula<Prop>>) -> Formula<Prop> {
+    pub fn psubst(&self, subfn: &HashMap<Prop, Formula<Prop>>) -> Formula<Prop> {
         // Replace each Atom(prop) with a subformula given by `subfn[prop]`.
         //
         // Theorem (Harrison 2.3)
@@ -548,7 +536,7 @@ impl Formula<Prop> {
         self.simplify_recursive(&Formula::psimplify_step)
     }
 
-    fn dual(&self) -> Formula<Prop> {
+    pub fn dual(&self) -> Formula<Prop> {
         // Theorem (Harrison 2.7)
         // For `p: Formula<Prop>` and `v: Valuation<Prop>`
         // and letting !v denote the map of (prop: !val) for
@@ -570,12 +558,12 @@ impl Formula<Prop> {
         }
     }
 
-    fn nnf(&self) -> Formula<Prop> {
+    pub fn nnf(&self) -> Formula<Prop> {
         // Negation normal form
         self.simplify().raw_nnf()
     }
 
-    fn nenf(&self) -> Formula<Prop> {
+    pub fn nenf(&self) -> Formula<Prop> {
         // Negation and normal form also allowing equivalences (iff).
         self.simplify().raw_nenf()
     }
@@ -644,6 +632,7 @@ impl Formula<Prop> {
     }
 
     const DEF_CNF_PREFIX: &'static str = "p_";
+
     fn _mkprop_name(idx: usize) -> String {
         format!("{}{}", Formula::DEF_CNF_PREFIX, idx)
     }
@@ -720,7 +709,7 @@ impl Formula<Prop> {
         Formula::formulaset_to_cnf_formula(cleaned)
     }
 
-    fn def_cnf_full(&self) -> Formula<Prop> {
+    pub fn def_cnf_full(&self) -> Formula<Prop> {
         // Apply full traversal that collects defs for every node
         // of the tree.
         // Compare to `def_cnf_opt` (optimized) below.
@@ -769,7 +758,7 @@ impl Formula<Prop> {
     }
 
     // Optimized Definitional CNF
-    fn def_cnf_opt(&self) -> Formula<Prop> {
+    pub fn def_cnf_opt(&self) -> Formula<Prop> {
         self.def_cnf(&Formula::_def_cnf_opt_outer_conjunctions)
     }
 }
@@ -777,11 +766,6 @@ impl Formula<Prop> {
 #[cfg(test)]
 mod def_cnf_tests {
     use super::*;
-
-    // Convenience to save us some typing.
-    fn prop(name: &str) -> Prop {
-        Prop::new(name)
-    }
 
     #[test]
     fn test_max_taken_index() {

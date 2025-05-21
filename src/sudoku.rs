@@ -9,12 +9,6 @@ use crate::propositional_logic::Prop;
 use itertools::iproduct;
 
 const BOARD_SIZE: usize = 9;
-const SUBBOARD_SIZE: usize = 3;
-const RANGE: RangeInclusive<usize> = 1..=BOARD_SIZE;
-// Note, paths are relative to top level package dir.
-const PATH: &str = "./data/sudoku.txt";
-const NUM_BOARDS: usize = 95;
-const FILE_LEN_CHARS: usize = NUM_BOARDS * (BOARD_SIZE * BOARD_SIZE + 1); //(board size plus newline)
 
 pub type Board = BTreeMap<(usize, usize), Option<u32>>;
 
@@ -242,6 +236,10 @@ mod sudoku_tests {
     use super::*;
     use crate::formula::{DPLBSolver, DPLISolver, Formula};
     use crate::utils::run_repeatedly_and_average;
+    const SUBBOARD_SIZE: usize = 3;
+    // Note, paths are relative to top level package dir.
+    const PATH: &str = "./data/sudoku.txt";
+    const NUM_BOARDS: usize = 95;
 
     #[test]
     fn test_exactly_one() {
@@ -516,14 +514,16 @@ mod sudoku_tests {
         assert_eq!(all_formulas.len(), limit);
     }
 
-    // #[test] //Slow.
+    #[ignore] //Slow.
+    #[test]
     fn test_parse_whole_file() {
         let path: &Path = Path::new(PATH);
         let boards: Vec<Board> = parse_sudoku_dataset(path, None);
         assert_eq!(boards.len(), NUM_BOARDS);
     }
 
-    // #[test] //SLOWWW...
+    #[ignore] //Slow.
+    #[test]
     fn solve_test_dpli_solver() {
         let path: &Path = Path::new(PATH);
         let boards: Vec<Board> = parse_sudoku_dataset(path, Some(2));
@@ -535,8 +535,8 @@ mod sudoku_tests {
         assert!(formula.eval(&solver.get_valuation().unwrap()));
     }
 
-    // Should probably be run in release mode.
-    // #[test] //SLOWWW...
+    #[ignore] //Slow.
+    #[test]
     fn solve_test_dplb_solver() {
         let path: &Path = Path::new(PATH);
         let boards: Vec<Board> = parse_sudoku_dataset(path, Some(2));
